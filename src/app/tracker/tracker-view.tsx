@@ -36,8 +36,9 @@ export function TrackerView() {
 function TrackerDashboard() {
   const wallet = useWallet();
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Stay on the onboarding picker until the user confirms, so they can select several cards.
-  const [onboarding, setOnboarding] = useState(() => wallet.cards.length === 0);
+  // Once the user starts picking cards from an empty wallet, keep the picker open until they confirm so they can
+  // select several. Cards that arrive from cloud sync don't count as picking, so a synced wallet shows right away.
+  const [onboarding, setOnboarding] = useState(false);
   const [now] = useState(() => new Date());
 
   const owned = wallet.cards.map(getCard).filter((c): c is Card => Boolean(c));
@@ -63,7 +64,7 @@ function TrackerDashboard() {
             Select every card you hold. Your wallet is saved privately in this browser — no account or card numbers needed.
           </p>
         </div>
-        <CardPickerGrid />
+        <CardPickerGrid onPick={() => setOnboarding(true)} />
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 backdrop-blur">
           <div className="container-page flex items-center justify-between gap-4 py-3">
             <p className="text-sm text-ink-2">

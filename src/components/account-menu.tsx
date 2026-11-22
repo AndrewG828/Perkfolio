@@ -1,7 +1,7 @@
 "use client";
 
 import { Cloud, CloudOff, LogIn, LogOut, RefreshCw } from "lucide-react";
-import { useAccount } from "@/lib/account";
+import { requestSync, useAccount } from "@/lib/account";
 import { signInWithGoogle, signOutAction } from "@/app/actions/auth";
 
 /** Sign-in button / account chip in the header. Renders nothing until accounts are configured. */
@@ -32,10 +32,10 @@ export function AccountMenu() {
   const syncText = !account.sync
     ? "Cloud sync isn't set up yet"
     : account.syncState === "error"
-      ? "Couldn't sync — changes are saved in this browser"
+      ? `Couldn't sync — saved in this browser for now. ${account.syncError ?? ""}`
       : account.syncState === "syncing"
         ? "Syncing…"
-        : "Wallet synced to your account";
+        : `Synced to your account${account.lastSyncedAt ? ` · ${new Date(account.lastSyncedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}`;
 
   return (
     <details className="relative">
@@ -49,7 +49,12 @@ export function AccountMenu() {
         <p className="mt-3 flex items-center gap-2 text-sm text-ink-2">
           {syncIcon} {syncText}
         </p>
-        <form action={signOutAction} className="mt-4 border-t border-line pt-3">
+        {account.sync && (
+          <button className="btn-ghost mt-2 w-full justify-start px-2 text-sm" onClick={() => requestSync()}>
+            <RefreshCw className="h-4 w-4" /> Sync now
+          </button>
+        )}
+        <form action={signOutAction} className="mt-2 border-t border-line pt-3">
           <button className="btn-ghost w-full justify-start px-2">
             <LogOut className="h-4 w-4" /> Sign out
           </button>

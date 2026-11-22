@@ -18,5 +18,10 @@ export async function ensureSchema() {
     data jsonb NOT NULL,
     updated_at bigint NOT NULL
   )`;
-  await schema;
+  try {
+    await schema;
+  } catch (err) {
+    schema = null; // don't cache a failure for the life of the instance
+    throw err;
+  }
 }

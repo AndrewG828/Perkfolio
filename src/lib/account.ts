@@ -8,6 +8,9 @@ export interface Account {
   sync: boolean;
   user: { name: string | null; email: string | null; image: string | null } | null;
   syncState?: "idle" | "syncing" | "synced" | "error";
+  /** Wall-clock time of the last successful sync. */
+  lastSyncedAt?: number;
+  syncError?: string;
 }
 
 const INITIAL: Account = { status: "loading", enabled: false, sync: false, user: null };
@@ -29,8 +32,19 @@ function start() {
     .catch(() => set({ status: "ready" }));
 }
 
-export function setSyncState(syncState: Account["syncState"]) {
-  set({ syncState });
+export function setSyncState(syncState: Account["syncState"], error?: string) {
+  set(
+    syncState === "synced"
+      ? { syncState, lastSyncedAt: Date.now(), syncError: undefined }
+      : syncState === "error"
+        ? { syncState, syncError: error ?? "Sync failed" }
+        : { syncState },
+  );
+}
+
+/** Ask the sync loop to pull and push right away (e.g. from a "Sync now" button). */
+export function requestSync() {
+  window.dispatchEvent(new Event("perkfolio:sync-now"));
 }
 
 export function useAccount(): Account {

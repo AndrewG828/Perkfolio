@@ -7,7 +7,7 @@ import { CardArt } from "@/components/card-art";
 import { useWallet, walletActions } from "@/lib/wallet-store";
 import { cn, usd } from "@/lib/format";
 
-export function CardPickerGrid() {
+export function CardPickerGrid({ onPick }: { onPick?: () => void } = {}) {
   const wallet = useWallet();
   const [q, setQ] = useState("");
   const list = useMemo(() => {
@@ -34,7 +34,10 @@ export function CardPickerGrid() {
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => walletActions.toggleCard(c.id)}
+                    onClick={() => {
+                      walletActions.toggleCard(c.id);
+                      onPick?.();
+                    }}
                     aria-pressed={owned}
                     className={cn(
                       "flex items-center gap-4 rounded-lg border p-3 text-left transition-colors",
