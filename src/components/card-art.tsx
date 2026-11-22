@@ -33,6 +33,7 @@ export function CardArt({
           src={card.image}
           alt={`${card.name} card`}
           fill
+          quality={90}
           sizes={{ xs: "64px", sm: "112px", md: "320px", lg: "420px" }[size]}
           className="scale-[1.02] object-cover"
         />
