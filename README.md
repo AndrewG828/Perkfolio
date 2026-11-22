@@ -1,6 +1,6 @@
 # Perkfolio — credit card benefits, tracked
 
-**Live site: https://credit-card-hacking.vercel.app**
+**Live site: https://perkfolio-app.vercel.app**
 
 A web app for getting the most out of rewards credit cards:
 
@@ -53,7 +53,7 @@ are used as storage keys — don't rename them once users are tracking them.
 
 ## Deploying
 
-Production is hosted on Vercel at https://credit-card-hacking.vercel.app and redeploys automatically on every push to `main`;
+Production is hosted on Vercel at https://perkfolio-app.vercel.app and redeploys automatically on every push to `main`;
 pull requests get preview deployments. The app also runs on any Node host (`npm run build && npm start`).
 
 ## Roadmap
