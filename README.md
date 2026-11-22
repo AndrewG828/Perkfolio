@@ -1,8 +1,10 @@
 # Perkfolio — credit card benefits, tracked
 
+**Live site: https://credit-card-hacking.vercel.app**
+
 A web app for getting the most out of rewards credit cards:
 
-- **Explore cards** (`/cards`) — 35+ popular cards (Amex Platinum & Gold, Chase Sapphire Reserve & Preferred, Capital One Venture X, Citi Strata Elite, Bilt, airline & hotel cards, cash back) with filters by issuer, category, fee and lounge access.
+- **Explore cards** (`/cards`) — 37 popular cards (Amex Platinum & Gold, Chase Sapphire Reserve & Preferred, Capital One Venture X, Citi Strata Elite, Bilt, airline & hotel cards, cash back) with filters by issuer, category, fee and lounge access.
 - **Card details** (`/cards/[id]`) — earn rates, every statement credit with its cadence, lounge access, perks and transfer partners.
 - **Compare** (`/compare?cards=a,b,c`) — up to four cards side by side with the best value per row highlighted. Shareable URLs.
 - **Benefits tracker** (`/tracker`) — add the cards you hold, log credits as you use them (monthly / quarterly / semi-annual / annual / every-4-years), see what's expiring and whether each annual fee has paid for itself. Export/import a JSON backup.
@@ -51,7 +53,8 @@ are used as storage keys — don't rename them once users are tracking them.
 
 ## Deploying
 
-The app builds to static pages and deploys as-is to Vercel (`vercel deploy`) or any Node host (`npm run build && npm start`).
+Production is hosted on Vercel at https://credit-card-hacking.vercel.app and redeploys automatically on every push to `main`;
+pull requests get preview deployments. The app also runs on any Node host (`npm run build && npm start`).
 
 ## Roadmap
 
