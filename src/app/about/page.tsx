@@ -47,8 +47,8 @@ export default function AboutPage() {
           <section id="disclaimer" className="scroll-mt-28 space-y-3">
             <h2 className="text-2xl font-semibold text-navy">Disclaimer</h2>
             <p>
-              Perkfolio is an independent tool and is not affiliated with any bank or card network. Card names are trademarks of
-              their owners and are used for identification only; card visuals are stylized illustrations, not issuer artwork.
+              Perkfolio is an independent tool and is not affiliated with any bank or card network. Card names, trademarks and card
+              images belong to their issuers and are used for identification only.
               Nothing here is financial advice.
             </p>
           </section>

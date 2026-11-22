@@ -59,7 +59,7 @@ export function SiteFooter() {
       <div className="border-t border-white/10">
         <div className="container-page py-6 text-xs leading-relaxed text-white/55">
           Perkfolio is an independent tool and is not affiliated with, endorsed by, or sponsored by any card issuer.
-          Card names and trademarks belong to their respective owners. Terms change frequently — always confirm
+          Card names, trademarks and card images belong to their respective issuers and are used for identification only. Terms change frequently — always confirm
           current offers, fees and benefits on the issuer&apos;s website before applying. Not financial advice.
         </div>
       </div>

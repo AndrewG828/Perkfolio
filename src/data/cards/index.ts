@@ -2,8 +2,12 @@ import type { Card, CardCategory, Issuer } from "../types";
 import { amexCards } from "./amex";
 import { chaseBiltCards } from "./chase-bilt";
 import { otherCards } from "./other";
+import { cardImages } from "../card-images";
 
-export const cards: Card[] = [...amexCards, ...chaseBiltCards, ...otherCards];
+export const cards: Card[] = [...amexCards, ...chaseBiltCards, ...otherCards].map((c) => ({
+  ...c,
+  image: c.image ?? cardImages[c.id],
+}));
 
 const byId = new Map(cards.map((c) => [c.id, c]));
 

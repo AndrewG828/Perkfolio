@@ -1,14 +1,15 @@
+import Image from "next/image";
 import type { Card } from "@/data/types";
 import { cn } from "@/lib/format";
 import { shortCardName } from "@/lib/card-name";
 
-/** A stylized, original rendering of a card (no issuer artwork) using the card's color palette. */
+/** The card's issuer artwork when available, otherwise a stylized rendering in the card's colors. */
 export function CardArt({
   card,
   size = "md",
   className,
 }: {
-  card: Pick<Card, "name" | "issuer" | "network" | "art">;
+  card: Pick<Card, "name" | "issuer" | "network" | "art" | "image">;
   size?: "xs" | "sm" | "md" | "lg";
   className?: string;
 }) {
@@ -17,6 +18,27 @@ export function CardArt({
   const width = { xs: "w-16", sm: "w-28", md: "w-full max-w-[320px]", lg: "w-full max-w-[420px]" }[size];
   const tiny = size === "xs" || size === "sm";
   const shortName = shortCardName(card.name);
+
+  if (card.image) {
+    // Issuer artwork. Clipped to a card shape so the shadow and corners match the stylized fallback.
+    return (
+      <div
+        className={cn(
+          "relative aspect-[1.586] overflow-hidden rounded-[5%/8%] bg-[#d9dde2] shadow-[0_10px_30px_-10px_rgba(0,23,90,0.45)]",
+          width,
+          className,
+        )}
+      >
+        <Image
+          src={card.image}
+          alt={`${card.name} card`}
+          fill
+          sizes={{ xs: "64px", sm: "112px", md: "320px", lg: "420px" }[size]}
+          className="scale-[1.02] object-cover"
+        />
+      </div>
+    );
+  }
 
   return (
     <div

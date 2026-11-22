@@ -122,6 +122,8 @@ export interface Card {
   transferPartners?: string[];
   /** Card art gradient (CSS colors) and text color for the rendered card visual. */
   art: { from: string; to: string; text: "light" | "dark"; finish?: "metal" | "plastic" };
+  /** Path to the issuer's card artwork (set from src/data/card-images.ts). */
+  image?: string;
   /** Public product page on the issuer's site. */
   url: string;
   /** ISO date terms were last verified, e.g. "2026-11-22" */
