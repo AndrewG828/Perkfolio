@@ -21,7 +21,8 @@ npm ci
 ```
 
 Code is split into `src/frontend`, `src/backend` (server-only) and `src/shared`, with `src/app` holding only routes
-(README → Project layout). Read `AGENTS.md` first: this project uses Next.js 16, whose APIs differ from older versions. The matching docs ship
+(README → Project layout). `CLAUDE.md` is the working guide for Claude Code (layout, backend design, security rules) and loads automatically.
+Read `AGENTS.md` first: this project uses Next.js 16, whose APIs differ from older versions. The matching docs ship
 in `node_modules/next/dist/docs/`.
 
 ## 3. Environment variables
@@ -95,6 +96,7 @@ npm run dev                       # http://localhost:3000
 Before pushing, run the same checks CI-style:
 
 ```bash
+npm test
 npx tsc --noEmit -p .
 npm run lint
 npm run build

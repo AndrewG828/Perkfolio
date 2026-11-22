@@ -90,6 +90,20 @@ can't overwrite newer data and device clocks don't matter.
 
 Without `DATABASE_URL`, sign-in still works but sync is off.
 
+## Security
+
+- **Identity:** the user id always comes from the signed session cookie (httpOnly, Secure, SameSite=Lax),
+  never from the request, so nobody can read or write another person's wallet.
+- **Writes:** the server rejects cross-site requests (Origin / Sec-Fetch-Site), non-JSON or oversized bodies,
+  and more than 60 saves a minute per user.
+- **Stored data:** wallets are strictly validated and stripped to known fields before storing.
+- **SQL:** queries are always parameterized.
+- **Account deletion:** needs an explicit confirmation body.
+- **Errors and logs:** errors never leak internals, and logs never contain emails.
+- **Headers:** security headers apply site-wide (no framing, nosniff, HSTS, a narrow CSP), and API responses are
+  never cached.
+- **Rules to follow when changing code:** see CLAUDE.md → Security rules.
+
 ## Deploying
 
 Production is hosted on Vercel at https://perkfolio-app.vercel.app and redeploys automatically on every push to `main`;

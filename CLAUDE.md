@@ -27,7 +27,8 @@ vercel logs --project perkfolio --json   # prod logs; Hobby keeps only ~30 minut
 src/app/        Routes only: page.tsx / layout.tsx / route.ts. Keep them thin; import from the folders below.
 src/frontend/   Runs in the browser. components/ (shared UI), features/<page>/ (a page's interactive views),
                 state/ (client stores), lib/ (browser helpers like the .ics builder).
-src/backend/    Server only. Every module starts with `import "server-only"` (a client import is a build error).
+src/backend/    Server only. Modules start with `import "server-only"` (a client import is a build error), except
+                db/migrate.ts + db/migrations.ts (also loaded by the CLI script) and http/errors.ts (plain class).
   auth/           Auth.js config (index.ts), server actions (actions.ts), currentUserId() (current-user.ts)
   db/             client.ts (db() = Neon client after migrations), migrations.ts (schema), migrate.ts (runner)
   repositories/   SQL and nothing else: users.ts (users + accounts), wallets.ts
