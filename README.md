@@ -20,6 +20,8 @@ A web app for getting the most out of rewards credit cards:
 
 ## Getting started
 
+New machine? See **[SETUP.md](SETUP.md)** for the full local setup, including env vars and Google sign-in.
+
 ```bash
 npm install
 npm run dev      # http://localhost:3000
@@ -58,7 +60,7 @@ Google sign-in ([Auth.js](https://authjs.dev)) with each user's wallet stored as
 
 | Variable | Where it comes from |
 | --- | --- |
-| `AUTH_SECRET` | Random 32 bytes (`npx auth secret`) — already set on Vercel |
+| `AUTH_SECRET` | Random 32 bytes (see SETUP.md) — already set on Vercel |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Google Cloud Console → OAuth client (Web). Redirect URI: `https://perkfolio-app.vercel.app/api/auth/callback/google` |
 | `DATABASE_URL` | Added automatically by `vercel integration add neon` |
 

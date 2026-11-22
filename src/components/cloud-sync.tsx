@@ -3,8 +3,7 @@
 import { useEffect } from "react";
 import { setSyncState, useAccount } from "@/lib/account";
 import { getWalletSnapshot, subscribeWallet, walletActions, type WalletState } from "@/lib/wallet-store";
-
-const hasData = (w: WalletState) => w.cards.length > 0 || Object.keys(w.usage).length > 0;
+import { hasWalletData, isWalletLike, mergeWallets } from "@/lib/wallet-merge";
 
 /** Keeps the browser wallet and the signed-in user's cloud copy in step. Renders nothing. */
 export function CloudSync() {
@@ -39,22 +38,30 @@ export function CloudSync() {
       try {
         const res = await fetch("/api/wallet", { cache: "no-store" });
         if (!res.ok) throw new Error(String(res.status));
-        const remote = (await res.json()) as { data: WalletState | null; updatedAt: number };
+        const remote = (await res.json()) as { data: unknown; updatedAt: number };
         const local = getWalletSnapshot();
-        if (remote.data && remote.updatedAt > (local.updatedAt ?? 0)) {
-          walletActions.applyRemote({ ...remote.data, updatedAt: remote.updatedAt });
-          lastSynced = remote.updatedAt;
+        const cloud = isWalletLike(remote.data) ? { ...remote.data, updatedAt: remote.updatedAt } : null;
+        if (cloud && hasWalletData(local)) {
+          // Both sides have data (e.g. cards picked before signing in): combine them, never overwrite.
+          const merged = { ...mergeWallets(local, cloud), updatedAt: Date.now() };
+          walletActions.applyRemote(merged);
+          await push(merged);
+        } else if (cloud) {
+          walletActions.applyRemote(cloud);
+          lastSynced = cloud.updatedAt ?? 0;
           setSyncState("synced");
-        } else if (hasData(local)) {
-          await push(local);
+        } else if (hasWalletData(local)) {
+          await push({ ...local, updatedAt: local.updatedAt ?? Date.now() });
         } else {
-          lastSynced = remote.updatedAt;
           setSyncState("synced");
         }
       } catch {
         setSyncState("error");
       }
       ready = true;
+      // Push anything changed while the first sync was in flight.
+      const w = getWalletSnapshot();
+      if ((w.updatedAt ?? 0) > lastSynced) push(w);
     })();
 
     const unsubscribe = subscribeWallet(() => {
