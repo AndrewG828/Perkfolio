@@ -6,10 +6,15 @@ import { AlarmClock, CheckCircle2, Download, EyeOff, Eye, Plus, RotateCcw, Setti
 import type { Card, Credit } from "@/data/types";
 import { getCard } from "@/data/cards";
 import { CardArt } from "@/components/card-art";
+import { Meter } from "@/components/meter";
 import { useHydrated, useWallet, usageKey, walletActions, type WalletState } from "@/lib/wallet-store";
 import { daysLeft, frequencyLabel, periodFor, periodsInYear } from "@/lib/periods";
 import { cn, usd } from "@/lib/format";
 import { CardPickerDialog, CardPickerGrid } from "./card-picker";
+import { BonusTracker } from "./bonus-tracker";
+
+/** Dollars, with cents only when the amount isn't whole (e.g. $12.95). */
+const money = (n: number) => usd(n, { cents: n % 1 !== 0 });
 
 interface CreditStatus {
   card: Card;
@@ -101,7 +106,16 @@ function TrackerDashboard() {
     );
   }
 
-  const pct = totalFees > 0 ? Math.min(100, (captured / totalFees) * 100) : 100;
+  const perCard = owned.map((card) => {
+    const rows = active.filter((s) => s.card.id === card.id);
+    return {
+      card,
+      captured: rows.reduce((s, r) => s + r.ytd, 0),
+      available: rows
+        .filter((r) => r.credit.frequency !== "every-4-years" && r.credit.frequency !== "one-time")
+        .reduce((s, r) => s + r.credit.annualValue, 0),
+    };
+  });
 
   return (
     <div className="bg-canvas">
@@ -110,9 +124,25 @@ function TrackerDashboard() {
         <section className="grid gap-5 md:grid-cols-[1.3fr_1fr_1fr]">
           <div className="panel p-6">
             <p className="text-sm font-medium text-ink-2">Credits captured in {now.getFullYear()}</p>
-            <p className="mt-2 text-4xl font-semibold tracking-tight text-navy">{usd(captured)}</p>
-            <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-canvas">
-              <div className={cn("h-full rounded-full", captured >= totalFees ? "bg-success" : "bg-brand")} style={{ width: `${pct}%` }} />
+            <p className="mt-2 text-4xl font-semibold tracking-tight text-navy">
+              {usd(captured)} <span className="text-base font-medium text-ink-3">of {usd(available)} available</span>
+            </p>
+            <Meter
+              className="mt-5"
+              size="lg"
+              value={captured}
+              max={Math.max(available, totalFees)}
+              tone={captured >= totalFees ? "success" : "brand"}
+              marker={totalFees > 0 ? { value: totalFees, label: `Break-even at ${usd(totalFees)}` } : undefined}
+              label={`Credits captured in ${now.getFullYear()}`}
+            />
+            <div className="mt-2 flex justify-between text-xs text-ink-3">
+              <span>{Math.round(available ? (captured / available) * 100 : 0)}% of credits used</span>
+              {totalFees > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-3 w-[2px] rounded-full bg-navy" /> Break-even {usd(totalFees)}
+                </span>
+              )}
             </div>
             <p className="mt-3 text-sm text-ink-2">
               {captured >= totalFees ? (
@@ -130,6 +160,51 @@ function TrackerDashboard() {
               <Settings2 className="h-4 w-4" /> Manage cards
             </button>
           </Stat>
+        </section>
+
+        {/* Meter list: credits used per card, with a break-even tick at the annual fee */}
+        <section className="panel p-6">
+          <div className="mb-5 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-semibold text-navy">{now.getFullYear()} at a glance</h2>
+            <p className="flex items-center gap-1.5 text-xs text-ink-3">
+              <span className="inline-block h-3 w-[2px] rounded-full bg-navy" /> marks each card&apos;s annual fee (break-even)
+            </p>
+          </div>
+          <ul className="space-y-4">
+            {perCard.map(({ card, captured: c, available: a }) => {
+              const covered = card.annualFee === 0 || c >= card.annualFee;
+              return (
+                <li key={card.id} className="grid items-center gap-x-5 gap-y-2 sm:grid-cols-[minmax(0,240px)_1fr_auto]">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <CardArt card={card} size="xs" className="shrink-0" />
+                    <span className="truncate text-sm font-medium text-ink">{card.name}</span>
+                  </div>
+                  <Meter
+                    value={c}
+                    max={Math.max(a, card.annualFee, 1)}
+                    tone={covered && card.annualFee > 0 ? "success" : "brand"}
+                    marker={card.annualFee > 0 ? { value: card.annualFee, label: `Annual fee ${usd(card.annualFee)}` } : undefined}
+                    label={`${card.name} credits used`}
+                  />
+                  <div className="flex items-center justify-between gap-3 text-sm sm:justify-end">
+                    <span className="whitespace-nowrap text-ink-2">
+                      <span className="font-semibold text-ink">{usd(c)}</span> / {usd(a)}
+                    </span>
+                    {card.annualFee > 0 &&
+                      (covered ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-success">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Fee covered
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium whitespace-nowrap text-ink-2">
+                          {usd(card.annualFee - c)} to go
+                        </span>
+                      ))}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </section>
 
         {/* Expiring soon */}
@@ -150,9 +225,22 @@ function TrackerDashboard() {
                     </div>
                   </div>
                   <div className="flex items-end justify-between">
-                    <p className="text-2xl font-semibold text-navy">{usd(s.remaining, { cents: s.remaining % 1 !== 0 })}</p>
+                    <p className="text-2xl font-semibold text-navy">
+                      {money(s.remaining)} <span className="text-sm font-medium text-ink-3">left</span>
+                    </p>
                     <p className={cn("text-sm font-medium", s.daysLeft <= 7 ? "text-danger" : "text-warn")}>
                       {s.daysLeft} day{s.daysLeft === 1 ? "" : "s"} left
+                    </p>
+                  </div>
+                  <div>
+                    <Meter
+                      value={s.used}
+                      max={s.credit.amountPerPeriod}
+                      tone={s.daysLeft <= 7 ? "warn" : "brand"}
+                      label={`${s.credit.name} used this period`}
+                    />
+                    <p className="mt-1.5 text-xs text-ink-3">
+                      {money(s.used)} of {money(s.credit.amountPerPeriod)} used · {s.periodLabel}
                     </p>
                   </div>
                   <button
@@ -180,7 +268,8 @@ function TrackerDashboard() {
           </div>
           {owned.map((card) => {
             const rows = statuses.filter((s) => s.card.id === card.id);
-            const cardCaptured = rows.filter((r) => !r.ignored).reduce((s, r) => s + r.ytd, 0);
+            const summary = perCard.find((p) => p.card.id === card.id)!;
+            const cardCaptured = summary.captured;
             return (
               <article key={card.id} className="panel overflow-hidden">
                 <header className="flex flex-wrap items-center gap-5 border-b border-line p-5">
@@ -193,15 +282,20 @@ function TrackerDashboard() {
                       {usd(cardCaptured)} captured of {usd(card.annualFee)} annual fee
                     </p>
                   </div>
-                  <div className="w-full sm:w-48">
-                    <div className="h-2 overflow-hidden rounded-full bg-canvas">
-                      <div
-                        className={cn("h-full rounded-full", cardCaptured >= card.annualFee ? "bg-success" : "bg-brand")}
-                        style={{ width: `${card.annualFee ? Math.min(100, (cardCaptured / card.annualFee) * 100) : 100}%` }}
-                      />
-                    </div>
+                  <div className="w-full sm:w-64">
+                    <Meter
+                      value={cardCaptured}
+                      max={Math.max(summary.available, card.annualFee, 1)}
+                      tone={card.annualFee > 0 && cardCaptured >= card.annualFee ? "success" : "brand"}
+                      marker={card.annualFee > 0 ? { value: card.annualFee, label: `Annual fee ${usd(card.annualFee)}` } : undefined}
+                      label={`${card.name} credits used this year`}
+                    />
+                    <p className="mt-1.5 text-right text-xs text-ink-3">
+                      {Math.round(summary.available ? (cardCaptured / summary.available) * 100 : 0)}% of {usd(summary.available)} in credits used
+                    </p>
                   </div>
                 </header>
+                <BonusTracker card={card} progress={wallet.bonus?.[card.id]} now={now} />
                 {rows.length === 0 ? (
                   <p className="p-5 text-sm text-ink-2">This card has no statement credits to track.</p>
                 ) : (
@@ -239,6 +333,7 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
   const periods = periodsInYear(credit.frequency, year);
   const showHistory = periods.length > 1;
   const full = s.used >= credit.amountPerPeriod;
+  const recurring = credit.frequency !== "every-4-years" && credit.frequency !== "one-time";
 
   return (
     <li className={cn("grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center", s.ignored && "opacity-50")}>
@@ -277,14 +372,27 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
         )}
       </div>
       <div className="flex flex-wrap items-center gap-3 md:justify-end">
-        <div className="min-w-[120px] text-right">
+        <div className="w-[180px] text-right">
           <p className="text-sm text-ink-2">
-            <span className="font-semibold text-ink">{usd(s.used, { cents: s.used % 1 !== 0 })}</span> of {usd(credit.amountPerPeriod)}
+            <span className="font-semibold text-ink">{money(s.used)}</span> of {money(credit.amountPerPeriod)}
           </p>
-          <p className="text-xs text-ink-3">
-            {s.periodLabel}
-            {credit.frequency !== "every-4-years" && credit.frequency !== "one-time" && !full ? ` · ${s.daysLeft}d left` : ""}
+          <Meter
+            className="my-1.5"
+            size="sm"
+            value={s.ignored ? 0 : s.used}
+            max={credit.amountPerPeriod}
+            tone={full ? "success" : recurring && s.daysLeft <= 7 ? "warn" : "brand"}
+            label={`${credit.name} used, ${s.periodLabel}`}
+          />
+          <p className="text-xs whitespace-nowrap text-ink-3">
+            {s.periodLabel.replace(/ \(.*\)$/, "")}
+            {recurring && !full ? ` · ${s.daysLeft}d left` : ""}
           </p>
+          {showHistory && !s.ignored && (
+            <p className="text-xs text-ink-3">
+              {money(s.ytd)} of {money(credit.annualValue)} this year
+            </p>
+          )}
         </div>
         {editing ? (
           <form

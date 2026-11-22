@@ -14,6 +14,17 @@ export interface WalletState {
   usage: Record<string, number>;
   /** Credits the user doesn't care about (excluded from totals). Key: `${cardId}:${creditId}` */
   ignored: Record<string, true>;
+  /** Welcome-bonus minimum-spend progress per card. Optional so older saved wallets still load. */
+  bonus?: Record<string, BonusProgress>;
+}
+
+export interface BonusProgress {
+  /** Required spend in USD, e.g. 8000 */
+  target: number;
+  /** Spend so far in USD */
+  spent: number;
+  /** Last day to hit the target, ISO date (YYYY-MM-DD) */
+  deadline: string;
 }
 
 const STORAGE_KEY = "perkfolio:wallet:v1";
@@ -121,6 +132,14 @@ export const walletActions = {
       if (ignored[key]) delete ignored[key];
       else ignored[key] = true;
       return { ...s, ignored };
+    });
+  },
+  setBonus(cardId: string, progress: BonusProgress | null) {
+    setState((s) => {
+      const bonus = { ...(s.bonus ?? {}) };
+      if (progress) bonus[cardId] = progress;
+      else delete bonus[cardId];
+      return { ...s, bonus };
     });
   },
   reset() {
