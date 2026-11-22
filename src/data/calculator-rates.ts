@@ -56,11 +56,25 @@ const SPECS: Record<string, RateSpec> = {
   "amex-business-gold": { rates: { dining: 4, gas: 4 }, portal: { flights: 3, hotels: 3 } },
 
   // Chase
-  "chase-sapphire-reserve": { rates: { dining: 3, flights: 4, hotels: 4 }, portal: { flights: 8, hotels: 8, otherTravel: 8 } },
-  "chase-sapphire-preferred": { rates: { dining: 3, streaming: 3, groceries: 3, flights: 2, hotels: 2, otherTravel: 2 }, portal: { flights: 5, hotels: 5, otherTravel: 5 } },
+  "chase-sapphire-reserve": { rates: { dining: 3, flights: 4, hotels: 4, otherTravel: 3 }, portal: { flights: 8, hotels: 8, otherTravel: 8 } },
+  "chase-sapphire-reserve-business": { rates: { flights: 4, hotels: 4, otherTravel: 3 }, portal: { flights: 8, hotels: 8, otherTravel: 8 } },
+  // Preferred's 3x grocery is online-only, so in-store groceries earn the base rate here.
+  "chase-sapphire-preferred": {
+    rates: { dining: 3, streaming: 3, gas: 3, flights: 2, hotels: 2, otherTravel: 2 },
+    portal: { flights: 5, hotels: 5, otherTravel: 5 },
+  },
   "chase-freedom-unlimited": { rates: { dining: 3 }, portal: { flights: 5, hotels: 5, otherTravel: 5 } },
   "chase-freedom-flex": { rates: { dining: 3 }, portal: { flights: 5, hotels: 5, otherTravel: 5 } },
-  "chase-ink-business-preferred": { rates: { flights: 3, hotels: 3, otherTravel: 3 } },
+  "chase-ink-business-preferred": { rates: { flights: 3, hotels: 3, otherTravel: 3 }, caps: { flights: 150_000 } },
+  "united-club-infinite": { rates: { flights: 5, hotels: 2, otherTravel: 2, dining: 2 } },
+  "united-quest": { rates: { flights: 4, hotels: 2, otherTravel: 2, dining: 2, streaming: 2 } },
+  "world-of-hyatt": { rates: { hotels: 4, dining: 2, flights: 2, otherTravel: 2 } },
+  "southwest-priority": { rates: { flights: 4, gas: 2, dining: 2, otherTravel: 3 } },
+
+  // Bilt
+  "bilt-blue": { rates: { rent: 1.25 } },
+  "bilt-obsidian": { rates: { dining: 3, flights: 2, hotels: 2, otherTravel: 2, rent: 1.25 } },
+  "bilt-palladium": { rates: { rent: 1.25 } },
 
   // Capital One
   "capital-one-venture-x": { rates: {}, portal: { flights: 5, hotels: 10, otherTravel: 10 } },
