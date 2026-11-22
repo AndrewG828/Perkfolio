@@ -59,6 +59,8 @@ export function TrackerView() {
 function TrackerDashboard() {
   const wallet = useWallet();
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Stay on the onboarding picker until the user confirms, so they can select several cards.
+  const [onboarding, setOnboarding] = useState(() => wallet.cards.length === 0);
   const [now] = useState(() => new Date());
 
   const owned = wallet.cards.map(getCard).filter((c): c is Card => Boolean(c));
@@ -75,9 +77,9 @@ function TrackerDashboard() {
     .sort((a, b) => a.daysLeft - b.daysLeft || b.remaining - a.remaining)
     .slice(0, 6);
 
-  if (owned.length === 0) {
+  if (onboarding || owned.length === 0) {
     return (
-      <div className="container-page py-12">
+      <div className="container-page pt-12 pb-28">
         <div className="mb-8 max-w-2xl">
           <h2 className="text-2xl font-semibold text-navy">Which cards are in your wallet?</h2>
           <p className="mt-2 text-ink-2">
@@ -85,6 +87,16 @@ function TrackerDashboard() {
           </p>
         </div>
         <CardPickerGrid />
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 backdrop-blur">
+          <div className="container-page flex items-center justify-between gap-4 py-3">
+            <p className="text-sm text-ink-2">
+              <span className="font-semibold text-navy">{owned.length}</span> card{owned.length === 1 ? "" : "s"} selected
+            </p>
+            <button className="btn-primary" disabled={owned.length === 0} onClick={() => setOnboarding(false)}>
+              Continue to my benefits
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

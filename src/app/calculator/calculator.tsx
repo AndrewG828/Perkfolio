@@ -148,7 +148,7 @@ export function Calculator() {
                   <dl className="grid grid-cols-4 gap-4 text-right text-sm">
                     <Cell label="Rewards" value={usd(r.rewards)} />
                     <Cell label="Credits" value={usd(r.credits)} />
-                    <Cell label="Fee" value={`−${usd(r.card.annualFee)}`} />
+                    <Cell label="Fee" value={r.card.annualFee ? `−${usd(r.card.annualFee)}` : "$0"} />
                     <Cell label={includeBonus ? "Net yr 1" : "Net / yr"} value={usd(r.net)} strong tone={r.net >= 0 ? "pos" : "neg"} />
                   </dl>
                 </div>

@@ -133,7 +133,7 @@ export function CompareView() {
               cols={cols}
               render={(c) => (
                 <ul className="space-y-1.5">
-                  {[...c.earnRates].sort((a, b) => b.multiplier - a.multiplier).map((r) => (
+                  {c.earnRates.map((r) => (
                     <li key={r.category} className="flex gap-2">
                       <span className="w-9 shrink-0 font-semibold text-brand">{rateLabel(c, r.multiplier)}</span>
                       <span className="text-ink-2">{r.category}</span>

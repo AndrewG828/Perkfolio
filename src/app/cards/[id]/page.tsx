@@ -26,7 +26,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
   if (!card) notFound();
 
   const credits = annualizedCreditValue(card);
-  const earn = [...card.earnRates].sort((a, b) => b.multiplier - a.multiplier);
+  const earn = card.earnRates;
   const similar = cards
     .filter((c) => c.id !== card.id && c.category === card.category)
     .slice(0, 3)

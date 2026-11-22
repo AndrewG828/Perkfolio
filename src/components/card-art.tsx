@@ -1,5 +1,6 @@
 import type { Card } from "@/data/types";
 import { cn } from "@/lib/format";
+import { shortCardName } from "@/lib/card-name";
 
 /** A stylized, original rendering of a card (no issuer artwork) using the card's color palette. */
 export function CardArt({
@@ -15,7 +16,7 @@ export function CardArt({
   const metal = card.art.finish === "metal";
   const width = { xs: "w-16", sm: "w-28", md: "w-full max-w-[320px]", lg: "w-full max-w-[420px]" }[size];
   const tiny = size === "xs" || size === "sm";
-  const shortName = card.name.replace(/^(The |American Express |Chase |Capital One |Citi )/i, "").replace(/ Card$/i, "");
+  const shortName = shortCardName(card.name);
 
   return (
     <div

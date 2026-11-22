@@ -9,7 +9,7 @@ import { CompareToggle } from "./compare-toggle";
 
 export function CardTile({ card }: { card: Card }) {
   const credits = annualizedCreditValue(card);
-  const topRates = [...card.earnRates].sort((a, b) => b.multiplier - a.multiplier).slice(0, 3);
+  const topRates = card.earnRates.slice(0, 3);
   return (
     <article className="panel group flex flex-col overflow-hidden transition-shadow hover:shadow-[var(--shadow-lift)]">
       <Link href={`/cards/${card.id}`} className="flex justify-center bg-gradient-to-b from-canvas to-white px-8 pt-8 pb-6">
