@@ -11,7 +11,15 @@ export function sql() {
   return neon(url);
 }
 
-/** One row per user: their whole wallet as JSON. Created on first use, so there's no migration step. */
+/**
+ * One row per person, keyed by their lowercased Google email (see `accountKey` in src/auth.ts):
+ *   user_id     the email
+ *   data        the whole wallet as JSON (cards, credit usage, ignored credits, bonus progress, cap/visit
+ *               tallies, card open dates)
+ *   updated_at  the row's version: a server timestamp in ms that only ever goes up. Clients send back the
+ *               version they last saw, so a stale device can't overwrite newer data.
+ * Created on first use, so there's no migration step.
+ */
 export async function ensureSchema() {
   schema ??= sql()`CREATE TABLE IF NOT EXISTS wallets (
     user_id text PRIMARY KEY,

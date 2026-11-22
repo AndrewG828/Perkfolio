@@ -38,20 +38,30 @@ const EMPTY: WalletState = { version: 1, cards: [], usage: {}, ignored: {} };
 
 let state: WalletState = EMPTY;
 let loaded = false;
+/** React views: notified on every change, including ones made in other tabs. */
 const listeners = new Set<() => void>();
+/** The cloud sync loop: notified only for changes made in this tab. */
+const editListeners = new Set<() => void>();
+
+function read() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    state = raw ? { ...EMPTY, ...(JSON.parse(raw) as Partial<WalletState>), version: 1 } : EMPTY;
+  } catch {
+    state = EMPTY;
+  }
+}
 
 function load() {
   if (loaded || typeof window === "undefined") return;
   loaded = true;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<WalletState>;
-      state = { ...EMPTY, ...parsed, version: 1 };
-    }
-  } catch {
-    state = EMPTY;
-  }
+  read();
+  // Another tab changed the wallet: pick it up so this tab never works from (or syncs) a stale copy.
+  window.addEventListener("storage", (e) => {
+    if (e.key !== STORAGE_KEY && e.key !== null) return;
+    read();
+    listeners.forEach((l) => l());
+  });
 }
 
 function persist() {
@@ -68,21 +78,14 @@ function setState(updater: (s: WalletState) => WalletState, opts: { stamp?: bool
   if (opts.stamp !== false) state = { ...state, updatedAt: Date.now() };
   persist();
   listeners.forEach((l) => l());
+  editListeners.forEach((l) => l());
 }
 
 function subscribe(listener: () => void) {
+  load();
   listeners.add(listener);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY) {
-      loaded = false;
-      load();
-      listener();
-    }
-  };
-  window.addEventListener("storage", onStorage);
   return () => {
     listeners.delete(listener);
-    window.removeEventListener("storage", onStorage);
   };
 }
 
@@ -95,11 +98,12 @@ const getServerSnapshot = () => EMPTY;
 
 /** Non-React access for the cloud sync loop. */
 export const getWalletSnapshot = getSnapshot;
+/** Called after every change made in this tab (not changes picked up from other tabs). */
 export function subscribeWallet(listener: () => void) {
   load();
-  listeners.add(listener);
+  editListeners.add(listener);
   return () => {
-    listeners.delete(listener);
+    editListeners.delete(listener);
   };
 }
 
@@ -178,7 +182,7 @@ export const walletActions = {
   reset() {
     setState(() => EMPTY);
   },
-  /** Replace local state with the cloud copy without re-stamping it (so it isn't pushed straight back). */
+  /** Replace local state with the cloud copy, keeping its stamp so the sync loop knows it's already in the cloud. */
   applyRemote(next: WalletState) {
     setState(() => ({ ...EMPTY, ...next, version: 1 }), { stamp: false });
   },
