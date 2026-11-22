@@ -28,7 +28,10 @@ export async function resolveUser(identity: SignInIdentity): Promise<string> {
   return linkAccount(userId, identity.provider, identity.providerAccountId);
 }
 
-/** For sessions issued before user ids existed (they only carry an email): find or create that user. */
-export async function userIdForEmail(email: string): Promise<string> {
-  return (await findUserIdByEmail(email)) ?? upsertUserByEmail({ email, name: null, image: null });
+/**
+ * For sessions issued before user ids existed (they only carry an email): the existing user, if any. Never creates
+ * one, so an old session can't bring back a deleted account; those users just sign in again.
+ */
+export async function userIdForEmail(email: string): Promise<string | null> {
+  return findUserIdByEmail(email);
 }

@@ -12,7 +12,11 @@ async function deleteAccount(): Promise<string | null> {
       "The wallet in this browser stays (use Reset in the tracker to clear it).",
   );
   if (!ok) return null;
-  const res = await fetch("/api/account", { method: "DELETE" });
+  const res = await fetch("/api/account", {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirm: "delete my account" }),
+  });
   if (!res.ok) return "Couldn't delete your account. Try again in a moment.";
   try {
     window.localStorage.removeItem("perkfolio:sync:v2");

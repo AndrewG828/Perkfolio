@@ -73,22 +73,4 @@ export const hasWalletData = (w: WalletState) =>
   Object.keys(w.openDates ?? {}).length > 0 ||
   Object.keys(w.ignored).length > 0;
 
-const isNumberRecord = (x: unknown) =>
-  x === undefined || (typeof x === "object" && x !== null && Object.values(x).every((v) => typeof v === "number"));
-
-/** Loose shape check for wallets arriving from outside (cloud, backup file, old-address handoff). */
-export function isWalletLike(x: unknown): x is WalletState {
-  if (!x || typeof x !== "object") return false;
-  const w = x as Record<string, unknown>;
-  return (
-    Array.isArray(w.cards) &&
-    w.cards.every((c) => typeof c === "string") &&
-    typeof w.usage === "object" &&
-    w.usage !== null &&
-    isNumberRecord(w.usage) &&
-    isNumberRecord(w.tally) &&
-    (w.ignored === undefined || (typeof w.ignored === "object" && w.ignored !== null)) &&
-    (w.bonus === undefined || (typeof w.bonus === "object" && w.bonus !== null)) &&
-    (w.openDates === undefined || (typeof w.openDates === "object" && w.openDates !== null))
-  );
-}
+export { isWalletLike } from "./wallet-schema";
