@@ -16,6 +16,12 @@ export interface WalletState {
   ignored: Record<string, true>;
   /** Welcome-bonus minimum-spend progress per card. Optional so older saved wallets still load. */
   bonus?: Record<string, BonusProgress>;
+  /** Running tallies for caps and visit limits. Key: `${cardId}:${limitId}:${periodKey}` → dollars or visits. */
+  tally?: Record<string, number>;
+  /** Card open dates (YYYY-MM-DD), used for credits that reset on the card anniversary. */
+  openDates?: Record<string, string>;
+  /** Last local change (ms since epoch), used to merge with cloud sync. */
+  updatedAt?: number;
 }
 
 export interface BonusProgress {
@@ -56,9 +62,10 @@ function persist() {
   }
 }
 
-function setState(updater: (s: WalletState) => WalletState) {
+function setState(updater: (s: WalletState) => WalletState, opts: { stamp?: boolean } = {}) {
   load();
   state = updater(state);
+  if (opts.stamp !== false) state = { ...state, updatedAt: Date.now() };
   persist();
   listeners.forEach((l) => l());
 }
@@ -140,6 +147,22 @@ export const walletActions = {
       if (progress) bonus[cardId] = progress;
       else delete bonus[cardId];
       return { ...s, bonus };
+    });
+  },
+  setTally(key: string, value: number) {
+    setState((s) => {
+      const tally = { ...(s.tally ?? {}) };
+      if (value <= 0) delete tally[key];
+      else tally[key] = Math.round(value * 100) / 100;
+      return { ...s, tally };
+    });
+  },
+  setOpenDate(cardId: string, date: string | null) {
+    setState((s) => {
+      const openDates = { ...(s.openDates ?? {}) };
+      if (date) openDates[cardId] = date;
+      else delete openDates[cardId];
+      return { ...s, openDates };
     });
   },
   reset() {

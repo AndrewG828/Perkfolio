@@ -13,6 +13,7 @@ const NAV = [
   { href: "/compare", label: "Compare" },
   { href: "/tracker", label: "Benefits Tracker" },
   { href: "/lounges", label: "Lounge Finder" },
+  { href: "/best-card", label: "Which Card?" },
   { href: "/calculator", label: "Value Calculator" },
 ];
 

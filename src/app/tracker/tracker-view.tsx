@@ -3,50 +3,22 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { AlarmClock, CheckCircle2, Download, EyeOff, Eye, Plus, RotateCcw, Settings2, Upload } from "lucide-react";
-import type { Card, Credit } from "@/data/types";
+import type { Card } from "@/data/types";
 import { getCard } from "@/data/cards";
 import { CardArt } from "@/components/card-art";
 import { Meter } from "@/components/meter";
 import { useHydrated, useWallet, usageKey, walletActions, type WalletState } from "@/lib/wallet-store";
-import { daysLeft, frequencyLabel, periodFor, periodsInYear } from "@/lib/periods";
+import { frequencyLabel, periodsInYear } from "@/lib/periods";
+import { statusFor, type CreditStatus } from "@/lib/credit-status";
 import { cn, usd } from "@/lib/format";
 import { CardPickerDialog, CardPickerGrid } from "./card-picker";
 import { BonusTracker } from "./bonus-tracker";
+import { LimitsPanel } from "./limits-panel";
+import { OpenDateRow } from "./open-date-row";
+import { RemindersPanel } from "./reminders-panel";
 
 /** Dollars, with cents only when the amount isn't whole (e.g. $12.95). */
 const money = (n: number) => usd(n, { cents: n % 1 !== 0 });
-
-interface CreditStatus {
-  card: Card;
-  credit: Credit;
-  periodKey: string;
-  periodLabel: string;
-  used: number;
-  remaining: number;
-  daysLeft: number;
-  ytd: number;
-  ignored: boolean;
-}
-
-function statusFor(card: Card, credit: Credit, wallet: WalletState, now: Date): CreditStatus {
-  const p = periodFor(credit.frequency, now);
-  const used = wallet.usage[usageKey(card.id, credit.id, p.key)] ?? 0;
-  const ytd = periodsInYear(credit.frequency, now.getFullYear()).reduce(
-    (s, per) => s + (wallet.usage[usageKey(card.id, credit.id, per.key)] ?? 0),
-    0,
-  );
-  return {
-    card,
-    credit,
-    periodKey: p.key,
-    periodLabel: p.label,
-    used,
-    remaining: Math.max(0, credit.amountPerPeriod - used),
-    daysLeft: daysLeft(p, now),
-    ytd,
-    ignored: Boolean(wallet.ignored[`${card.id}:${credit.id}`]),
-  };
-}
 
 export function TrackerView() {
   const hydrated = useHydrated();
@@ -207,6 +179,8 @@ function TrackerDashboard() {
           </ul>
         </section>
 
+        <RemindersPanel cards={owned} wallet={wallet} />
+
         {/* Expiring soon */}
         {expiring.length > 0 && (
           <section>
@@ -296,6 +270,8 @@ function TrackerDashboard() {
                   </div>
                 </header>
                 <BonusTracker card={card} progress={wallet.bonus?.[card.id]} now={now} />
+                <OpenDateRow card={card} wallet={wallet} now={now} />
+                <LimitsPanel card={card} wallet={wallet} now={now} />
                 {rows.length === 0 ? (
                   <p className="p-5 text-sm text-ink-2">This card has no statement credits to track.</p>
                 ) : (
@@ -340,7 +316,7 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-semibold text-ink">{credit.name}</p>
-          <span className="chip">{frequencyLabel[credit.frequency]}</span>
+          <span className="chip">{s.anniversary ? "Card anniversary" : frequencyLabel[credit.frequency]}</span>
           {credit.enrollmentRequired && <span className="chip border-warn/30 text-warn">Enroll</span>}
         </div>
         <p className="mt-1 line-clamp-2 text-sm text-ink-2">{credit.description}</p>
@@ -385,7 +361,9 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
             label={`${credit.name} used, ${s.periodLabel}`}
           />
           <p className="text-xs whitespace-nowrap text-ink-3">
-            {s.periodLabel.replace(/ \(.*\)$/, "")}
+            {s.periodKey.startsWith("cm-")
+              ? `Resets ${s.periodEnd.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+              : s.periodLabel.replace(/ \(.*\)$/, "")}
             {recurring && !full ? ` · ${s.daysLeft}d left` : ""}
           </p>
           {showHistory && !s.ignored && (

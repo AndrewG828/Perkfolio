@@ -19,6 +19,7 @@ const COLUMNS = [
       { href: "/tracker", label: "Benefits tracker" },
       { href: "/lounges", label: "Lounge finder" },
       { href: "/calculator", label: "Value calculator" },
+      { href: "/best-card", label: "Which card should I use?" },
     ],
   },
   {
