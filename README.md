@@ -51,6 +51,19 @@ Card terms change often. Edit the relevant file in `src/data/cards/`, keep `last
 also add an entry in `src/data/calculator-rates.ts` (otherwise rates are inferred from the earn-rate text). Credit `id`s
 are used as storage keys — don't rename them once users are tracking them.
 
+## Accounts & cloud sync (optional)
+
+Google sign-in ([Auth.js](https://authjs.dev)) with each user's wallet stored as one JSON row in Postgres
+([Neon](https://neon.tech) via the Vercel Marketplace). Everything account-related stays hidden until these env vars exist:
+
+| Variable | Where it comes from |
+| --- | --- |
+| `AUTH_SECRET` | Random 32 bytes (`npx auth secret`) — already set on Vercel |
+| `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Google Cloud Console → OAuth client (Web). Redirect URI: `https://perkfolio-app.vercel.app/api/auth/callback/google` |
+| `DATABASE_URL` | Added automatically by `vercel integration add neon` |
+
+The `wallets` table is created on first use. Without `DATABASE_URL`, sign-in still works but sync is off.
+
 ## Deploying
 
 Production is hosted on Vercel at https://perkfolio-app.vercel.app and redeploys automatically on every push to `main`;
@@ -58,7 +71,5 @@ pull requests get preview deployments. The app also runs on any Node host (`npm 
 
 ## Roadmap
 
-- Accounts + cloud sync for the wallet (e.g. Auth.js + Postgres), replacing `localStorage`
-- Email/push reminders before credits reset
-- Card-member-year credits (anniversary-based resets) and card open dates
+- Email reminders for signed-in users (calendar + in-app reminders already ship)
 - Admin workflow for refreshing card terms

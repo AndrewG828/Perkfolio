@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Menu, Wallet, X } from "lucide-react";
 import { Logo } from "./logo";
+import { AccountMenu } from "./account-menu";
 import { useWallet } from "@/lib/wallet-store";
 import { cn } from "@/lib/format";
 
@@ -54,6 +55,7 @@ export function SiteHeader() {
           })}
         </nav>
         <div className="flex items-center gap-2">
+          <AccountMenu />
           <Link href="/tracker" className="btn-primary hidden sm:inline-flex">
             <Wallet className="h-4 w-4" />
             My Wallet

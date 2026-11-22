@@ -93,6 +93,16 @@ function getSnapshot() {
 
 const getServerSnapshot = () => EMPTY;
 
+/** Non-React access for the cloud sync loop. */
+export const getWalletSnapshot = getSnapshot;
+export function subscribeWallet(listener: () => void) {
+  load();
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 export function useWallet(): WalletState {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
@@ -167,6 +177,10 @@ export const walletActions = {
   },
   reset() {
     setState(() => EMPTY);
+  },
+  /** Replace local state with the cloud copy without re-stamping it (so it isn't pushed straight back). */
+  applyRemote(next: WalletState) {
+    setState(() => ({ ...EMPTY, ...next, version: 1 }), { stamp: false });
   },
   importState(next: WalletState) {
     setState(() => ({ ...EMPTY, ...next, version: 1 }));
