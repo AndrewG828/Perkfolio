@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { MoveHandoff } from "./move-handoff";
+import { MoveHandoff } from "@/frontend/features/move/move-handoff";
 
 export const metadata: Metadata = { title: "Moving to the new address", robots: { index: false } };
 

@@ -33,30 +33,38 @@ npm run lint
 
 ```
 src/
-  app/                 routes (cards, compare, tracker, lounges, calculator, about)
-  components/          shared UI (header, footer, card art, tiles)
-  data/
-    types.ts           Card / Credit / Lounge data model
-    cards/*.ts         card data by issuer (amex, chase-bilt, other)
-    lounges.ts         airports + lounges
-    networks.ts        lounge network metadata
-    calculator-rates.ts  structured earn rates for the calculator
-  lib/
-    wallet-store.ts    localStorage-backed wallet + credit usage
-    compare-store.ts   compare selection
-    periods.ts         credit period math (month/quarter/half/year)
+  app/                   Next.js routes only: pages, layouts and API route handlers (thin)
+    api/me               who's signed in + whether accounts are configured
+    api/wallet           GET / PUT the signed-in user's wallet (versioned)
+    api/account          DELETE the account and its cloud data
+  frontend/              everything that runs in the browser
+    components/          shared UI (header, account menu, card art, meters, cloud sync)
+    features/<page>/     each page's interactive views (tracker, compare, lounges, calculator, ...)
+    state/               client stores: wallet (localStorage), account, compare selection
+    lib/ics.ts           calendar reminders
+  backend/               server-only code (import "server-only" makes a client import a build error)
+    auth/                Auth.js config, sign-in/out actions, currentUserId()
+    db/                  Neon client, migrations, migration runner
+    repositories/        SQL for users/accounts and wallets, nothing else
+    services/            rules: identity (sign-in → user), wallet (validation + saves)
+    http/                route-handler wrapper: auth guard, error mapping, logging
+  shared/                pure code used by both sides
+    data/                card, lounge and earn-rate data (cards/*.ts by issuer)
+    lib/                 wallet types, three-way merge, credit periods, caps/limits, formatting
+  proxy.ts               old-domain handoff
+scripts/db-migrate.ts    apply migrations by hand (npm run db:migrate)
 ```
 
 ## Updating card data
 
-Card terms change often. Edit the relevant file in `src/data/cards/`, keep `lastVerified` current, and if you add a card
-also add an entry in `src/data/calculator-rates.ts` (otherwise rates are inferred from the earn-rate text). Credit `id`s
+Card terms change often. Edit the relevant file in `src/shared/data/cards/`, keep `lastVerified` current, and if you add a card
+also add an entry in `src/shared/data/calculator-rates.ts` (otherwise rates are inferred from the earn-rate text). Credit `id`s
 are used as storage keys — don't rename them once users are tracking them.
 
 ## Accounts & cloud sync (optional)
 
-Google sign-in ([Auth.js](https://authjs.dev)) with each user's wallet stored as one JSON row in Postgres
-([Neon](https://neon.tech) via the Vercel Marketplace). Everything account-related stays hidden until these env vars exist:
+Google sign-in ([Auth.js](https://authjs.dev)) backed by Postgres ([Neon](https://neon.tech) via the Vercel
+Marketplace). Everything account-related stays hidden until these env vars exist:
 
 | Variable | Where it comes from |
 | --- | --- |
@@ -64,7 +72,23 @@ Google sign-in ([Auth.js](https://authjs.dev)) with each user's wallet stored as
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Google Cloud Console → OAuth client (Web). Redirect URI: `https://perkfolio-app.vercel.app/api/auth/callback/google` |
 | `DATABASE_URL` | Added automatically by `vercel integration add neon` |
 
-The `wallets` table is created on first use. Without `DATABASE_URL`, sign-in still works but sync is off.
+**Schema** (see `src/backend/db/migrations.ts`):
+
+| Table | What it holds |
+| --- | --- |
+| `users` | One row per person. `id` (uuid) is the key everything else references; `email` is a unique attribute that can change. |
+| `accounts` | Sign-in identities linked to a user: (`google`, Google account id). Returning users are matched on this first, then on verified email. |
+| `wallets` | One per user: the whole wallet as JSON (cards, credit usage, ignored credits, bonus progress, cap/visit tallies, open dates) and a `version` for conflict-free saves. |
+| `schema_migrations` | Which migrations have run. |
+
+Migrations run automatically on the first database request after a deploy (or by hand with `npm run db:migrate`).
+To change the schema, append a migration; never edit one that has shipped.
+
+**Sync protocol:** the client sends the `version` it last saw with each save. If another device saved in between,
+the server answers 409 with the latest copy; the client three-way merges it and saves again, so stale devices
+can't overwrite newer data and device clocks don't matter.
+
+Without `DATABASE_URL`, sign-in still works but sync is off.
 
 ## Deploying
 

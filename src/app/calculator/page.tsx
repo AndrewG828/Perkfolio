@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { PageHero } from "@/components/page-hero";
-import { Calculator } from "./calculator";
+import { PageHero } from "@/frontend/components/page-hero";
+import { Calculator } from "@/frontend/features/calculator/calculator";
 
 export const metadata: Metadata = {
   title: "Value calculator",

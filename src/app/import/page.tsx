@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { PageHero } from "@/components/page-hero";
-import { ImportWallet } from "./import-wallet";
+import { PageHero } from "@/frontend/components/page-hero";
+import { ImportWallet } from "@/frontend/features/import/import-wallet";
 
 export const metadata: Metadata = { title: "Import your wallet", robots: { index: false } };
 

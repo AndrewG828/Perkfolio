@@ -20,7 +20,8 @@ cd Perkfolio
 npm ci
 ```
 
-Read `AGENTS.md` first: this project uses Next.js 16, whose APIs differ from older versions. The matching docs ship
+Code is split into `src/frontend`, `src/backend` (server-only) and `src/shared`, with `src/app` holding only routes
+(README → Project layout). Read `AGENTS.md` first: this project uses Next.js 16, whose APIs differ from older versions. The matching docs ship
 in `node_modules/next/dist/docs/`.
 
 ## 3. Environment variables
@@ -80,7 +81,8 @@ writes your real wallet. To keep local testing separate, use either:
 - **Option 2:** in the Neon dashboard (Vercel → Storage → perkfolio-db → Open in Neon), create a `dev` branch and
   put its connection string in `.env.local` as `DATABASE_URL`.
 
-The `wallets` table is created automatically on first use.
+Tables are created by migrations, which run automatically on first use. To apply them by hand (or check a new
+one), run `npm run db:migrate`.
 
 `.env.local` is gitignored. Never commit it, and never paste secrets into chats or issues.
 
@@ -108,7 +110,7 @@ requests get preview URLs. Env var changes need a redeploy (Vercel → Deploymen
 
 - **Wallets are saved per address.** `localhost:3000` and the live site have separate browser storage. Sign in on
   both to sync.
-- **Card data** lives in `src/data/cards/*.ts` (see README → Updating card data). Never rename a credit `id`;
+- **Card data** lives in `src/shared/data/cards/*.ts` (see README → Updating card data). Never rename a credit `id`;
   it's a storage key.
 - **Monthly data check.** A scheduled Claude task runs on the 1st of each month and opens a PR with any card-term
   changes for review.

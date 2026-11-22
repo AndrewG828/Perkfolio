@@ -1,8 +1,8 @@
 import { connection, NextResponse } from "next/server";
-import { auth, authEnabled } from "@/auth";
-import { dbEnabled } from "@/lib/db";
+import { auth, authEnabled } from "@/backend/auth";
+import { dbEnabled } from "@/backend/db/client";
 
-/** Tells the client whether accounts are configured and who (if anyone) is signed in. */
+/** Tells the client whether accounts are configured and who (if anyone) is signed in. No database access. */
 export async function GET() {
   await connection();
   if (!authEnabled) return NextResponse.json({ enabled: false, sync: false, user: null });
@@ -11,6 +11,6 @@ export async function GET() {
   return NextResponse.json({
     enabled: true,
     sync: dbEnabled,
-    user: u ? { name: u.name ?? null, email: u.email ?? null, image: u.image ?? null } : null,
+    user: u ? { id: u.id || null, name: u.name ?? null, email: u.email ?? null, image: u.image ?? null } : null,
   });
 }

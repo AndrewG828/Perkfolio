@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { PageHero } from "@/components/page-hero";
-import { LoungeFinder } from "./lounge-finder";
+import { PageHero } from "@/frontend/components/page-hero";
+import { LoungeFinder } from "@/frontend/features/lounges/lounge-finder";
 
 export const metadata: Metadata = {
   title: "Lounge finder",

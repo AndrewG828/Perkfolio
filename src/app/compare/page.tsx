@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { PageHero } from "@/components/page-hero";
-import { CompareView } from "./compare-view";
+import { PageHero } from "@/frontend/components/page-hero";
+import { CompareView } from "@/frontend/features/compare/compare-view";
 
 export const metadata: Metadata = {
   title: "Compare cards",

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { cards } from "@/data/cards";
-import { PageHero } from "@/components/page-hero";
+import { cards } from "@/shared/data/cards";
+import { PageHero } from "@/frontend/components/page-hero";
 
 export const metadata: Metadata = {
   title: "About our data",

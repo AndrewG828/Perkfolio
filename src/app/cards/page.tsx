@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { cards } from "@/data/cards";
-import { CardTile } from "@/components/card-tile";
-import { CompareTray } from "@/components/compare-toggle";
-import { PageHero } from "@/components/page-hero";
-import { CardBrowser } from "./card-browser";
+import { cards } from "@/shared/data/cards";
+import { CardTile } from "@/frontend/components/card-tile";
+import { CompareTray } from "@/frontend/components/compare-toggle";
+import { PageHero } from "@/frontend/components/page-hero";
+import { CardBrowser } from "@/frontend/features/cards/card-browser";
 
 export const metadata: Metadata = {
   title: "Explore cards",

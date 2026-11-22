@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { PageHero } from "@/components/page-hero";
-import { BestCardPicker } from "./best-card-picker";
+import { PageHero } from "@/frontend/components/page-hero";
+import { BestCardPicker } from "@/frontend/features/best-card/best-card-picker";
 
 export const metadata: Metadata = {
   title: "Which card should I use?",

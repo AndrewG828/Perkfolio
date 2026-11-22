@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { ArrowRight, BarChart3, CalendarClock, Plane, Scale } from "lucide-react";
-import { cards, featuredCards, annualizedCreditValue } from "@/data/cards";
-import { lounges } from "@/data/lounges";
-import { CardArt } from "@/components/card-art";
-import { CardTile } from "@/components/card-tile";
-import { CompareTray } from "@/components/compare-toggle";
-import { usd } from "@/lib/format";
+import { cards, featuredCards, annualizedCreditValue } from "@/shared/data/cards";
+import { lounges } from "@/shared/data/lounges";
+import { CardArt } from "@/frontend/components/card-art";
+import { CardTile } from "@/frontend/components/card-tile";
+import { CompareTray } from "@/frontend/components/compare-toggle";
+import { usd } from "@/shared/lib/format";
 
 const FEATURES = [
   {

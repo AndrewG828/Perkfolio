@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowUpRight, Check, ChevronLeft, Info, Plane } from "lucide-react";
-import { annualizedCreditValue, cards, categoryLabels, getCard, rateLabel } from "@/data/cards";
-import { loungeNetworks } from "@/data/networks";
-import { CardArt } from "@/components/card-art";
-import { WalletButton } from "@/components/wallet-button";
-import { frequencyLabel, frequencyShort } from "@/lib/periods";
-import { usd } from "@/lib/format";
+import { annualizedCreditValue, cards, categoryLabels, getCard, rateLabel } from "@/shared/data/cards";
+import { loungeNetworks } from "@/shared/data/networks";
+import { CardArt } from "@/frontend/components/card-art";
+import { WalletButton } from "@/frontend/components/wallet-button";
+import { frequencyLabel, frequencyShort } from "@/shared/lib/periods";
+import { usd } from "@/shared/lib/format";
 
 export function generateStaticParams() {
   return cards.map((c) => ({ id: c.id }));

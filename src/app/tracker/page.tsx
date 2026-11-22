@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { PageHero } from "@/components/page-hero";
-import { TrackerView } from "./tracker-view";
+import { PageHero } from "@/frontend/components/page-hero";
+import { TrackerView } from "@/frontend/features/tracker/tracker-view";
 
 export const metadata: Metadata = {
   title: "Benefits tracker",

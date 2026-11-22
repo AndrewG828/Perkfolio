@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { SiteHeader } from "@/components/site-header";
-import { SiteFooter } from "@/components/site-footer";
-import { ReminderBanner } from "@/components/reminder-banner";
-import { CloudSync } from "@/components/cloud-sync";
+import { SiteHeader } from "@/frontend/components/site-header";
+import { SiteFooter } from "@/frontend/components/site-footer";
+import { ReminderBanner } from "@/frontend/components/reminder-banner";
+import { CloudSync } from "@/frontend/components/cloud-sync";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
