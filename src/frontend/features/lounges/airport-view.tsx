@@ -66,7 +66,9 @@ export function AirportView({ code }: { code: string }) {
   }, [from, toId]);
 
   const resolved = nav ? resolveOrigin(nav, from) : null;
-  const origin = resolved?.ok ? resolved.origin : null;
+  // Until the traveler gives a gate, show the route from security so directions are always visible.
+  const origin = nav ? (resolved?.ok ? resolved.origin : { kind: "landside" as const }) : null;
+  const fromSecurityDefault = Boolean(nav) && !resolved?.ok;
   const isOpen = (l: Lounge) => (grants.get(l.id)?.length ?? 0) > 0;
   const ranked = nav && origin ? rankByDistance(nav, origin, all).map((r) => ({ ...r, open: isOpen(r.lounge) })) : [];
   const preferOpen = checking && hydrated && open.length > 0;
@@ -173,6 +175,7 @@ export function AirportView({ code }: { code: string }) {
             nav={nav}
             from={from}
             setFrom={setFrom}
+            fromSecurityDefault={fromSecurityDefault}
             resolved={resolved}
             target={target}
             setTarget={setToId}

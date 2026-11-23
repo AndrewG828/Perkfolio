@@ -33,6 +33,7 @@ export function DirectionsPanel({
   nav,
   from,
   setFrom,
+  fromSecurityDefault,
   resolved,
   target,
   setTarget,
@@ -46,6 +47,8 @@ export function DirectionsPanel({
   nav: AirportNav | null;
   from: string;
   setFrom: (v: string) => void;
+  /** No gate given yet, so the route shown starts at security. */
+  fromSecurityDefault: boolean;
   resolved: OriginResult | null;
   target: Lounge | null;
   setTarget: (id: string) => void;
@@ -73,8 +76,9 @@ export function DirectionsPanel({
               </label>
               <input
                 id="from-gate"
-                className="input h-11 w-28 text-base font-semibold uppercase"
-                placeholder="B18"
+                className="input h-11 w-28 text-base font-semibold uppercase placeholder:font-normal placeholder:normal-case placeholder:text-ink-3"
+                placeholder="Gate #"
+                aria-describedby="from-hint"
                 value={gateText}
                 onChange={(e) => setFrom(e.target.value.toUpperCase())}
                 autoComplete="off"
@@ -118,8 +122,8 @@ export function DirectionsPanel({
           </div>
         ) : (
           <p className="mt-2 text-sm text-ink-2">
-            Step-by-step directions are available at the big airports. Here, open a lounge in Apple or Google Maps for walking
-            directions.
+            Step-by-step directions inside the airport are available at our 17 big airports (ATL, JFK, LAX, ORD and more). Here,
+            open the lounge in Apple or Google Maps for walking directions.
           </p>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -170,8 +174,10 @@ export function DirectionsPanel({
               )}
             </div>
 
-            {nav && !resolved?.ok && (
-              <p className="mt-4 rounded-md bg-canvas p-3 text-sm text-ink-2">Enter your gate above to get step-by-step directions.</p>
+            {fromSecurityDefault && (
+              <p id="from-hint" className="mt-4 rounded-md bg-sky p-3 text-sm text-navy">
+                Showing the way from security. <strong>Enter your gate above</strong> to start from there instead.
+              </p>
             )}
 
             {route && (
@@ -207,7 +213,7 @@ export function DirectionsPanel({
             )}
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <a className="btn-primary px-4" href={appleMapsUrl(target, airport.name)} target="_blank" rel="noopener noreferrer">
+              <a className={cn(nav ? "btn-secondary" : "btn-primary", "px-4")} href={appleMapsUrl(target, airport.name)} target="_blank" rel="noopener noreferrer">
                 <MapPinned className="h-4 w-4" /> Apple Maps
               </a>
               <a className="btn-secondary px-4" href={googleMapsUrl(target, airport.name)} target="_blank" rel="noopener noreferrer">
@@ -225,7 +231,7 @@ export function DirectionsPanel({
           </>
         )}
 
-        {nav && resolved?.ok && nearby.length > 1 && (
+        {nav && nearby.length > 1 && (
           <div className="mt-5 border-t border-line pt-4">
             <p className="text-sm font-semibold text-ink">{checking ? "Lounges you can get into, nearest first" : "Nearest lounges"}</p>
             <ul className="mt-2 grid gap-2 sm:grid-cols-2">
