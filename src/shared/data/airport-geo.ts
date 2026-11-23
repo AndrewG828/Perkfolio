@@ -93,8 +93,3 @@ export function osmLink(code: string): string | null {
   const g = airportGeo[code];
   return g ? `https://www.openstreetmap.org/?mlat=${g.lat}&mlon=${g.lon}#map=15/${g.lat}/${g.lon}` : null;
 }
-
-/** Google Maps search for a specific lounge (Google indexes most airport lounges as places). */
-export function directionsUrl(loungeName: string, terminal: string, airportName: string): string {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loungeName}, ${terminal}, ${airportName}`)}`;
-}

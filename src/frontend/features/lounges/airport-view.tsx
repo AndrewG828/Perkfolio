@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import type { Lounge, LoungeNetwork } from "@/shared/data/types";
 import { loungeNetworks } from "@/shared/data/networks";
@@ -14,11 +15,13 @@ import {
   terminalsAt,
   type LoungeAccessGrant,
 } from "@/shared/lib/lounge-access";
+import { isConnected, linkKey, navFor, rankByDistance, resolveOrigin, routeTo, zoneForLounge } from "@/shared/lib/wayfinding";
 import { useHydrated } from "@/frontend/state/wallet-store";
 import { cn } from "@/shared/lib/format";
 import { AccessPicker, useAccessSelection } from "./access-picker";
 import { LoungeRow } from "./lounge-row";
-import { TerminalMap } from "./terminal-map";
+import { DirectionsPanel } from "./directions-panel";
+import { TerminalMap, type MapRoute, type MapRow } from "./terminal-map";
 
 /** One airport: terminal map of its lounges, which ones your cards open, the real map, and the full list. */
 export function AirportView({ code }: { code: string }) {
@@ -46,10 +49,69 @@ export function AirportView({ code }: { code: string }) {
   const embed = osmEmbedUrl(code);
   const others = bigAirports.filter((a) => a.code !== code).slice(0, 12);
 
+  // --- Directions -------------------------------------------------------------------------------------------
+  const params = useSearchParams();
+  const nav = navFor(code);
+  const [from, setFrom] = useState(() => params.get("from") ?? "");
+  const [toId, setToId] = useState(() => params.get("to") ?? "");
+  useEffect(() => {
+    // Keep the route in the URL (shareable) without a navigation.
+    const sp = new URLSearchParams(window.location.search);
+    if (from) sp.set("from", from);
+    else sp.delete("from");
+    if (toId) sp.set("to", toId);
+    else sp.delete("to");
+    const qs = sp.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+  }, [from, toId]);
+
+  const resolved = nav ? resolveOrigin(nav, from) : null;
+  const origin = resolved?.ok ? resolved.origin : null;
+  const isOpen = (l: Lounge) => (grants.get(l.id)?.length ?? 0) > 0;
+  const ranked = nav && origin ? rankByDistance(nav, origin, all).map((r) => ({ ...r, open: isOpen(r.lounge) })) : [];
+  const preferOpen = checking && hydrated && open.length > 0;
+  const explicit = all.find((l) => l.id === toId) ?? null;
+  const target =
+    explicit ??
+    (ranked.find((r) => !preferOpen || r.open)?.lounge ?? (preferOpen ? open[0] : checking && hydrated ? null : (all[0] ?? null)));
+  const route = nav && origin && target ? routeTo(nav, origin, target) : null;
+
+  const pick = (l: Lounge) => {
+    setToId(l.id);
+    const panel = document.getElementById("directions-title");
+    if (panel && panel.getBoundingClientRect().top < 0) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const rows: MapRow[] = nav
+    ? nav.zones.map((z, i) => {
+        const nextZone = nav.zones[i + 1];
+        const link = nextZone ? nav.links.find((l) => linkKey(l.a, l.b) === linkKey(z.id, nextZone.id)) : undefined;
+        return {
+          id: z.id,
+          title: z.name,
+          lounges: all.filter((l) => zoneForLounge(nav, l)?.id === z.id),
+          next: nextZone ? { link, connected: isConnected(nav, z.id, nextZone.id) } : undefined,
+        };
+      })
+    : groups.map((g) => ({ id: g.terminal, title: g.terminal, lounges: g.lounges }));
+  const mapRoute: MapRoute | undefined =
+    route && origin
+      ? {
+          zones: new Set(route.zones),
+          links: new Set(route.links),
+          you:
+            origin.kind === "gate"
+              ? { row: origin.zone, gate: origin.gate?.number, label: origin.gate?.label ?? "Here" }
+              : undefined,
+          targetId: target?.id,
+        }
+      : target
+        ? { zones: new Set(), links: new Set(), targetId: target.id }
+        : undefined;
   return (
     <div className="bg-canvas">
       <div className="container-page grid gap-8 py-10 lg:grid-cols-[320px_1fr]">
-        <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">
+        <aside className="order-2 space-y-5 lg:order-1 lg:sticky lg:top-28 lg:self-start">
           <AccessPicker access={access} />
           {checking && hydrated && (
             <div className="panel p-5">
@@ -78,7 +140,7 @@ export function AirportView({ code }: { code: string }) {
           )}
         </aside>
 
-        <div className="min-w-0 space-y-6">
+        <div className="order-1 min-w-0 space-y-6 lg:order-2">
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => setNetwork("all")} className={cn("chip cursor-pointer", network === "all" && "border-brand bg-sky text-brand")}>
               All networks
@@ -106,7 +168,30 @@ export function AirportView({ code }: { code: string }) {
             )}
           </div>
 
-          <TerminalMap groups={groups} grants={grants} checking={checking && hydrated} visible={visible} />
+          <DirectionsPanel
+            airport={airport}
+            nav={nav}
+            from={from}
+            setFrom={setFrom}
+            resolved={resolved}
+            target={target}
+            setTarget={setToId}
+            autoTarget={!explicit}
+            route={route}
+            ranked={ranked}
+            lounges={all}
+            checking={checking && hydrated && access.selected.length > 0}
+          />
+
+          <TerminalMap
+            rows={rows}
+            grants={grants}
+            checking={checking && hydrated}
+            visible={visible}
+            route={mapRoute}
+            onPick={pick}
+            linkKey={linkKey}
+          />
 
           <section aria-labelledby="lounge-list-title" className="space-y-4">
             <h2 id="lounge-list-title" className="text-lg font-semibold text-navy">
@@ -120,7 +205,14 @@ export function AirportView({ code }: { code: string }) {
                   <h3 className="text-sm font-semibold tracking-wide text-ink-3 uppercase">{g.terminal}</h3>
                   <ul className="space-y-3">
                     {shown.map((l) => (
-                      <LoungeRow key={l.id} lounge={l} airport={airport} access={grants.get(l.id) ?? []} checking={checking && hydrated} />
+                      <LoungeRow
+                        key={l.id}
+                        lounge={l}
+                        airport={airport}
+                        access={grants.get(l.id) ?? []}
+                        checking={checking && hydrated}
+                        onDirections={() => pick(l)}
+                      />
                     ))}
                   </ul>
                 </div>

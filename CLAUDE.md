@@ -95,6 +95,13 @@ The repository's upsert only writes if the stored version equals `base`; the new
   `shared/data/airport-geo.ts`: coordinates for the OpenStreetMap embed, and `terminalOrder` where natural sorting is
   wrong (e.g. ATL's T, A–F). Add both for any new airport (a test checks coordinates). The terminal map is schematic:
   one strip per terminal, pins spaced by gate parsed from `location` ("near gate B18"), so write locations that way.
+- **Directions (wayfinding):** `shared/data/airport-nav.ts` describes each big airport as zones (concourses/terminals)
+  with their gates, security checkpoints and *airside* links (train/walk/bus, minutes, optional `caution`), plus how to
+  get between zones landside. `shared/lib/wayfinding.ts` resolves "I'm at gate B18" to a zone, routes with Dijkstra
+  (cautioned links cost extra), falls back to leave → landside → re-clear security, and ranks lounges by time. The
+  airport page keeps `?from=` and `?to=` in the URL. A test requires nav data for every big airport and every lounge
+  there to land in a zone; when adding a lounge or airport, add its terminal string to the zone's `terminals`. Times
+  are estimates. Re-verify links when airports announce construction.
 - Other storage: compare selection is in sessionStorage `perkfolio:compare:v1`; banner dismissal is
   `perkfolio:banner-dismissed`.
 - Anything reading `new Date()` or localStorage must render after hydration (`useHydrated()`), or prerendering

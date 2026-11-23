@@ -1,7 +1,6 @@
-import { Check, ExternalLink, X } from "lucide-react";
+import { Check, Navigation, X } from "lucide-react";
 import type { Airport, Lounge } from "@/shared/data/types";
 import { loungeNetworks } from "@/shared/data/networks";
-import { directionsUrl } from "@/shared/data/airport-geo";
 import type { LoungeAccessGrant } from "@/shared/lib/lounge-access";
 import { CardArt } from "@/frontend/components/card-art";
 import { cn } from "@/shared/lib/format";
@@ -11,11 +10,13 @@ export function LoungeRow({
   airport,
   access,
   checking,
+  onDirections,
 }: {
   lounge: Lounge;
   airport: Airport;
   access: LoungeAccessGrant[];
   checking: boolean;
+  onDirections?: () => void;
 }) {
   const net = loungeNetworks[lounge.network];
   const ok = access.length > 0;
@@ -41,14 +42,16 @@ export function LoungeRow({
                 {lounge.location ? ` · ${lounge.location}` : ""}
               </p>
               {lounge.notes && <p className="mt-1 text-sm text-ink-3">{lounge.notes}</p>}
-              <a
-                href={directionsUrl(lounge.name, lounge.terminal, airport.name)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline"
-              >
-                Directions <ExternalLink className="h-3.5 w-3.5" />
-              </a>
+              {onDirections && (
+                <button
+                  type="button"
+                  onClick={onDirections}
+                  className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline"
+                  aria-label={`Directions to ${lounge.name} at ${airport.code}`}
+                >
+                  <Navigation className="h-3.5 w-3.5" /> Directions
+                </button>
+              )}
             </div>
             {checking && (
               <span
