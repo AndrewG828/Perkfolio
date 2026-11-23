@@ -2,7 +2,8 @@
 
 # Perkfolio
 
-Credit card benefits app: track statement credits, spending caps and lounge visits; compare cards; find lounges; pick
+Airport lounge finder first, card benefits second: terminal maps of the lounges at big airports marked with the ones
+your cards get you into, plus tracking statement credits, spending caps and lounge visits, comparing cards and picking
 the best card per purchase. Live at https://perkfolio-app.vercel.app (Vercel project `perkfolio`, deploys `main`).
 Repo: https://github.com/AndrewG828/Perkfolio. First-time machine setup: **SETUP.md**.
 
@@ -89,6 +90,11 @@ The repository's upsert only writes if the stored version equals `base`; the new
   version, base }` and merges with `mergeWallets3(base, local, remote)` from `shared/lib/wallet-merge.ts`.
 - **Account:** `frontend/state/account.ts` (from `/api/me`) and `frontend/components/account-menu.tsx` (sign in/out,
   sync status, Sync now, Delete account).
+- **Lounges:** `/lounges` (search, big-airport tiles, directory) and `/lounges/[code]` (one airport). Access rules live in
+  `shared/lib/lounge-access.ts` (`accessFor`, `terminalsAt`, `gateOf`, `bigAirports` = 5+ lounges). Map data is in
+  `shared/data/airport-geo.ts`: coordinates for the OpenStreetMap embed, and `terminalOrder` where natural sorting is
+  wrong (e.g. ATL's T, A–F). Add both for any new airport (a test checks coordinates). The terminal map is schematic:
+  one strip per terminal, pins spaced by gate parsed from `location` ("near gate B18"), so write locations that way.
 - Other storage: compare selection is in sessionStorage `perkfolio:compare:v1`; banner dismissal is
   `perkfolio:banner-dismissed`.
 - Anything reading `new Date()` or localStorage must render after hydration (`useHydrated()`), or prerendering

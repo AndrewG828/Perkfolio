@@ -1,26 +1,30 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, CalendarClock, Plane, Scale } from "lucide-react";
+import { ArrowRight, BarChart3, CalendarClock, Map, Scale } from "lucide-react";
 import { cards, featuredCards, annualizedCreditValue } from "@/shared/data/cards";
 import { lounges } from "@/shared/data/lounges";
 import { CardArt } from "@/frontend/components/card-art";
 import { CardTile } from "@/frontend/components/card-tile";
 import { CompareTray } from "@/frontend/components/compare-toggle";
 import { usd } from "@/shared/lib/format";
+import { bigAirports, loungeCountByAirport, loungesAt } from "@/shared/lib/lounge-access";
+import { loungeNetworks } from "@/shared/data/networks";
+import { AirportSearch } from "@/frontend/features/lounges/airport-search";
+import { WalletLoungeSummary } from "@/frontend/features/lounges/wallet-lounge-summary";
 
 const FEATURES = [
+  {
+    href: "/lounges",
+    icon: Map,
+    title: "Lounge maps",
+    body: "Terminal maps of every lounge at the big airports, marked with the ones your cards get you into.",
+    cta: "Find a lounge",
+  },
   {
     href: "/tracker",
     icon: CalendarClock,
     title: "Never miss a credit",
     body: "Monthly, quarterly and semi-annual credits in one dashboard, with reminders of what expires next.",
     cta: "Open Benefits Tracker",
-  },
-  {
-    href: "/lounges",
-    icon: Plane,
-    title: "Find your lounge",
-    body: "Search any airport to see Centurion, Sapphire, Capital One, Priority Pass and airline lounges your cards unlock.",
-    cta: "Search lounges",
   },
   {
     href: "/compare",
@@ -45,8 +49,8 @@ export default function Home() {
 
   return (
     <>
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-navy text-white">
+      {/* Hero (overflow-x-clip, not hidden, so the airport search dropdown can extend below it) */}
+      <section className="relative z-10 overflow-x-clip bg-navy text-white">
         <div
           className="absolute inset-0 opacity-90"
           style={{
@@ -56,21 +60,28 @@ export default function Home() {
         />
         <div className="container-page relative grid items-center gap-12 py-16 md:py-24 lg:grid-cols-[1.1fr_1fr]">
           <div className="space-y-7">
-            <p className="text-xs font-semibold tracking-[0.18em] text-white/70 uppercase">Your cards, fully used</p>
+            <p className="text-xs font-semibold tracking-[0.18em] text-white/70 uppercase">Airport lounge finder</p>
             <h1 className="max-w-xl text-4xl leading-[1.08] font-semibold tracking-tight md:text-[56px]">
-              Get every dollar your cards promise.
+              Every lounge your cards get you into.
             </h1>
             <p className="max-w-lg text-lg leading-relaxed text-white/80">
-              Track statement credits before they reset, find lounges at any airport, and compare the most popular
-              rewards cards — all with terms verified for late 2026.
+              Search an airport for a terminal map of its Centurion, Sapphire, Capital One, Sky Club and Priority Pass
+              lounges, matched against the cards in your wallet. Plus a tracker so your card credits never go unused.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <Link href="/tracker" className="btn-light px-6 py-3 text-[15px]">
-                Start tracking benefits
-              </Link>
-              <Link href="/cards" className="btn border border-white/60 px-6 py-3 text-[15px] text-white hover:bg-white/10">
-                Explore cards
-              </Link>
+            <div className="max-w-lg space-y-3">
+              <AirportSearch size="lg" />
+              <div className="flex flex-wrap gap-2">
+                {bigAirports.slice(0, 8).map((a) => (
+                  <Link
+                    key={a.code}
+                    href={`/lounges/${a.code}`}
+                    className="rounded-full border border-white/30 px-3 py-1 text-sm font-medium text-white/90 hover:border-white hover:text-white"
+                  >
+                    {a.code}
+                  </Link>
+                ))}
+              </div>
+              <WalletLoungeSummary />
             </div>
           </div>
           <div className="relative mx-auto h-[300px] w-full max-w-[480px] sm:h-[340px]">
@@ -96,16 +107,46 @@ export default function Home() {
       <section className="border-b border-line bg-white">
         <div className="container-page grid grid-cols-2 divide-line py-8 text-center md:grid-cols-4 md:divide-x">
           {[
-            [String(cards.length), "cards researched"],
-            [usd(Math.round(totalCredits / 1000) * 1000), "in annual credits tracked"],
             [String(lounges.length), "lounges mapped"],
             [String(airportCount), "airports covered"],
+            [String(bigAirports.length), "terminal maps"],
+            [usd(Math.round(totalCredits / 1000) * 1000), "in card credits tracked"],
           ].map(([v, l]) => (
             <div key={l} className="px-4 py-2">
               <p className="text-3xl font-semibold text-navy">{v}</p>
               <p className="mt-1 text-sm text-ink-2">{l}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Airport maps */}
+      <section className="py-16 md:py-20">
+        <div className="container-page">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="eyebrow">Terminal maps</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-navy">The big airports, mapped</h2>
+              <p className="mt-3 text-ink-2">See where each lounge is, gate by gate, and which ones your cards open.</p>
+            </div>
+            <Link href="/lounges" className="btn-secondary">
+              All {airportCount} airports <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {bigAirports.slice(0, 12).map((a) => (
+              <Link key={a.code} href={`/lounges/${a.code}`} className="panel flex flex-col gap-2 p-4 transition-shadow hover:shadow-[var(--shadow-lift)]">
+                <span className="text-2xl font-semibold text-navy">{a.code}</span>
+                <span className="truncate text-sm text-ink-2">{a.city}</span>
+                <span className="flex items-center gap-1">
+                  {Array.from(new Set(loungesAt(a.code).map((l) => l.network))).map((n) => (
+                    <span key={n} className="h-2 w-2 rounded-full" style={{ background: loungeNetworks[n].color }} />
+                  ))}
+                  <span className="ml-auto text-xs text-ink-3">{loungeCountByAirport[a.code]}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 

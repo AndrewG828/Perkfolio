@@ -14,7 +14,7 @@ export default function LoungesPage() {
       <PageHero
         eyebrow="Lounge finder"
         title="Every lounge your cards unlock"
-        subtitle="Search by airport code or city. We match each lounge against the cards in your wallet — or any card you choose."
+        subtitle="Search an airport for its terminal map. Every lounge is matched against the cards in your wallet — or any card you choose."
       />
       <Suspense fallback={<div className="container-page py-16"><div className="panel h-64 animate-pulse bg-canvas" /></div>}>
         <LoungeFinder />

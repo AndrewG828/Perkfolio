@@ -1,14 +1,15 @@
-# Perkfolio — credit card benefits, tracked
+# Perkfolio — every lounge your cards get you into
 
 **Live site: https://perkfolio-app.vercel.app**
 
-A web app for getting the most out of rewards credit cards:
+A web app for getting the most out of rewards credit cards, built around airport lounge access:
 
+- **Lounge finder** (`/lounges`) — search an airport, or pick one of the big airports, and see every Centurion, Chase Sapphire, Capital One, Delta Sky Club, Priority Pass, Plaza Premium, Escape and airline lounge, matched against the cards in your wallet.
+- **Airport pages** (`/lounges/JFK`) — a schematic terminal map with a pin per lounge (by terminal and gate) showing which ones you can get into, the real airport map (OpenStreetMap), directions, and the access terms for each of your cards.
 - **Explore cards** (`/cards`) — 37 popular cards (Amex Platinum & Gold, Chase Sapphire Reserve & Preferred, Capital One Venture X, Citi Strata Elite, Bilt, airline & hotel cards, cash back) with filters by issuer, category, fee and lounge access.
 - **Card details** (`/cards/[id]`) — earn rates, every statement credit with its cadence, lounge access, perks and transfer partners.
 - **Compare** (`/compare?cards=a,b,c`) — up to four cards side by side with the best value per row highlighted. Shareable URLs.
 - **Benefits tracker** (`/tracker`) — add the cards you hold, log credits as you use them (monthly / quarterly / semi-annual / annual / every-4-years), see what's expiring and whether each annual fee has paid for itself. Export/import a JSON backup.
-- **Lounge finder** (`/lounges?airport=JFK`) — search an airport and see Centurion, Chase Sapphire, Capital One, Delta Sky Club, Priority Pass, Plaza Premium, Escape and airline lounges, matched against the cards in your wallet.
 - **Value calculator** (`/calculator`) — enter monthly spending and rank cards by net annual value (rewards + realistic credit usage − fee).
 
 ## Stack
@@ -41,6 +42,7 @@ src/
     components/          shared UI (header, account menu, card art, meters, cloud sync)
     features/<page>/     each page's interactive views (tracker, compare, lounges, calculator, ...)
     state/               client stores: wallet (localStorage), account, compare selection
+    features/lounges/    lounge finder, airport pages, schematic terminal map
     lib/ics.ts           calendar reminders
   backend/               server-only code (import "server-only" makes a client import a build error)
     auth/                Auth.js config, sign-in/out actions, currentUserId()
