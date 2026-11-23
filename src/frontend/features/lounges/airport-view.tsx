@@ -20,6 +20,7 @@ import { useHydrated } from "@/frontend/state/wallet-store";
 import { cn } from "@/shared/lib/format";
 import { AccessPicker, useAccessSelection } from "./access-picker";
 import { LoungeRow } from "./lounge-row";
+import { AirportMap } from "./airport-map";
 import { DirectionsPanel } from "./directions-panel";
 import { TerminalMap, type MapRoute, type MapRow } from "./terminal-map";
 
@@ -184,6 +185,21 @@ export function AirportView({ code }: { code: string }) {
             ranked={ranked}
             lounges={all}
             checking={checking && hydrated && access.selected.length > 0}
+            map={
+              nav ? (
+                <AirportMap
+                  code={code}
+                  nav={nav}
+                  lounges={all.filter(visible)}
+                  grants={grants}
+                  checking={checking && hydrated}
+                  origin={origin}
+                  route={route}
+                  target={target}
+                  onPick={pick}
+                />
+              ) : undefined
+            }
           />
 
           <TerminalMap
@@ -227,7 +243,7 @@ export function AirportView({ code }: { code: string }) {
             </p>
           </section>
 
-          {embed && (
+          {embed && !nav && (
             <section className="panel overflow-hidden" aria-labelledby="airport-map-title">
               <div className="flex items-center justify-between gap-3 p-5 pb-3">
                 <h2 id="airport-map-title" className="text-lg font-semibold text-navy">

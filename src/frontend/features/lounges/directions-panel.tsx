@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, Bus, DoorOpen, Flag, Footprints, MapPinned, Navigation, ShieldCheck, TrainFront } from "lucide-react";
 import type { Airport, Lounge } from "@/shared/data/types";
 import type { AirportNav } from "@/shared/data/airport-nav";
@@ -42,6 +43,7 @@ export function DirectionsPanel({
   ranked,
   lounges,
   checking,
+  map,
 }: {
   airport: Airport;
   nav: AirportNav | null;
@@ -57,6 +59,8 @@ export function DirectionsPanel({
   ranked: RankedLounge[];
   lounges: Lounge[];
   checking: boolean;
+  /** The airport map with the route, shown between the destination and the steps. */
+  map?: ReactNode;
 }) {
   const gateText = from === "landside" || from.startsWith("@") ? "" : from;
   const pickedZone = from.startsWith("@") ? from.slice(1).split(":")[0] : null;
@@ -173,6 +177,8 @@ export function DirectionsPanel({
                 </p>
               )}
             </div>
+
+            {map && <div className="mt-4">{map}</div>}
 
             {fromSecurityDefault && (
               <p id="from-hint" className="mt-4 rounded-md bg-sky p-3 text-sm text-navy">

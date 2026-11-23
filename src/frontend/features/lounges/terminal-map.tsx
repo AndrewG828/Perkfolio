@@ -63,7 +63,7 @@ export function TerminalMap({
     <section className="panel p-5" aria-labelledby="terminal-map-title">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="terminal-map-title" className="text-lg font-semibold text-navy">
-          Terminal map
+          Concourse overview
         </h2>
         <div className="flex flex-wrap items-center gap-4 text-xs text-ink-2">
           {checking && (

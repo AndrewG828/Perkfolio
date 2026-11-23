@@ -6,7 +6,7 @@ A web app for getting the most out of rewards credit cards, built around airport
 
 - **Lounge finder** (`/lounges`) — search an airport, or pick one of the big airports, and see every Centurion, Chase Sapphire, Capital One, Delta Sky Club, Priority Pass, Plaza Premium, Escape and airline lounge, matched against the cards in your wallet.
 - **Airport pages** (`/lounges/JFK`) — a schematic terminal map with a pin per lounge (by terminal and gate) showing which ones you can get into, the real airport map (OpenStreetMap), and the access terms for each of your cards.
-- **Directions** — type your gate (or "before security") and get step-by-step directions to the nearest lounge you can enter: trains, walkways, and whether you'd have to leave and re-clear security, drawn on the terminal map. Hands off to Apple or Google Maps for indoor walking maps.
+- **Directions** — type your gate (or "before security") and get step-by-step directions to the nearest lounge you can enter: trains, walkways, and whether you'd have to leave and re-clear security, drawn on a real airport map (terminal outlines and gates from OpenStreetMap) you can pan and zoom. Hands off to Apple or Google Maps for indoor walking maps.
 - **Explore cards** (`/cards`) — 37 popular cards (Amex Platinum & Gold, Chase Sapphire Reserve & Preferred, Capital One Venture X, Citi Strata Elite, Bilt, airline & hotel cards, cash back) with filters by issuer, category, fee and lounge access.
 - **Card details** (`/cards/[id]`) — earn rates, every statement credit with its cadence, lounge access, perks and transfer partners.
 - **Compare** (`/compare?cards=a,b,c`) — up to four cards side by side with the best value per row highlighted. Shareable URLs.

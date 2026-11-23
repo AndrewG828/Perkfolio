@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/db-migrate.ts",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "maps:build": "node --import tsx scripts/build-airport-maps.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.1",

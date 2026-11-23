@@ -102,6 +102,12 @@ The repository's upsert only writes if the stored version equals `base`; the new
   airport page keeps `?from=` and `?to=` in the URL. A test requires nav data for every big airport and every lounge
   there to land in a zone; when adding a lounge or airport, add its terminal string to the zone's `terminals`. Times
   are estimates. Re-verify links when airports announce construction.
+- **Airport map:** `frontend/features/lounges/airport-map.tsx` draws terminals, runways and gates (SVG, pan/zoom) with the
+  route on top. Geometry comes from OpenStreetMap: `npm run maps:build` (scripts/build-airport-maps.ts, using
+  `shared/lib/osm-airport.ts`) writes `public/airport-maps/<CODE>.json`. If an airport has no file, the browser builds
+  it from overpass-api.de and caches it in localStorage. `shared/lib/airport-map.ts` places gates/lounges (zone hub
+  = gate nearest the middle of the zone's gates) and turns a route into segments that follow the gates. Credit
+  "© OpenStreetMap contributors (ODbL)" wherever the map shows.
 - Other storage: compare selection is in sessionStorage `perkfolio:compare:v1`; banner dismissal is
   `perkfolio:banner-dismissed`.
 - Anything reading `new Date()` or localStorage must render after hydration (`useHydrated()`), or prerendering
