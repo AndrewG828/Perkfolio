@@ -17,6 +17,7 @@ import {
 import { useHydrated } from "@/frontend/state/wallet-store";
 import { AccessPicker, useAccessSelection } from "./access-picker";
 import { AirportSearch } from "./airport-search";
+import { GuestCostFinder } from "./guest-cost";
 
 /** Lounge finder home: search, the big airports with your access at each, and every airport we cover. */
 export function LoungeFinder() {
@@ -39,9 +40,13 @@ export function LoungeFinder() {
 
   return (
     <div className="bg-canvas">
-      <div className="container-page grid gap-8 py-10 lg:grid-cols-[320px_1fr]">
+      <div className="container-page grid grid-cols-1 gap-8 py-10 lg:grid-cols-[320px_1fr]">
         <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">
           <AccessPicker access={access} />
+          <GuestCostFinder
+            cardIds={access.mode === "all" ? "all" : access.selected.map((c) => c.id)}
+            ready={access.mode !== "wallet" || hydrated}
+          />
           <div className="panel p-5">
             <h2 className="text-sm font-semibold text-ink">Lounge networks</h2>
             <ul className="mt-3 space-y-2 text-sm">
