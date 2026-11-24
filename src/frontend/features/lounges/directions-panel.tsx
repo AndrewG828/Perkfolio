@@ -45,6 +45,8 @@ export function DirectionsPanel({
   closed,
   onlyClosed = false,
   nearestUnknown,
+  terminalsSeparate = false,
+  otherTerminalsOnly = false,
   checking,
   map,
 }: {
@@ -65,15 +67,27 @@ export function DirectionsPanel({
   closed: (l: Lounge) => boolean;
   /** The cards open lounges here, but only ones that are closed for now. */
   onlyClosed?: boolean;
-  /** No gate given at an airport whose terminals aren't connected after security: no lounge is "nearest" yet. */
+  /**
+   * No gate given at an airport with more than one checkpoint (or terminals that aren't connected after security):
+   * every lounge is timed from its own checkpoint, so none is "nearest" yet.
+   */
   nearestUnknown: boolean;
+  /** The airport's terminals aren't connected after security (JFK): the hint says so. */
+  terminalsSeparate?: boolean;
+  /** The cards open lounges here, but only in terminals you can't use from yours (Heathrow). */
+  otherTerminalsOnly?: boolean;
   checking: boolean;
   /** The airport map with the route, shown between the destination and the steps. */
   map?: ReactNode;
 }) {
   const gateText = from === "landside" || from.startsWith("@") ? "" : from;
   const pickedZone = from.startsWith("@") ? from.slice(1).split(":")[0] : null;
-  const nearby = ranked.filter((r) => !checking || r.open).slice(0, 4);
+  // Before a gate at an airport with several checkpoints the times tie, so the list keeps the map's order instead.
+  const order = new Map(lounges.map((l, i) => [l.id, i]));
+  const nearby = ranked
+    .filter((r) => !checking || r.open)
+    .sort((a, b) => (nearestUnknown ? (order.get(a.lounge.id) ?? 0) - (order.get(b.lounge.id) ?? 0) : 0))
+    .slice(0, 4);
 
   return (
     <section className="panel overflow-hidden" aria-labelledby="directions-title">
@@ -151,7 +165,9 @@ export function DirectionsPanel({
             value={autoTarget ? "" : (target?.id ?? "")}
             onChange={(e) => setTarget(e.target.value)}
           >
-            <option value="">{checking ? "Nearest lounge I can get into" : "Nearest lounge"}</option>
+            <option value="">
+              {checking ? (nearestUnknown ? "A lounge I can get into" : "Nearest lounge I can get into") : nearestUnknown ? "A lounge here" : "Nearest lounge"}
+            </option>
             {lounges.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name} — {l.terminal}
@@ -168,9 +184,11 @@ export function DirectionsPanel({
           <p className="text-sm text-ink-2">
             {onlyClosed
               ? "The lounge your cards open here is closed for now. Pick any lounge to see where it is."
-              : checking
-                ? "None of your cards gets you into a lounge here. Pick any lounge to see the way."
-                : "Pick a lounge to see the way."}
+              : otherTerminalsOnly
+                ? "Your cards open lounges here only in other terminals, and you can't reach those from yours after security. Pick any lounge to see where it is."
+                : checking
+                  ? "None of your cards gets you into a lounge here. Pick any lounge to see the way."
+                  : "Pick a lounge to see the way."}
           </p>
         ) : (
           <>
@@ -212,10 +230,17 @@ export function DirectionsPanel({
             {fromSecurityDefault && (
               <p id="from-hint" className="mt-4 rounded-md bg-sky p-3 text-sm text-navy">
                 {nearestUnknown ? (
-                  <>
-                    {airport.code}&apos;s terminals aren&apos;t connected after security, so the nearest lounge depends on where you
-                    fly from. <strong>Enter your gate or pick your terminal above.</strong>
-                  </>
+                  terminalsSeparate ? (
+                    <>
+                      {airport.code}&apos;s terminals aren&apos;t connected after security, so the nearest lounge depends on where you
+                      fly from. <strong>Enter your gate or pick your terminal above.</strong>
+                    </>
+                  ) : (
+                    <>
+                      {airport.code} has more than one security checkpoint, so the nearest lounge depends on where you clear
+                      security. <strong>Enter your gate or pick your terminal above.</strong>
+                    </>
+                  )
                 ) : (
                   <>
                     Showing the way from security. <strong>Enter your gate above</strong> to start from there instead.
@@ -296,10 +321,12 @@ export function DirectionsPanel({
                       <span className="block truncate font-medium text-ink">{lounge.name}</span>
                       <span className="block truncate text-xs text-ink-3">{lounge.location ? `${lounge.terminal.split(",")[0]} · ${lounge.location}` : lounge.terminal}</span>
                     </span>
-                    <span className="shrink-0 text-right text-xs">
-                      <span className="font-semibold text-navy">~{r.minutes} min</span>
-                      {r.reclearsSecurity && <span className="block text-warn">+ security</span>}
-                    </span>
+                    {!nearestUnknown && (
+                      <span className="shrink-0 text-right text-xs">
+                        <span className="font-semibold text-navy">~{r.minutes} min</span>
+                        {r.reclearsSecurity && <span className="block text-warn">+ security</span>}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

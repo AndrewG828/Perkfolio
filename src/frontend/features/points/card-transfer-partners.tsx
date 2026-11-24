@@ -16,19 +16,24 @@ import {
 import { bestPartnerFor, bridgeFrom, currencyOfCard, ratioLabel, transferSources } from "@/shared/lib/points";
 import { shortCardName } from "@/shared/lib/card-name";
 import { DatedChangeNote, DatedRatioPill } from "./dated-partner";
-import { Dot, formatDate, programColor } from "./ui";
+import { Dot, changeLabel, formatDate, programColor } from "./ui";
 
 /** The transfer this card gets into a program: its own card-specific entry, else the general one. */
-function entryForCard(card: Card, currency: BankCurrencyId, program: ProgramId): { partner: TransferPartner; varies: boolean } | null {
+function entryForCard(
+  card: Card,
+  currency: BankCurrencyId,
+  program: ProgramId,
+): { partner: TransferPartner; varies: boolean; options: TransferPartner[] } | null {
   const list = transferPartners.filter((p) => p.currency === currency && p.program === program);
   if (list.length === 0) return null;
   const own = list.find((p) => p.cards?.includes(card.id));
   const general = list.find((p) => !p.cards);
-  if (own) return { partner: own, varies: false };
-  if (general) return { partner: general, varies: list.length > 1 };
+  // Every row for the program: a card that transfers only once pooled takes the rate of the wallet's unlocking card.
+  if (own) return { partner: own, varies: false, options: list };
+  if (general) return { partner: general, varies: list.length > 1, options: list };
   // Only other cards' ratios exist (e.g. a no-fee card that must be paired): show the best, marked as varying.
   const best = bestPartnerFor(currency, program);
-  return best ? { partner: best, varies: true } : null;
+  return best ? { partner: best, varies: true, options: list } : null;
 }
 
 /**
@@ -94,12 +99,11 @@ export function CardTransferPartners({ card }: { card: Card }) {
   const sharedTime = times.size === 1 ? [...times][0] : null;
   const perRowTime = times.size > 1;
   // Notes that single out this card as an exception ("not in the hotel-partner list on Chase's Ink Business Preferred
-  // page", a rate only coverage reports for it): a clause that names the card and says it isn't listed or rests on
-  // coverage. A note that names the card only to say its page does list the partner ("Listed on Chase's Sapphire
+  // page", a rate only reported for it): a clause that names the card and says it isn't listed or is only reported. A note that names the card only to say its page does list the partner ("Listed on Chase's Sapphire
   // Preferred page") is no caveat for that card.
   const short = shortCardName(card.name);
   const singlesOut = (note: string | undefined) =>
-    Boolean(note) && note!.split(/[;.]\s+|,\s+(?:but|so|while)\s+/).some((clause) => clause.includes(short) && /\bnot\b|n't\b|\bno longer\b|\bper coverage\b|\bcoverage reports\b/i.test(clause));
+    Boolean(note) && note!.split(/[;.]\s+|,\s+(?:but|so|while)\s+/).some((clause) => clause.includes(short) && /\bnot\b|n't\b|\bno longer\b|\bper coverage\b|\bcoverage reports\b|\breportedly\b|\bit's reported\b/i.test(clause));
   const caveats = short.includes(" ") ? rows.filter((r) => singlesOut(r.partner.note)) : [];
   const flagged = new Set(caveats.map((r) => r.id));
 
@@ -155,9 +159,13 @@ export function CardTransferPartners({ card }: { card: Card }) {
                       </span>
                       {perRowTime && r.partner.time && <span className="block text-xs text-ink-3">{r.partner.time}</span>}
                       {through && <span className="block text-xs text-ink-3">Books {programName(through.to)} awards</span>}
-                      <DatedChangeNote partner={r.partner} />
+                      <DatedChangeNote partner={r.partner} change={changeLabel(r.partner)} />
                     </span>
-                    <DatedRatioPill partner={r.partner} varies={r.varies} />
+                    <DatedRatioPill
+                      partner={r.partner}
+                      varies={r.varies}
+                      {...(points.limited ? { options: r.options, unlockedBy: points.limited.unlockedBy } : {})}
+                    />
                   </>
                 );
                 return (
@@ -178,7 +186,12 @@ export function CardTransferPartners({ card }: { card: Card }) {
             </ul>
           </div>
         ))}
-        {anyVaries && <p className="text-xs text-ink-3">* The ratio depends on which card you transfer from.</p>}
+        {anyVaries && (
+          <p className="text-xs text-ink-3">
+            * The ratio depends on which card you transfer from
+            {points.limited ? "; once your wallet has a card that unlocks transfers, the ratio shown is that card's" : ""}.
+          </p>
+        )}
         {caveats.length > 0 && (
           <ul className="space-y-2">
             {caveats.map((r) => (

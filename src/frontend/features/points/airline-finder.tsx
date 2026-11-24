@@ -20,6 +20,7 @@ import { shortCardName } from "@/shared/lib/card-name";
 import { cn } from "@/shared/lib/format";
 import { AllianceBadge, CURRENCY_ABBR, CURRENCY_COLOR, Dot, LIST_CAVEATS, SourceList, formatAsOf, formatDate, listJoin, programColor, untilLabel } from "./ui";
 import { useWalletReach, type WalletReach } from "./use-wallet-reach";
+import { useValueContext } from "@/frontend/state/point-values";
 
 const GROUPS = [...ALLIANCES, null] as const;
 
@@ -60,11 +61,13 @@ export function AirlineFinderLive() {
 
 /** Pick an airline, see every program that books its award seats. Without `onPick` it renders the directory, inert. */
 export function AirlineFinder({ airline, onPick, wallet }: { airline?: string | null; onPick?: (iata: string | null) => void; wallet?: WalletReach }) {
+  // Reachable programs rank by what a point of yours is worth in each (your own values once they load).
+  const values = useValueContext();
   const selected = getAirline(airline);
   const personal = Boolean(wallet?.hydrated && wallet.points.cards.length > 0);
   const today = wallet?.today;
   const options =
-    selected && !listingEnded(selected, today) ? bookingOptionsFor(selected.iata, personal ? wallet!.cardIds : undefined, wallet?.data) : [];
+    selected && !listingEnded(selected, today) ? bookingOptionsFor(selected.iata, personal ? wallet!.cardIds : undefined, wallet?.data, values) : [];
 
   return (
     <div className="space-y-8">
@@ -261,7 +264,9 @@ function AirlineResult({
         <p className="mb-4 text-sm text-ink-2">
           {personal
             ? reachable.length
-              ? `Your cards reach ${reachable.length} of them; those come first, the airline's own program leading.`
+              ? `Your cards reach ${reachable.length} of them; those come first, ${
+                  reachable.some((o) => o.own) ? "the airline's own program leading, then" : ""
+                } by what a point of yours is worth in each.`
               : "None of your cards' points reach these programs yet; the transfer chips show which bank points would."
             : "Add your cards to see which of these your points reach. Each chip is a bank currency and its best ratio."}
         </p>

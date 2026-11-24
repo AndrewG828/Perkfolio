@@ -3,7 +3,9 @@ import { getCard } from "@/shared/data/cards";
 import { applicationRules } from "@/shared/data/strategy/application-rules";
 import { OTHER_PRODUCT_MATCHERS, matchOtherProduct, otherProductCardType, type OtherProductMatch } from "@/shared/data/strategy/other-products";
 import type { ApplicationRule, CardType, RuleCondition, RuleEffect, RuleEvent, Segment, UserFact } from "@/shared/data/strategy/types";
-import { NO_BONUS, type WalletState } from "./wallet";
+import { USER_FACTS, type UserFacts } from "./user-facts";
+import { accountHistory, type HistoryRecord } from "./account-history";
+import type { WalletState } from "./wallet";
 import { addDays, addMonths, firstOfMonth, formatDateOrMonth, formatMonth, isoDate, monthIndex } from "./dates";
 
 /**
@@ -24,36 +26,10 @@ export type Verdict = "eligible" | "warning" | "unknown" | "blocked";
 export type RuleStatus = Verdict | "notice";
 
 /** One card account: an application the user entered, or a wallet card no open application covers. */
-export interface HistoryRecord {
-  /** Application id, or `wallet:<cardId>`. */
-  key: string;
-  source: "application" | "wallet";
-  cardId?: string;
-  name: string;
-  issuer: string;
-  business: boolean;
-  /** "YYYY-MM", or "YYYY-MM-DD" when the day is known. Undefined when unknown (a wallet card without a date). */
-  opened?: string;
-  /** "YYYY-MM" or "YYYY-MM-DD". */
-  closed?: string;
-  /** Month the bonus posted. Undefined: the user says there was none. Null: not recorded. */
-  bonusEarned?: string | null;
-  open: boolean;
-  /** The user is an authorized user on someone else's account. */
-  authorizedUser?: boolean;
-}
+export type { HistoryRecord } from "./account-history";
 
 /** Answers to the questions some rules depend on, e.g. whether the user banks with Bank of America. */
-export type UserFacts = Partial<Record<UserFact, boolean>>;
-
-export const USER_FACTS: Record<UserFact, { question: string; yes: string; no: string; short: string }> = {
-  hasBankOfAmericaDepositAccount: {
-    question: "Do you have a Bank of America deposit account, like checking or savings?",
-    yes: "you have a Bank of America deposit account",
-    no: "you don't have a Bank of America deposit account",
-    short: "Bank of America deposit account",
-  },
-};
+export { USER_FACTS, type UserFacts } from "./user-facts";
 
 export interface HistoryContext {
   history: HistoryRecord[];
@@ -240,43 +216,7 @@ const labelPhrase = (label: string) => (/^(any|earlier) /i.test(label) ? label :
 
 // --- History ----------------------------------------------------------------------------------------------------
 
-/** Applications, plus wallet cards that no open application covers (their open date may be unknown). */
-export function accountHistory(wallet: WalletState): HistoryRecord[] {
-  const apps = Array.isArray(wallet.applications) ? wallet.applications : [];
-  const records: HistoryRecord[] = apps.map((a) => ({
-    key: a.id,
-    source: "application",
-    ...(a.cardId ? { cardId: a.cardId } : {}),
-    name: a.name ?? (a.cardId ? cardName(a.cardId) : "Card"),
-    issuer: a.issuer,
-    business: a.business,
-    opened: a.opened,
-    ...(a.closed ? { closed: a.closed } : {}),
-    // No month and no "none": not recorded, which bonus rules treat as unknown.
-    ...(a.bonusEarned === NO_BONUS ? {} : { bonusEarned: a.bonusEarned ?? null }),
-    open: !a.closed,
-    ...(a.authorizedUser ? { authorizedUser: true } : {}),
-  }));
-  // An open application covers the wallet card it describes, the user's own or an authorized-user card.
-  const covered = new Set(apps.filter((a) => !a.closed && a.cardId).map((a) => a.cardId));
-  for (const id of wallet.cards) {
-    const card = getCard(id);
-    if (!card || covered.has(id)) continue;
-    const opened = wallet.openDates?.[id];
-    records.push({
-      key: `wallet:${id}`,
-      source: "wallet",
-      cardId: id,
-      name: card.name,
-      issuer: card.issuer,
-      business: card.category === "business",
-      ...(opened ? { opened } : {}),
-      bonusEarned: null,
-      open: true,
-    });
-  }
-  return records;
-}
+export { accountHistory } from "./account-history";
 
 export function historyContext(wallet: WalletState, today: Date, facts: UserFacts = {}): HistoryContext {
   return { history: accountHistory(wallet), historyKnown: Array.isArray(wallet.applications), today: isoDate(today), facts };

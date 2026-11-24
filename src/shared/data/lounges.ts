@@ -106,7 +106,8 @@ export const lounges: Lounge[] = [
     lounge("centurion-phl-a", "The Centurion Lounge", "centurion", "PHL", "Terminal A-West", "Near gate A14", "Temporarily closed from Oct 16, 2026 for expansion to ~12,000 sq ft; reopening expected by end of 2027"),
     { from: "2026-10-16", until: "2028-01-01", untilLabel: "end of 2027 (expected)" },
   ),
-  lounge("centurion-phx-t4", "The Centurion Lounge", "centurion", "PHX", "Terminal 4", "Across from gate B22, level 3"),
+  // American Express's PHX pages: both lounges are across from gate B22 on the upper level and share one entrance.
+  lounge("centurion-phx-t4", "The Centurion Lounge", "centurion", "PHX", "Terminal 4", "Across from gate B22, level 3", "Shares its entrance with the Escape Lounge – The Centurion Studio Partner"),
   lounge("centurion-slc-b", "The Centurion Lounge", "centurion", "SLC", "Concourse B", "East wing, near gate B31 (2nd floor)", "Opened Oct 28, 2025; ~18,000 sq ft"),
   lounge("centurion-sea-b", "The Centurion Lounge", "centurion", "SEA", "Concourse B", "Mezzanine above the Central Terminal food court, near gate B3 (facing the food court windows, turn left and follow signs for the elevator)", "Expanded in 2024"),
   lounge("centurion-sfo-t2-temp", "The Centurion Lounge (Temporary Location)", "centurion", "SFO", "Terminal 2, Concourse D", "Right after the Terminal 2 security checkpoint, near Compass Books and Napa Farms Market", "Temporary Terminal 2 space while the Terminal 3 lounge is closed for the T3 West modernization; offerings may be limited. Permanent T3 lounge expected to reopen in 2027"),
@@ -277,7 +278,7 @@ export const lounges: Lounge[] = [
   // ---------------------------------------------------------------------------
   lounge("escape-msp-t1", "Escape Lounge – The Centurion Studio Partner", "escape", "MSP", "Terminal 1", "Mezzanine level", "Amex Platinum access; most US Escape Lounges joined Priority Pass in 2024 (check the Priority Pass app for this one)"),
   lounge("escape-phx-t3", "Escape Lounge", "escape", "PHX", "Terminal 3", "Level 4, airside between the E and F gates", PP_NOTE),
-  lounge("escape-phx-t4", "Escape Lounge – The Centurion Studio Partner", "escape", "PHX", "Terminal 4", "Concourse B, level 3, across from gate B22", "Not in Priority Pass"),
+  lounge("escape-phx-t4", "Escape Lounge – The Centurion Studio Partner", "escape", "PHX", "Terminal 4", "Concourse B, level 3, across from gate B22", "Shares its entrance with The Centurion Lounge. Not in Priority Pass"),
   lounge("escape-cvg-b", "Escape Lounge – The Centurion Studio Partner", "escape", "CVG", "Concourse B", undefined, PP_NOTE),
   lounge("escape-bdl-a", "Escape Lounge – The Centurion Studio Partner", "escape", "BDL", "Terminal A", undefined, PP_NOTE),
   lounge("escape-smf-a", "Escape Lounge", "escape", "SMF", "Terminal A", undefined, PP_NOTE),

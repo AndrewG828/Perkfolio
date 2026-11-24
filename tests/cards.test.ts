@@ -23,7 +23,7 @@ test("cash-back cards are recognized by a rewards currency that starts with Cash
 });
 
 test("the calculator and Which Card? use only rates the card has, and say when a rate holds for some purchases only", async () => {
-  const { SPEND_CATEGORIES, estimateRewards, rateCondition, rateFor } = await import("../src/shared/data/calculator-rates");
+  const { SPEND_CATEGORIES, estimateRewards, isBrandOnly, rateCondition, rateFor } = await import("../src/shared/data/calculator-rates");
   for (const c of cards) {
     const own = new Set([c.baseRate, 0, ...c.earnRates.map((r) => r.multiplier)]);
     for (const s of SPEND_CATEGORIES) for (const portal of [false, true]) assert.ok(own.has(rateFor(c, s.id, portal)), `${c.id} ${s.id}`);
@@ -37,7 +37,33 @@ test("the calculator and Which Card? use only rates the card has, and say when a
   assert.match(rateCondition(getCard("united-club-infinite")!, "flights", false) ?? "", /United/);
   assert.match(rateCondition(getCard("world-of-hyatt")!, "hotels", false) ?? "", /Hyatt/);
   assert.match(rateCondition(getCard("bilt-blue")!, "rent", false) ?? "", /Up to 1\.25x/);
+  // Rent earns nothing without a listed rate, so Palladium's 1.25x keeps its "up to" though its base rate is 2x.
+  assert.match(rateCondition(getCard("bilt-palladium")!, "rent", false) ?? "", /Up to 1\.25x/);
   assert.equal(rateCondition(getCard("amex-gold")!, "dining", false), null);
+  // Custom Cash's 5% goes to the top eligible category each billing cycle, whichever it is, and says so.
+  const customCash = getCard("citi-custom-cash")!;
+  for (const cat of ["dining", "groceries", "gas", "streaming", "otherTravel"] as const) {
+    assert.equal(rateFor(customCash, cat, false), 5, cat);
+    assert.match(rateCondition(customCash, cat, false) ?? "", /top eligible category/, cat);
+  }
+  const cc = estimateRewards(customCash, { dining: 3_000, groceries: 5_000, flights: 0, hotels: 0, otherTravel: 0, gas: 2_000, streaming: 0, rent: 0, other: 0 }, false);
+  assert.deepEqual(
+    cc.breakdown.filter((b) => b.rate === 5).map((b) => b.cat),
+    ["groceries"],
+    "one category a cycle: the one that earns the most for this spending",
+  );
+  // A co-brand airline or hotel bonus counts only when the visitor says the spending is with that brand.
+  const flights = { dining: 0, groceries: 0, flights: 3_000, hotels: 0, otherTravel: 0, gas: 0, streaming: 0, rent: 0, other: 0 };
+  const united = getCard("united-club-infinite")!;
+  assert.equal(estimateRewards(united, flights, false).points, 15_000);
+  assert.equal(estimateRewards(united, flights, false, {}, { brand: false }).points, 3_000 * united.baseRate);
+  for (const c of cards) {
+    for (const s of SPEND_CATEGORIES) {
+      if (!isBrandOnly(c, s.id)) continue;
+      // Every brand-only category names its brand in its condition.
+      assert.match(rateCondition(c, s.id, false) ?? "", /only$/, `${c.id} ${s.id}`);
+    }
+  }
   // Obsidian's 3x goes to dining or groceries, whichever earns more for the spending entered.
   const spend = { dining: 6_000, groceries: 7_200, flights: 0, hotels: 0, otherTravel: 0, gas: 0, streaming: 0, rent: 0, other: 0 };
   const obsidian = estimateRewards(getCard("bilt-obsidian")!, spend, false);

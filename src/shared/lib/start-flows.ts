@@ -220,7 +220,8 @@ export const START_FLOWS: StartFlow[] = [
         : `/points/sweet-spots${qs({ cabin, type: kind })}`;
       const out: StartResult[] = [];
       if (bank) {
-        out.push({ href: "/about#points-data", title: `What ${name} are worth`, body: "The value we use for each point, and the published figures behind it." });
+        // The value itself shows on the transfer chart below ("A point is worth …"); this explains where it comes from.
+        out.push({ href: "/about#methodology", title: `How we value ${name}`, body: "One value per point on every page: the published median, or your own." });
         out.push({ href: `/points/transfers${qs({ currency })}`, title: `Where ${name} transfer`, body: "Every airline and hotel partner, with ratios and transfer times." });
       } else {
         out.push({ href: "/points/programs", title: "Airline and hotel programs", body: "How each program prices awards, and what it's good for." });

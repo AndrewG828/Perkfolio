@@ -230,7 +230,7 @@ export const baggage: BaggageData = {
       baggageUrl: "https://www.united.com/en/us/fly/baggage/checked-bags.html",
       verification: {
         method: "two-outlets",
-        detail: "Upgraded Points' United baggage guide (updated June 10, 2026) links it as United's baggage policy, and a VCU procurement blog post (April 2026) cites it as United's checked-bag page. Of the related pages, TPG's June 12, 2026 carry-on guide links the carry-on page and its October 26, 2026 United guide the bag fee calculator, and Chase's United Club and United Gateway card pages link free bags for cardmembers (the Explorer and Quest pages use the short link united.com/chasebag).",
+        detail: "Upgraded Points' United baggage guide (updated June 10, 2026) links it as United's baggage policy, and a VCU procurement blog post (April 2026) cites it as United's checked-bag page. Of the related pages, The Points Guy's June 12, 2026 carry-on guide links the carry-on page and its October 26, 2026 United guide the bag fee calculator, and Chase's United Club and United Gateway card pages link free bags for cardmembers (the Explorer and Quest pages use the short link united.com/chasebag).",
       },
       programId: "united-mileageplus",
       note: "Related United pages: carry-on bags (https://www.united.com/en/us/fly/baggage/carry-on-bags.html), the bag fee calculator (https://www.united.com/en/us/baggage-calculator/any-flights) and, for the cardmember bag benefit, free bags for cardmembers (https://www.united.com/en/us/fly/travel/baggage/free-bags-for-cardmembers.html).",
@@ -254,7 +254,7 @@ export const baggage: BaggageData = {
       baggageUrl: "https://www.britishairways.com/en-us/information/baggage-essentials/checked-baggage-allowances",
       verification: {
         method: "two-outlets",
-        detail: "Upgraded Points' checked-luggage chart (updated August 12, 2026) links this US-English page as BA's baggage calculator, and NerdWallet's British Airways vs American Airlines guide (updated October 13, 2026) and Upgraded Points' British Airways guide (updated June 10, 2026) link the UK-English version of the same page (/en-gb/). TPG's carry-on guide (June 12, 2026) links BA's baggage hub.",
+        detail: "Upgraded Points' checked-luggage chart (updated August 12, 2026) links this US-English page as BA's baggage calculator, and NerdWallet's British Airways vs American Airlines guide (updated October 13, 2026) and Upgraded Points' British Airways guide (updated June 10, 2026) link the UK-English version of the same page (/en-gb/). The Points Guy's carry-on guide (June 12, 2026) links BA's baggage hub.",
       },
       programId: "british-airways-club",
       note: "The page holds BA's allowance calculator. Upgraded Points says BA no longer publishes extra-bag prices and sends travelers to the calculator. BA's baggage hub is https://www.britishairways.com/content/information/baggage-essentials.",
@@ -509,7 +509,7 @@ export const baggage: BaggageData = {
         month: "2026-01",
         article: "https://upgradedpoints.com/travel/airlines/turkish-airlines-baggage-fees/",
       },
-      note: "Upgraded Points' Turkish Airlines guide (updated January 8, 2026) links it as the baggage calculator; it says Turkish no longer publishes allowance tables. TPG's carry-on guide (June 12, 2026) links the cabin-bag page in the same section (https://www.turkishairlines.com/en-us/any-questions/carry-on-baggage/).",
+      note: "Upgraded Points' Turkish Airlines guide (updated January 8, 2026) links it as the baggage calculator; it says Turkish no longer publishes allowance tables. The Points Guy's carry-on guide (June 12, 2026) links the cabin-bag page in the same section (https://www.turkishairlines.com/en-us/any-questions/carry-on-baggage/).",
       sources: [
         STAR_ALLIANCE,
         OPENFLIGHTS,
@@ -615,7 +615,7 @@ export const baggage: BaggageData = {
         month: "2026-06",
         article: "https://upgradedpoints.com/travel/airlines/japan-airlines-baggage-fees/",
       },
-      note: "Upgraded Points' Japan Airlines guide (updated June 10, 2026) links it for special-luggage fees. The path lacks the /jp/ region segment that JAL's link in TPG's June 2026 carry-on guide uses (https://www.jal.co.jp/jp/en/inter/baggage/inflight/), so it may be an older address.",
+      note: "Upgraded Points' Japan Airlines guide (updated June 10, 2026) links it for special-luggage fees. The path lacks the /jp/ region segment that JAL's link in The Points Guy's June 2026 carry-on guide uses (https://www.jal.co.jp/jp/en/inter/baggage/inflight/), so it may be an older address.",
       sources: [
         ONEWORLD,
         OPENFLIGHTS,
@@ -635,7 +635,7 @@ export const baggage: BaggageData = {
         month: "2026-06",
         article: "https://upgradedpoints.com/travel/airlines/ana-baggage-fees/",
       },
-      note: "Upgraded Points' ANA guide (updated June 10, 2026) links it with #anchor-bulky-oversize-fragile for special-item rules. TPG's carry-on guide (June 12, 2026) links ANA's carry-on page in the same section (https://www.ana.co.jp/en/us/travel-information/baggage-information/carry-on/).",
+      note: "Upgraded Points' ANA guide (updated June 10, 2026) links it with #anchor-bulky-oversize-fragile for special-item rules. The Points Guy's carry-on guide (June 12, 2026) links ANA's carry-on page in the same section (https://www.ana.co.jp/en/us/travel-information/baggage-information/carry-on/).",
       sources: [
         STAR_ALLIANCE,
         OPENFLIGHTS,
@@ -654,7 +654,7 @@ export const baggage: BaggageData = {
         month: "2026-06",
         article: "https://upgradedpoints.com/travel/airlines/korean-air-baggage-fees/",
       },
-      note: "Upgraded Points' Korean Air guide (updated June 10, 2026) links it as the calculator Korean Air points passengers to for fees. The link has no region or language segment, unlike Korean Air's other linked pages (/us/en/... at Upgraded Points, /contents/plan-your-travel/... in TPG's June 2026 carry-on guide).",
+      note: "Upgraded Points' Korean Air guide (updated June 10, 2026) links it as the calculator Korean Air points passengers to for fees. The link has no region or language segment, unlike Korean Air's other linked pages (/us/en/... at Upgraded Points, /contents/plan-your-travel/... in The Points Guy's June 2026 carry-on guide).",
       sources: [
         SKYTEAM,
         OPENFLIGHTS,
@@ -682,7 +682,7 @@ export const baggage: BaggageData = {
         month: "2026-11",
         article: "https://upgradedpoints.com/travel/airlines/how-to-avoid-paying-baggage-fees/",
       },
-      note: "Upgraded Points' guide to avoiding bag fees (updated November 16, 2026) links it with #NewZealand for status allowances. Upgraded Points' Cathay guide (June 10, 2026) links the baggage hub https://www.cathaypacific.com/cx/en_HK/baggage.html, and TPG's carry-on guide (June 12, 2026) links a calculator on another subdomain, https://flights.cathaypacific.com/en_US/baggage/baggage-calculator.html.",
+      note: "Upgraded Points' guide to avoiding bag fees (updated November 16, 2026) links it with #NewZealand for status allowances. Upgraded Points' Cathay guide (June 10, 2026) links the baggage hub https://www.cathaypacific.com/cx/en_HK/baggage.html, and The Points Guy's carry-on guide (June 12, 2026) links a calculator on another subdomain, https://flights.cathaypacific.com/en_US/baggage/baggage-calculator.html.",
       sources: [
         ONEWORLD,
         OPENFLIGHTS,
@@ -871,7 +871,7 @@ export const baggage: BaggageData = {
       iata: "B0",
       country: "France",
       alliance: null,
-      note: "French all-business-class airline (Upgraded Points, February 2026) flying from Newark to Paris Orly, Nice and Milan Malpensa. TPG (September 9, 2026) reports a Newark-Dusseldorf route starting April 23, 2027, five times a week. OpenTravelData lists it under the B0 code.",
+      note: "French all-business-class airline flying from Newark to Paris Orly, Nice and Milan Malpensa; a Newark–Düsseldorf route is reported to start April 23, 2027, five times a week. OpenTravelData lists it under the B0 code.",
       sources: [
         "https://thepointsguy.com/news/la-compagnie-business-class-new-york-dusseldorf-germany/",
         OPENTRAVELDATA,
@@ -887,7 +887,7 @@ export const baggage: BaggageData = {
       secondBag: "$55 prepaid online, $60 at the airport",
       thirdBag: "$200 (a fourth bag, where allowed, is also $200)",
       basicEconomy: "Domestic Basic Economy tickets bought on or after May 18, 2026 pay $5 more for each of the first two bags: $50 online or $55 at the airport for the first, and $60 online or $65 at the airport for the second. From the same date, Basic Economy tickets no longer get complimentary seat selection or upgrades, even for AAdvantage elites.",
-      exemptions: "Status bags are free on flights American both markets and operates: 1 for AAdvantage Gold and oneworld Ruby; 2 for Platinum, oneworld Sapphire and confirmed premium-cabin passengers; 3 for Platinum Pro, Executive Platinum and oneworld Emerald. Companions on the elite member's reservation get the same allowance (TPG puts the limit at eight). Eligible Citi/AAdvantage cardmembers check their first bag free on domestic American itineraries, along with up to 4 companions on the same reservation (up to 8 with the Executive and Globe cards), when the AAdvantage number is on the reservation. The card benefit also applies to Basic Economy on American-marketed and -operated flights within the US and Canada.",
+      exemptions: "Status bags are free on flights American both markets and operates: 1 for AAdvantage Gold and oneworld Ruby; 2 for Platinum, oneworld Sapphire and confirmed premium-cabin passengers; 3 for Platinum Pro, Executive Platinum and oneworld Emerald. Companions on the elite member's reservation get the same allowance (one report puts the limit at eight). Eligible Citi/AAdvantage cardmembers check their first bag free on domestic American itineraries, along with up to 4 companions on the same reservation (up to 8 with the Executive and Globe cards), when the AAdvantage number is on the reservation. The card benefit also applies to Basic Economy on American-marketed and -operated flights within the US and Canada.",
       notes: "These prices apply to tickets booked on or after April 9, 2026, for flights within the US (including Alaska, Hawaii, Puerto Rico and the US Virgin Islands), to Canada, and on short-haul international routes.",
       asOf: "2026-11",
       sources: [
@@ -912,7 +912,7 @@ export const baggage: BaggageData = {
       secondBag: "$55",
       thirdBag: "$200, and $200 for each further bag up to the tenth (reported by travel outlets; not confirmed by Delta)",
       basicEconomy: "Basic fares pay the same $45 and $55 as Main Cabin on domestic routes.",
-      exemptions: "Medallion members check bags free on domestic flights, up to 70 lb each: Silver Medallion 1 bag, Gold 2, Platinum and Diamond 3. Up to 8 companions on the same reservation get the same allowance on Delta-operated flights, except on flights leaving Paris-CDG or Amsterdam. Silver Medallions who also hold a Delta SkyMiles Amex card get a second free bag on US and Canada flights (Upgraded Points says within the US and Canada, TPG between the US and Canada). SkyTeam Elite and Elite Plus members get the first bag free. Premium cabins and active-duty military also check free. The Delta SkyMiles Gold, Platinum and Reserve Amex cards (personal and business versions) give a free first bag to the cardmember and up to 8 companions on the same reservation, on flights Delta markets and operates, when the trip is booked with the card and the SkyMiles number is on the reservation. Since June 4, 2026, the Basic Card Member on those cards also checks a second bag free on domestic Delta-operated flights (ones that begin and end in the US). The no-annual-fee Blue card gets neither benefit. None of the waivers cover overweight or oversize charges.",
+      exemptions: "Medallion members check bags free on domestic flights, up to 70 lb each: Silver Medallion 1 bag, Gold 2, Platinum and Diamond 3. Up to 8 companions on the same reservation get the same allowance on Delta-operated flights, except on flights leaving Paris-CDG or Amsterdam. Silver Medallions who also hold a Delta SkyMiles Amex card get a second free bag on US and Canada flights (reports differ on whether that means within the US and Canada or between them). SkyTeam Elite and Elite Plus members get the first bag free. Premium cabins and active-duty military also check free. The Delta SkyMiles Gold, Platinum and Reserve Amex cards (personal and business versions) give a free first bag to the cardmember and up to 8 companions on the same reservation, on flights Delta markets and operates, when the trip is booked with the card and the SkyMiles number is on the reservation. Since June 4, 2026, the Basic Card Member on those cards also checks a second bag free on domestic Delta-operated flights (ones that begin and end in the US). The no-annual-fee Blue card gets neither benefit. None of the waivers cover overweight or oversize charges.",
       notes: "These prices apply to tickets bought on or after April 8, 2026, for domestic and some short-haul international flights; they were $35 and $45 before. delta.com keeps the old prices on a previous-fees page for earlier tickets. Standard checked-bag fees can also be paid with SkyMiles when checking in online, in the Fly Delta app or at a kiosk at most US airports.",
       asOf: "2026-11",
       sources: [
@@ -936,7 +936,7 @@ export const baggage: BaggageData = {
       firstBag: "$45 if paid at least 24 hours before departure; $50 after that, including at the airport",
       secondBag: "$55 prepaid; $60 within 24 hours of departure",
       thirdBag: "$200",
-      basicEconomy: "Domestic Basic Economy includes only a personal item. A full-size carry-on brought to the gate has to be checked, at the regular checked-bag fee plus a $25 gate handling charge. The personal-item-only rule doesn't apply on flights to or from South America or across the Atlantic or Pacific (TPG also lists flights to Canada), or to MileagePlus Premier members and companions on their reservation, primary cardholders of eligible United cards and Star Alliance Gold members.",
+      basicEconomy: "Domestic Basic Economy includes only a personal item. A full-size carry-on brought to the gate has to be checked, at the regular checked-bag fee plus a $25 gate handling charge. The personal-item-only rule doesn't apply on flights to or from South America or across the Atlantic or Pacific (one report also lists flights to Canada), or to MileagePlus Premier members and companions on their reservation, primary cardholders of eligible United cards and Star Alliance Gold members.",
       exemptions: "MileagePlus Premier members check bags free, up to 70 lb each: Premier Silver 1 bag, Gold 2, Platinum and 1K 3, and companions on the same reservation get the same allowance. Star Alliance Gold members get at least the first bag free on United-operated flights. Premium Plus, business and first-class passengers check two bags free. Active-duty US military check 3 bags free on personal travel and 5 on orders. United Explorer and United Business cardmembers get their first standard bag free, and United Quest and United Club cardmembers their first and second, for the primary cardmember and one companion on the same reservation. The ticket must be bought with the card (waived for flights in the first 90 days after account opening), the MileagePlus number must be on the reservation, and only United- and United Express-operated flights qualify.",
       notes: "These prices apply to tickets bought on or after April 3, 2026, for flights within the US and to or from Canada, Mexico and Latin America. It was United's first bag-fee increase since February 2024. Chase's current United card terms value the waived bags at up to $50 (1st) and up to $60 (2nd) each way, which matches the top prices.",
       asOf: "2026-11",
@@ -983,7 +983,7 @@ export const baggage: BaggageData = {
       firstBag: "$45, online or at the airport; $30 on flights wholly within Hawaii",
       secondBag: "$55; $40 within Hawaii",
       thirdBag: "$200; $50 within Hawaii",
-      exemptions: "Atmos Rewards elites check bags free: Atmos Silver includes one, and higher tiers add more. Eligible Atmos Rewards Visa cardholders get one free checked bag for themselves and up to 6 guests on the same reservation. This covers flights marketed and operated by Alaska or Hawaiian (including ones Horizon or SkyWest fly for them), and the fare must be bought with the card. The Hawaiian Airlines World Elite Mastercard (including its Bank of Hawaii version) gives two free checked bags to the primary cardmember only (companions excluded) on Alaska- and Hawaiian-operated flights when the ticket is bought with the card; TPG says the business version of the card has no bag perk. Club 49 members get free bags on travel to, from and within Alaska. First-class passengers and active-duty military also check free; military and their dependents get up to five bags.",
+      exemptions: "Atmos Rewards elites check bags free: Atmos Silver includes one, and higher tiers add more. Eligible Atmos Rewards Visa cardholders get one free checked bag for themselves and up to 6 guests on the same reservation. This covers flights marketed and operated by Alaska or Hawaiian (including ones Horizon or SkyWest fly for them), and the fare must be bought with the card. The Hawaiian Airlines World Elite Mastercard (including its Bank of Hawaii version) gives two free checked bags to the primary cardmember only (companions excluded) on Alaska- and Hawaiian-operated flights when the ticket is bought with the card; The business version of the card reportedly has no bag perk. Club 49 members get free bags on travel to, from and within Alaska. First-class passengers and active-duty military also check free; military and their dependents get up to five bags.",
       notes: "These prices apply to flights booked on or after April 10, 2026: the first bag went up $5 and the second $10, and the third rose from $150 to $200. The $5 discount for paying online ahead of time was removed.",
       asOf: "2026-11",
       sources: [
@@ -1045,7 +1045,7 @@ export const baggage: BaggageData = {
       iata: "F9",
       firstBag: "Dynamic: the price depends on route, travel date and when you buy. It's cheapest when added during booking, higher later and highest at the airport; Frontier's Bag Price Checker shows the exact price. 2026 examples put a first bag at about $79 or more at the airport.",
       secondBag: "Dynamic, priced the same way",
-      exemptions: "The Business fare includes two checked bags; the Economy and Premium fares include a carry-on but no checked bag. FRONTIER Miles Elite Platinum members check their first bag free and Elite Diamond members their first two, and companions on the booking share the benefit. Active-duty military get a free carry-on and two free checked bags. The Frontier Airlines World Mastercard gives the primary cardmember two free checked bags (standard bags up to 40 lb) on Frontier-operated flights when the trip is booked directly with Frontier and paid for with the card. The two-bag count is widely reported (TPG, November 2026; NerdWallet, October 2026); one Upgraded Points card roundup (November 2026) says the card has no bag perk.",
+      exemptions: "The Business fare includes two checked bags; the Economy and Premium fares include a carry-on but no checked bag. FRONTIER Miles Elite Platinum members check their first bag free and Elite Diamond members their first two, and companions on the booking share the benefit. Active-duty military get a free carry-on and two free checked bags. The Frontier Airlines World Mastercard gives the primary cardmember two free checked bags (standard bags up to 40 lb) on Frontier-operated flights when the trip is booked directly with Frontier and paid for with the card. The two-bag count is widely reported, though one card roundup (November 2026) says the card has no bag perk.",
       notes: "The standard checked bag is 40 lb and 62 linear inches. A 41-50 lb bag costs $75 extra, and a 51-99.99 lb bag costs $129 extra for bookings made on or after April 4, 2026. Nothing over 99.99 lb is accepted. Exact prices aren't listed because Frontier prices each trip differently; the airport figure above is only a guide.",
       asOf: "2026-11",
       sources: [

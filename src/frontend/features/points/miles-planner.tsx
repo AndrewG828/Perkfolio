@@ -22,6 +22,7 @@ import { shortCardName } from "@/shared/lib/card-name";
 import { cn, num } from "@/shared/lib/format";
 import { CURRENCY_COLOR, Dot, RatioPill, SourceList, currencyProse, formatDate, hotelRatio, listJoin, rulesLine, scheduledLabel, timeLabel } from "./ui";
 import type { WalletReach } from "./use-wallet-reach";
+import { useWallet } from "@/frontend/state/wallet-store";
 
 export const DEFAULT_TARGET: ProgramId = "united-mileageplus";
 export const DEFAULT_MILES = 60_000;
@@ -62,6 +63,9 @@ export function MilesPlanner({
   const today = wallet?.hydrated ? localIsoDate() : undefined;
   const personal = Boolean(wallet?.hydrated && wallet.points.cards.length > 0);
   const plan = milesPlan(target, amount, { cardIds: personal ? wallet!.cardIds : [], today });
+  // Balances from the tracker's Points tab (after hydration): each route says whether you already hold enough.
+  const stored = useWallet().balances;
+  const balances = wallet?.hydrated ? (stored ?? {}) : {};
   const unit = programNames[target].kind === "hotel" ? "points" : "miles";
   const ref = programRef(target);
   const bonusesHere = today ? liveBonuses(today).filter((b) => b.started && b.bonus.program === target) : [];
@@ -178,6 +182,7 @@ export function MilesPlanner({
                   need={plan.miles}
                   unit={unit}
                   target={ref.name}
+                  balance={balances[r.currency]?.points}
                 />
               ))}
             </ul>
@@ -199,7 +204,14 @@ export function MilesPlanner({
                 </p>
                 <ul className="panel divide-y divide-line">
                   {(allVia ? plan.viaHotel : plan.viaHotel.slice(0, VIA_SHOWN)).map((r) => (
-                    <RouteRow key={`${r.currency}-${r.hotel!.row.from}`} route={r} need={plan.miles} unit={unit} target={ref.name} />
+                    <RouteRow
+                      key={`${r.currency}-${r.hotel!.row.from}`}
+                      route={r}
+                      need={plan.miles}
+                      unit={unit}
+                      target={ref.name}
+                      balance={balances[r.currency]?.points}
+                    />
                   ))}
                 </ul>
                 {plan.viaHotel.length > VIA_SHOWN && (
@@ -223,12 +235,29 @@ export function MilesPlanner({
   );
 }
 
-function RouteRow({ route: r, need, unit, target }: { route: MilesRoute; need: number; unit: string; target: string }) {
+function RouteRow({
+  route: r,
+  need,
+  unit,
+  target,
+  balance,
+}: {
+  route: MilesRoute;
+  need: number;
+  unit: string;
+  target: string;
+  /** The bank balance the tracker holds for this route's currency, when there is one. */
+  balance?: number;
+}) {
   const currency = getCurrency(r.currency);
   const only = (r.partner.cards ?? []).map((id) => getCard(id)).filter(Boolean).map((c) => shortCardName(c!.name));
   const yours = r.cards.length > 0;
   const hotel = r.hotel;
   const received = hotel ? hotelMilesFor(hotel.row, hotel.points) : partnerPointsFor(r.partner, r.bankPoints);
+  // What the bank transfer itself gives: bank points move in whole steps, so it can be a little more than the hotel
+  // conversion needs (218,000 Membership Rewards make 218,000 Bonvoy points; 217,500 of them convert).
+  const hotelGot = hotel ? partnerPointsFor(r.partner, r.bankPoints) : 0;
+  const overall = effectiveRatio(r.bankPoints, received);
   const bonusCards = (r.bonus?.bonus.cards ?? []).map((id) => getCard(id)).filter(Boolean).map((c) => shortCardName(c!.name));
   const limits = hotel ? hotelLimits(hotel.row, hotel.rule) : {};
   const bridge = r.via ? bridgeFrom(r.via) : undefined;
@@ -252,8 +281,13 @@ function RouteRow({ route: r, need, unit, target }: { route: MilesRoute; need: n
           {hotel ? (
             <>
               {" "}
-              → <span className="tabular-nums">{num(hotel.points)}</span> {programName(hotel.row.from)} points →{" "}
-              <span className="tabular-nums">{num(received)}</span> {unit}
+              → <span className="tabular-nums">{num(hotelGot)}</span> {programName(hotel.row.from)} points
+              {hotelGot > hotel.points ? (
+                <>
+                  , then convert <span className="tabular-nums">{num(hotel.points)}</span> of them
+                </>
+              ) : null}{" "}
+              → <span className="tabular-nums">{num(received)}</span> {unit}
             </>
           ) : r.via ? (
             <>
@@ -302,7 +336,7 @@ function RouteRow({ route: r, need, unit, target }: { route: MilesRoute; need: n
               <span className="font-semibold tabular-nums">{num(r.bonus.bankPoints)}</span>
               {r.bonus.bonus.maxBonusMiles !== undefined && <span className="text-ink-3"> · bonus capped at {num(r.bonus.bonus.maxBonusMiles)} {unit}</span>}
               {r.bonus.bonus.targeted && <span className="text-warn"> · targeted</span>}
-              {bonusCards.length > 0 && <span className="text-ink-3"> · {listJoin(bonusCards)} only</span>}
+              {bonusCards.length > 0 && <span className="text-ink-3"> · the bonus rate with {listJoin(bonusCards)}</span>}
             </span>
           </p>
         )}
@@ -311,10 +345,18 @@ function RouteRow({ route: r, need, unit, target }: { route: MilesRoute; need: n
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Your {listJoin(r.cards.slice(0, 2).map((c) => shortCardName(c.name)))} can do this
           </p>
         )}
+        {balance !== undefined && (
+          <p className={cn("mt-1 text-xs", balance >= (r.bonus?.bankPoints ?? r.bankPoints) ? "font-semibold text-success" : "text-ink-2")}>
+            You hold {num(balance)} {currencyProse(r.currency)} (from the tracker)
+            {balance >= (r.bonus?.bankPoints ?? r.bankPoints)
+              ? ": enough for this"
+              : `: ${num((r.bonus?.bankPoints ?? r.bankPoints) - balance)} short`}
+          </p>
+        )}
       </div>
       {hotel ? (
         <span className="mt-0.5 flex flex-col items-end gap-0.5" title={`${num(received)} ${unit} for ${num(r.bankPoints)} bank points`}>
-          <RatioPill partner={effectiveRatio(r.bankPoints, received)} mine={yours} />
+          <RatioPill partner={overall} approx={overall.approx} mine={yours} />
           <span className="text-[10px] text-ink-3">overall</span>
         </span>
       ) : (

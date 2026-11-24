@@ -9,7 +9,7 @@
  * `<track>.verified.json`; nothing from a file's rejected / stillMissing / unconfirmed / notResearched / pending lists
  * is used. Inputs (see CLAUDE.md, "Points & Miles"):
  *
- *   A: transfers-a, transfers-b            → currencies.ts, transfers.ts
+ *   A: transfers-a, transfers-b            → currencies.ts, transfers.ts, transfer-routes.ts
  *      programs-air-a, programs-air-b, programs-hotel → programs.ts
  *      sweet-flights-a, sweet-flights-b, sweet-hotels → sweet-spots.ts (featured order is computed here)
  *      photos.verified.json, photos.auto.json (optional manifests) → photos.ts
@@ -176,7 +176,7 @@ const HOTEL_RULE_FIXES: { from: ProgramId; source: string; set: { minimum: numbe
     from: "hilton-honors",
     source: "https://upgradedpoints.com/travel/hotels/hilton-honors-transfer-partners/",
     set: { minimum: 10_000 },
-    sentence: "Upgraded Points lists a 10,000-point minimum for most partners (20,000 for Flying Blue, 25,000 for Aeromexico).",
+    sentence: "Most partners have a 10,000-point minimum (20,000 for Flying Blue, 25,000 for Aeromexico).",
     reason: "Upgraded Points' Hilton table gives 10,000 as the minimum for every partner without its own",
   },
 ];
@@ -347,6 +347,64 @@ const VISITOR_WORDING: [RegExp, string][] = [
     /; Upgraded Points values points at [\d.]+ to [\d.]+ cents when used for nights, so a bank point moved at 1:2 is worth roughly [\d.]+ to [\d.]+ cents/g,
     "; points go further on free nights",
   ],
+  // Which outlet said what, and how many agree, is how the research checked a fact, not something visitors need:
+  // agreement goes unsaid, a lone or disputed figure reads as "one report" or "isn't settled".
+  [/(?:^| )All three outlets agree\./g, ""],
+  [/(?:^| )Upgraded Points, The Points Guy and NerdWallet agree\./g, ""],
+  [/ \(Upgraded Points and NerdWallet agree(?:; The Points Guy confirms the [^)]*)?\)/g, ""],
+  [/(^| )Upgraded Points dates this partnership to ([A-Z][a-z]+ \d{4})\./g, "$1The partnership dates to $2."],
+  [/(?:^| )Upgraded Points' [A-Z][a-z]+ \d{4} Citi guide lists it\./g, ""],
+  // A program's airline list isn't the place for its transfer ratios (the transfers section has them).
+  [/^Capital One lists Copa as an? [\d.:]+ transfer partner \(guide dated [^)]+\)\.$/g, ""],
+  [
+    /\bThe Points Guy's [A-Z][a-z]+ \d{4} Choice redemption page leaves the three Avios programs off its list, but Upgraded Points \([^)]*\), NerdWallet \([^)]*\) and The Points Guy's own [A-Z][a-z]+ \d{4} guide include them, and no outlet reports them being dropped\./g,
+    "Not every published list of Choice's partners includes the Avios programs, but none reports them being dropped.",
+  ],
+  [/\bThrifty Traveler lists Emirates among JAL Mileage Bank's partner airlines\./g, "Emirates is also among JAL Mileage Bank's partner airlines."],
+  [/\bDoctor of Credit describes it as targeted at some members; The Points Guy and Upgraded Points list it without saying so\./g, "It may be targeted: some members may not see it."],
+  [/\bcoverage reports it becomes ([^,]+?), which bilt\.com doesn't show yet/g, "it's reported to become $1, which bilt.com doesn't show yet"],
+  [/\bcoverage reports that no-fee ThankYou cards\b/g, "no-fee ThankYou cards"],
+  [/\bper coverage\b/g, "reportedly"],
+  [/; neither Upgraded Points nor NerdWallet mentions a bonus for large transfers/g, ", with no published bonus for large transfers"],
+  [/\bSingapore KrisFlyer is disputed \(Upgraded Points ([\d.:]+), NerdWallet ([\d.:]+)\)\./g, "Singapore KrisFlyer's rate isn't settled: it's reported at both $1 and $2."],
+  [/\bUpgraded Points counts (\d+) airline partners and says transfers can take up to (\d+) days\./g, "It has $1 airline partners, and transfers can take up to $2 days."],
+  [/\bUpgraded Points lists an? ([\d,]+-point) minimum for most partners\b/g, "Most partners have a $1 minimum"],
+  [/ \(NerdWallet, The Points Guy\), usually in ([\d,]+-point) increments \(The Points Guy; Upgraded Points lists ([\d,]+) as the minimum\)/g, ", usually in $1 increments, with a $2-point minimum"],
+  [
+    /\bTiming estimates differ: NerdWallet says four to six weeks and The Points Guy up to six weeks, while Upgraded Points says 14 to 21 days\./g,
+    "How long it takes isn't settled: estimates run from 14 to 21 days to six weeks.",
+  ],
+  [/\bUpgraded Points names (\d+) airlines and lists (.+?) as the only exceptions\./g, "It has $1 airline partners; the only exceptions are $2."],
+  [
+    /\bTiming estimates differ: Upgraded Points says conversions usually take two to six weeks, while The Points Guy says they usually arrive within 72 hours and take up to seven days\./g,
+    "How long conversions take isn't settled: estimates run from within 72 hours (up to seven days) to two to six weeks.",
+  ],
+  [/ \(TPG, Upgraded Points; Upgraded Points' reviews of (\d{4}) stays put the fees then at about/g, " (in $1 the fees were about"],
+  [
+    /^UP reported that (JAL and ANA nearly doubled .+?), while TPG's [A-Z][a-z]+ and [A-Z][a-z]+ \d{4} reports give smaller dollar figures, so the current amount needs checking\./g,
+    "$1; other reports give smaller amounts, so check the current figure when you book.",
+  ],
+  [/ is disputed \(TPG says yes, priced by region; UP says no\)\./g, " isn't settled: one report says yes, priced by region, and another says no."],
+  [/ is disputed \(see notes\)/g, " isn't settled (see notes)"],
+  [/^UP alone puts the usual reach at (.+?); it reported flights bookable through/g, "The usual reach is $1, by one report; flights were bookable through"],
+  [
+    /^Upgraded Points alone describes (TAP's other award rules) \((.+)\), not yet confirmed by a second outlet or flytap\.com\./g,
+    "$1 aren't confirmed on flytap.com; one report gives them as: $2.",
+  ],
+  [/ weren't confirmed by two outlets \(UP alone says /g, " aren't confirmed (one report says "],
+  [/^Not confirmed by a second outlet: /g, "Not confirmed: "],
+  [/\(UP alone gives /g, "(one report gives "],
+  [/ \(UP alone\)/g, " (one report)"],
+  [/ \(Upgraded Points, (?:[A-Z][a-z]+ \d{1,2}, \d{4}|\d{4}-\d{2}-\d{2})\)(?=\.)/g, ""],
+  [/(?:^| )The Points Guy described .+? as the typical no-fee rate a month later, and both outlets' current Citi guides show the reduced no-fee column\./g, ""],
+  [
+    /\bThe date is when Upgraded Points first reported the change; no second outlet dates it, though The Points Guy confirmed (.+?) by (.+?), and its \d{4} Double Cash guide confirms the earlier Choice, JetBlue and Wyndham-only list\./g,
+    "The date is when the change was first reported; $1 was confirmed by $2.",
+  ],
+  [/^Single outlet \(TPG, ([^)]+)\); Upgraded Points and NerdWallet do not list [^.]+\.$/g, "Only The Points Guy publishes a value for these points ($1)."],
+  [/^Single outlet \(TPG\); Upgraded Points and NerdWallet do not list [^.]+\.$/g, "Only The Points Guy publishes a value for these points."],
+  [/^Single outlet \(Upgraded Points\); TPG and NerdWallet do not list [^.]+\.$/g, "Only Upgraded Points publishes a value for these points."],
+  [/^Single outlet; Upgraded Points labels it ('[^']+')\.$/g, "Only Upgraded Points publishes a value for these points, as $1."],
 ];
 
 function prose(text: string, max = 20): string {
@@ -470,7 +528,9 @@ function userSentences(text: unknown, process: RegExp[] = [PROCESS], opts: { max
   return sentences(displayNames(s))
     .map(rewrite)
     .filter((t) => t && !process.some((re) => re.test(t)) && (opts.keep?.(t) ?? true))
-    .map((t) => prose(t, opts.max));
+    .map((t) => prose(t, opts.max))
+    // A sentence that only said which outlets agree is gone after VISITOR_WORDING.
+    .filter(Boolean);
 }
 
 /** Drops sentences about the research process; returns undefined when nothing is left. */
@@ -1565,6 +1625,22 @@ async function main() {
       ["transferPartners", "TransferPartner[]", transfers],
       ["changeLogApplied", "boolean", !NO_CHANGE_LOG],
     ],
+  );
+  // The partner list without ratios, notes or sources, for the card data (card-partners.ts names each card's partners
+  // when the card files load, on every page): one row per currency, program and card list.
+  const routes = Array.from(
+    new Map(
+      transfers.map((p) => {
+        const r = { currency: p.currency, program: p.program, ...(p.cards ? { cards: p.cards } : {}) };
+        return [JSON.stringify(r), r] as const;
+      }),
+    ).values(),
+  );
+  emit(
+    "transfer-routes.ts",
+    [...transferTracks.map(srcLine), "transfers.ts without ratios, notes or sources: which programs each currency (and card) reaches."],
+    'import type { TransferRoute } from "./types";',
+    [["transferRoutes", "TransferRoute[]", routes]],
   );
   emit("programs.ts", programTracks.map(srcLine), 'import type { AwardProgram } from "./types";', [["awardPrograms", "AwardProgram[]", programs]]);
   emit("sweet-spots.ts", [...spotTracks.map(srcLine), "Featured order computed by the importer (featuredOrder)."], 'import type { SweetSpot } from "./types";', [

@@ -210,6 +210,30 @@ export function regionPhoto(region: Region): Photo | undefined {
   return regionPhotos[region];
 }
 
+/**
+ * Region photos that show one place's landmark (the Eiffel Tower, New York's skyline), by photo title, with the
+ * destinations they suit: the photo heads a sweet spot only when the spot goes there, so a Madrid card never wears
+ * Paris. Scenery (a Caribbean beach, a Canadian lake) suits any spot in its region. A new landmark photo needs an entry.
+ */
+const LANDMARK_PLACES: Record<string, string[]> = {
+  "Paris - The Eiffel Tower in spring - 2307": ["Paris"],
+  "Long Island City New York May 2015 panorama 3": ["New York", "Newark"],
+  "International Commerce Centre on Victoria Harbour": ["Hong Kong"],
+  // The Taj Mahal, Machu Picchu and Table Mountain stand for their countries: India, Peru, South Africa.
+  "Taj Mahal, Agra, India edit2": ["Delhi", "Mumbai", "Bengaluru", "Chennai"],
+  "Machu Picchu, Perú, 2015-07-30, DD 47": ["Lima", "Cusco"],
+  "Cape Town (ZA), Table Mountain -- 2024 -- 2825": ["Cape Town", "Johannesburg"],
+  "Tulum - God of the Winds Temple 04": ["Tulum", "Riviera Maya", "Cancún", "Cancun"],
+};
+
+/** The photo heading a sweet spot: its region's, unless that photo is another place's landmark (LANDMARK_PLACES). */
+export function sweetSpotPhoto(spot: Pick<SweetSpot, "to" | "destinations">): Photo | undefined {
+  const photo = regionPhotos[spot.to];
+  const places = photo ? LANDMARK_PLACES[photo.title] : undefined;
+  if (!photo || !places) return photo;
+  return spot.destinations.some((d) => places.some((p) => d.includes(p))) ? photo : undefined;
+}
+
 /** The photo in the header of an airport's lounge page, if research found one. */
 export function airportPhoto(code: string): Photo | undefined {
   return airportPhotos[code];

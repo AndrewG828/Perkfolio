@@ -197,7 +197,7 @@ export const bookingRules: BookingRules[] = [
     ],
     notes: [
       "Holds: TPG (guide updated June 16, 2025) and UP (Apr 2026) say ANA doesn't allow them; UP adds that some agents may still hold a booking for 24–48 hours.",
-      "UP reported that JAL and ANA nearly doubled Japan–North America surcharges from May 1, 2026, to about $350 one-way, in a change then scheduled to run through June 30, 2026, while TPG's March and May 2026 reports give smaller dollar figures, so the current amount needs checking.",
+      "JAL and ANA nearly doubled Japan–North America surcharges from May 1, 2026, to about $350 one-way, in a change then scheduled to run through June 30, 2026; other reports give smaller amounts, so check the current figure when you book.",
       "Both outlets name Lufthansa Group carriers as partners whose surcharges ANA passes on, and United, Copa and Avianca as low-surcharge partners.",
       "Round trip or one-way: TPG reported in April 2025 that ANA would start selling one-way awards from June 24, 2025 at half the round-trip price, and UP's EVA guide (Sep 2026) says ANA allows one-way awards, but UP's ANA guide (Jun 2026) and NerdWallet (Jul 2026) still describe round-trip-only rules outside Japan, so check before booking.",
     ],
@@ -314,7 +314,7 @@ export const bookingRules: BookingRules[] = [
     changeCancel: null,
     bookingWindowDays: null,
     phoneOnlyPartners: "Only some partners can be booked instantly online, including British Airways, Finnair, Iberia, Qantas, Qatar Airways and Alaska Airlines (plus Cathay Pacific itself). Other partners, such as American Airlines, Air Canada and Lufthansa, need a phone call or Cathay's award request form",
-    fuelSurcharges: "Partner awards often carry carrier surcharges. Cathay Pacific raised its own fuel surcharges sharply from March 2026 and has revised them since; whether Asia Miles adds them to Cathay-operated awards is disputed (see notes)",
+    fuelSurcharges: "Partner awards often carry carrier surcharges. Cathay Pacific raised its own fuel surcharges sharply from March 2026 and has revised them since; whether Asia Miles adds them to Cathay-operated awards isn't settled (see notes)",
     asOf: "2026-11",
     sources: [
       "https://thepointsguy.com/loyalty-programs/cathay-pacific-asia-miles/",
@@ -335,7 +335,7 @@ export const bookingRules: BookingRules[] = [
       "TPG's list and UP's program-page list of online-bookable partners are longer than UP's June 2026 list, and UP's June guide sends Qatar Airways bookings through the award request form even though it lists Qatar as instant, so be ready to call.",
       "Holds: UP (Nov 2025, Jul 2026) and an older TPG guide (May 2022) say holds are possible though Cathay's terms don't mention them.",
       "Surcharges: UP (Jul 2026) says Asia Miles passes on surcharges for most Oneworld partners, and TPG says the airline passes them on.",
-      "Whether Cathay-operated awards carry them is disputed (TPG says yes, priced by region; UP says no).",
+      "Whether Cathay-operated awards carry them isn't settled: one report says yes, priced by region, and another says no.",
       "The 2026 increases are reported by UP (news Mar 2026 and Jul 2026) and TPG (news Mar 2026 and May 2026).",
     ],
   },
@@ -688,7 +688,7 @@ export const bookingRules: BookingRules[] = [
     notes: [
       "Chase's Southwest card terms say flights booked with points have no blackout dates and unlimited reward seats.",
       "There's no fixed booking window: Southwest releases its schedule a few months at a time (TPG, UP).",
-      "UP alone puts the usual reach at about 8 to 9 months; it reported flights bookable through June 2, 2027 as of late August 2026, with a further extension planned for October 15, 2026, so check southwest.com for the current end date.",
+      "The usual reach is about 8 to 9 months, by one report; flights were bookable through June 2, 2027 as of late August 2026, with a further extension planned for October 15, 2026, so check southwest.com for the current end date.",
       "Southwest also sells connecting trips with Icelandair and, from early 2026, Turkish Airlines through those airlines' booking channels (TPG, UP).",
       "These are booking partnerships rather than ways to spend points: redemptions on partner airlines only begin in spring 2027 (TPG, NerdWallet).",
       "Southwest-operated flights on an Icelandair booking earn Rapid Rewards points (TPG, UP), while UP says the Turkish deal brings no earning or redemption yet.",
@@ -717,7 +717,7 @@ export const bookingRules: BookingRules[] = [
     ],
     notes: [
       "TAP Air Portugal is in Star Alliance, and Miles&Go awards can also be used on its non-alliance partners Azores Airlines (SATA), Azul, Emirates and Gol (TPG, UP; NerdWallet lists the same airlines plus Beijing Capital as non-alliance partners), though TPG warns that some partner flights may be restricted.",
-      "Upgraded Points alone describes TAP's other award rules (no holds; no stopovers on TAP-only awards but one per round trip on Star Alliance awards; a EUR 50 change fee after ticketing; awards on non-alliance partners such as Emirates booked by phone), not yet confirmed by a second outlet or flytap.com.",
+      "TAP's other award rules aren't confirmed on flytap.com; one report gives them as: no holds; no stopovers on TAP-only awards but one per round trip on Star Alliance awards; a EUR 50 change fee after ticketing; awards on non-alliance partners such as Emirates booked by phone.",
       "A UP news post from August 2025 (refreshed June 2026) said the Portugal Stopover also worked with Miles&Go redemptions; UP's October 2026 stopover guide and NerdWallet (October 2026) both say it doesn't.",
     ],
   },
@@ -746,7 +746,7 @@ export const bookingRules: BookingRules[] = [
       "Awards on Turkish flights come in a standard tier and a cheaper, scarcer 'promotion' tier, and Bilt, Capital One and Citi points transfer in 1:1 (TPG, NerdWallet).",
       "You can book awards for other people once they've been registered in your Miles&Smiles account (TPG, UP).",
       "On December 3, 2025, with no notice, Turkish raised one-way prices for direct domestic flights on partner airlines: within the US mainland from 10,000 to 15,000 miles in economy and from 15,000 to 22,500 in business, and to or from Hawaii to 25,000 in economy and 40,000 in business (TPG, UP; TPG says the 15,000 / 22,500 rates cover direct partner flights within any one country).",
-      "Holds, phone fees and the booking window weren't confirmed by two outlets (UP alone says phone agents can hold an award for up to 2 days).",
+      "Holds, phone fees and the booking window aren't confirmed (one report says phone agents can hold an award for up to 2 days).",
     ],
   },
   {
@@ -783,7 +783,7 @@ export const bookingRules: BookingRules[] = [
       "Award prices are dynamic and United publishes no award chart (TPG, UP, NerdWallet).",
       "Chase's United Explorer card terms say any United-operated seat still on sale in a cabin can be booked with miles and that partner awards carry extra limits; eligible primary cardmembers pay at least 10% fewer miles on United and United Express awards, at least 15% with Premier status, and NerdWallet and UP report the same discounts.",
       "Some TPG guides refreshed in 2026 still describe the Excursionist Perk; TPG's own May 2025 news report and UP both say it ended.",
-      "Not confirmed by a second outlet: holds, the booking window (UP alone gives 337 days) and extra saver-award space for cardholders (UP alone).",
+      "Not confirmed: holds, the booking window (one report gives 337 days) and extra saver-award space for cardholders (one report).",
     ],
   },
   {

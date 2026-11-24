@@ -23,6 +23,9 @@ export function ExternalA({ href, children, className, title }: { href: string; 
   );
 }
 
+/** Raw data files hosted on GitHub: named in a source list, never linked. */
+const THIRD_PARTY_FILE = /^https:\/\/raw\.githubusercontent\.com\//;
+
 /**
  * Source links by host name ("travel.state.gov", ...). Several pages on one site are named by page ("Chase ·
  * Boundless", "Chase · Bold"), pages whose address says little by an explicit name ("GOV.UK · Home Office fees, Oct
@@ -39,11 +42,19 @@ export function SourceLinks({ sources, className, max }: { sources: string[]; cl
   const labels = sourceLabels(unique);
   return (
     <span className={cn("inline-flex flex-wrap gap-x-2 gap-y-1", className)}>
-      {shown.map((s, i) => (
-        <ExternalA key={s} href={s} className="font-medium" title={s}>
-          {labels[i]}
-        </ExternalA>
-      ))}
+      {shown.map((s, i) =>
+        // A third-party dataset file (the Passport Index on GitHub) is named, not linked: pages link only official
+        // sources for entry rules, and a raw data file is no page for a visitor.
+        THIRD_PARTY_FILE.test(s) ? (
+          <span key={s} className="font-medium text-ink-2">
+            {labels[i]}
+          </span>
+        ) : (
+          <ExternalA key={s} href={s} className="font-medium" title={s}>
+            {labels[i]}
+          </ExternalA>
+        ),
+      )}
       {folded && (
         <button type="button" onClick={() => setAll(true)} className="font-medium text-brand hover:underline">
           +{unique.length - shown.length} more<span className="sr-only"> sources</span>

@@ -239,7 +239,7 @@ export const chaseBiltCards: Card[] = [
         amountPerPeriod: 500,
         category: "hotel",
         description: "Two credits of up to $250 each for prepaid 2+ night bookings at The Edit by Chase Travel properties.",
-        note: "In 2026 the two $250 credits can be used any time in the calendar year. TPG reports this rises to four $250 credits ($1,000) starting 2027.",
+        note: "In 2026 the two $250 credits can be used any time in the calendar year.",
       },
       {
         id: "select-hotels-2026",
@@ -249,7 +249,7 @@ export const chaseBiltCards: Card[] = [
         amountPerPeriod: 250,
         category: "hotel",
         description: "Up to $250 for a prepaid 2+ night Chase Travel stay at select hotel brands (IHG, Montage, Pendry, Omni, Virgin, Minor, Pan Pacific).",
-        note: "Reported as a 2026-only benefit for Sapphire Reserve cards; expires 12/31/2026. Confirm eligibility in your benefits hub.",
+        note: "A 2026 benefit for Sapphire Reserve cards: it expires 12/31/2026, and eligibility shows in your Chase benefits hub.",
       },
       {
         id: "google-workspace",
@@ -291,7 +291,7 @@ export const chaseBiltCards: Card[] = [
         category: "dining",
         description: "Up to $300 per year in DoorDash promos plus complimentary DashPass.",
         enrollmentRequired: true,
-        note: "Chase lists up to $300 a year in promos (about $25 a month). It isn't confirmed whether the October 2026 increase on the personal card applies. Activate DashPass by 12/31/2027.",
+        note: "Chase lists up to $300 a year in promos (about $25 a month). Activate DashPass by 12/31/2027.",
       },
       {
         id: "global-entry",
@@ -764,6 +764,7 @@ export const chaseBiltCards: Card[] = [
     credits: [
       {
         id: "anniversary-free-night",
+        afterRenewal: true,
         name: "Anniversary free night (Category 1–4)",
         annualValue: 200,
         frequency: "annual",
@@ -821,13 +822,14 @@ export const chaseBiltCards: Card[] = [
     credits: [
       {
         id: "anniversary-points",
+        afterRenewal: true,
         name: "7,500 anniversary bonus points",
         annualValue: 98,
         frequency: "annual",
         amountPerPeriod: 98,
         category: "airline",
         description: "7,500 Rapid Rewards points each account anniversary.",
-        note: "Points, not a statement credit: valued at the published median for Southwest points.",
+        note: "Points, not a statement credit.",
         points: { amount: 7_500, program: "southwest-rapid-rewards" },
       },
     ],

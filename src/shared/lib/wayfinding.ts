@@ -155,10 +155,20 @@ function rideSteps(nav: AirportNav, zones: string[], links: NavLink[]): RouteSte
   });
 }
 
+/**
+ * A location as it reads inside a sentence: "near gate B18", "across from gate B22", but "Concourse F", "A/B
+ * connector", "S1 concourse" and "Lounge F" keep their capitals (names, codes and proper nouns).
+ */
+export function inSentence(location: string): string {
+  const COMMON =
+    /^(Near|Level|Mezzanine|After|Between|Across|Airside|Center|Next|Just|Past|Post-security|Main|Above|Opposite|Right|Left|Marketplace|Retail|On|Central|Gate|At|In|Before|Third|Beside|To|Upstairs|Downstairs|Inside|Behind|Below|Upper|Lower|Ground|Top|End|Departures|Arrivals|Landside|By|Off|East|West|North|South|Domestic|International|Transit)\b/;
+  return COMMON.test(location) ? `${location.charAt(0).toLowerCase()}${location.slice(1)}` : location;
+}
+
 function finalWalk(l: Lounge, fromGate: number | null, sameZone: boolean): RouteStep {
   const to = loungeGateNumber(l);
   const minutes = sameZone && fromGate !== null && to !== null ? Math.max(1, Math.round(Math.abs(fromGate - to) * 0.3) + 1) : ZONE_WALK;
-  const where = l.location ? ` (${l.location.charAt(0).toLowerCase()}${l.location.slice(1)})` : "";
+  const where = l.location ? ` (${inSentence(l.location)})` : "";
   return { kind: "arrive", text: `Walk to ${l.name}${where}`, minutes };
 }
 
@@ -250,6 +260,16 @@ export function rankByDistance(nav: AirportNav, origin: Origin, ls: Lounge[]): {
 export function terminalsSeparate(nav: AirportNav): boolean {
   const checkpoints = nav.zones.filter((z) => z.checkpoint);
   return checkpoints.some((a, i) => checkpoints.slice(i + 1).some((b) => !isConnected(nav, a.id, b.id)));
+}
+
+/**
+ * True when, before you say where you are, no lounge is nearer than another: the airport has more than one security
+ * checkpoint, so the way from "before security" starts at each lounge's own checkpoint and the lounges tie (DFW's
+ * terminals each have their own), or its terminals aren't connected after security at all (terminalsSeparate). Pages
+ * then don't call any lounge "nearest" until a gate or terminal is given.
+ */
+export function nearestNeedsOrigin(nav: AirportNav): boolean {
+  return nav.zones.filter((z) => z.checkpoint).length > 1;
 }
 
 /** Apple Maps walking directions (indoor maps at many large airports on iPhone/Mac). */

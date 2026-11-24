@@ -123,8 +123,8 @@ function Panel({ cardId }: { cardId: string }) {
           <RuleResults results={e.results} compact />
           <p className="mt-4 border-t border-line pt-3 text-xs leading-relaxed text-ink-3">
             Official rules are the issuer&apos;s own wording, read on its site. Widely reported ones are rules two or more
-            independent outlets agree on: most are unwritten, and a few are the issuer&apos;s own wording that we couldn&apos;t
-            read on its site (each rule&apos;s details say which). Passing every rule isn&apos;t a promise: issuers can still
+            independent outlets agree on: most are unwritten, and a few are the issuer&apos;s own wording as outlets quote it
+            (each rule&apos;s details say which). Passing every rule isn&apos;t a promise: issuers can still
             decline you, or withhold a bonus, for other reasons such as income, credit score, recent inquiries or your
             history with them.
           </p>

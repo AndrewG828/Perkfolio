@@ -5,8 +5,9 @@ import { cards as allCards } from "@/shared/data/cards";
 import { BANK_CURRENCY_IDS, type BankCurrencyId, type PointValue, type ProgramId } from "@/shared/data/points/types";
 import { bankCurrencies } from "@/shared/data/points/currencies";
 import { programNames } from "@/shared/data/points/program-names";
+import { programUnit } from "@/shared/data/strategy/programs";
 import { pointValues, unvaluedIds, valuationEditions } from "@/shared/data/points/valuations";
-import { cardsEarningIn, currencyOfCard, trimCents, type LimitedTransfers } from "./card-currency";
+import { currencyOfCard, trimCents, type LimitedTransfers } from "./card-currency";
 
 /**
  * One value per point, everywhere: every page and tool (the calculator, Compare, Which Card?, the next-card ranking,
@@ -17,7 +18,8 @@ import { cardsEarningIn, currencyOfCard, trimCents, type LimitedTransfers } from
  * 2. else the published median: the middle of The Points Guy's, Upgraded Points' and NerdWallet's figures in
  *    shared/data/points/valuations.ts (generated from the verified research by `npm run points:import`). Once the
  *    user's cards are known (`ValueContext.cards`), an outlet's figure for cardholders like them replaces its headline
- *    one (NerdWallet's 1.3¢ for Citi points without a Strata Premier or Elite) and the median is taken again;
+ *    one (NerdWallet's 1.4¢ for Chase points with a Sapphire Preferred but no Sapphire Reserve) and the median is taken
+ *    again;
  * 3. else, only for points no outlet values, the card file's `pointValueCents` (from the cards that earn them in full);
  * 4. else nothing: pages ask for the user's own value instead of estimating one.
  *
@@ -29,7 +31,9 @@ import { cardsEarningIn, currencyOfCard, trimCents, type LimitedTransfers } from
  *
  * The same rule holds for the currency itself: once the wallet is known, a bank currency it earns only on cards that
  * can't transfer it yet (a Freedom Unlimited without a Sapphire) is worth 1¢ a point as cash back (`locked`), so the
- * tracker's balances, the deal calculator and the card pages agree on one value for those points.
+ * tracker's balances, the deal calculator and the card pages agree on one value for those points. This comes before
+ * the user's own value, as it does for the card: an own value for those points applies once a card in the wallet
+ * transfers them, and pages say so (`unlockedValue` is what they'd be worth then).
  *
  * Pure: pages pass the context after hydration (frontend/state/point-values.ts), never before. Like shared/lib/points,
  * every function takes the dataset as an optional last argument so tests can run against fixed data.
@@ -107,18 +111,24 @@ export function noValueReason(id: string): string | undefined {
   return (unvaluedIds as string[]).includes(id) ? `Not listed in the ${VALUE_EDITION_LABEL} tables of ${joinWith(VALUE_OUTLETS, "or")}.` : undefined;
 }
 
-const STRATA = ["citi-strata-elite", "citi-strata-premier"];
-
 /**
  * Which cards an outlet's lower figure (OutletValue.variants) applies to, by currency. NerdWallet values Chase at
- * 1.4¢ for "Sapphire Preferred and Ink Preferred cardholders" (Hyatt at 4:3) and Citi at 1.3¢ for "other Citi cards"
- * (no Strata Premier or Strata Elite).
+ * 1.4¢ for "Sapphire Preferred and Ink Preferred cardholders" (Hyatt at 4:3).
  */
 const VARIANT_FOR: Partial<Record<BankCurrencyId, (cardIds: Set<string>) => boolean>> = {
   "chase-ur": (ids) =>
     !["chase-sapphire-reserve", "chase-sapphire-reserve-business"].some((id) => ids.has(id)) &&
     ["chase-sapphire-preferred", "chase-ink-business-preferred"].some((id) => ids.has(id)),
-  "citi-typ": (ids) => !STRATA.some((id) => ids.has(id)) && cardsEarningIn("citi-typ", allCards).some((c) => ids.has(c.id)),
+};
+
+/**
+ * Outlet figures the resolver leaves out on purpose, by currency and `appliesTo`, with why. NerdWallet's 1.3¢ for
+ * "other Citi cards" is for ThankYou points on cards without a Strata Premier or Elite: those cards transfer only at
+ * reduced rates, so their points count as cash back here (`locked`) until pooled with a Strata card, and then the
+ * headline figure applies. The variant would never set a value.
+ */
+export const IGNORED_VARIANTS: Partial<Record<BankCurrencyId, Record<string, string>>> = {
+  "citi-typ": { "other Citi cards": "Cards without a Strata Premier or Elite count as cash back until pooled with one." },
 };
 
 /** The middle value (the mean of the two middle ones for an even count). */
@@ -129,8 +139,9 @@ function median(xs: number[]): number {
 }
 
 /**
- * A published value as it applies to a set of cards: an outlet's lower figure for those cards (NerdWallet's 1.3¢ for
- * Citi cards without a Strata Premier or Elite) replaces its headline figure, and the median is taken again.
+ * A published value as it applies to a set of cards: an outlet's lower figure for those cards (NerdWallet's 1.4¢ for
+ * Chase points with a Sapphire Preferred but no Sapphire Reserve) replaces its headline figure, and the median is taken
+ * again.
  */
 export function valueForWallet(v: PointValue, cardIds: readonly string[]): WalletValue {
   const ids = new Set(cardIds);
@@ -201,6 +212,16 @@ export function resolvePointValue(id: string | null | undefined, ctx: ValueConte
   return estimate === undefined ? undefined : { cents: estimate, basis: "estimate", id };
 }
 
+/**
+ * What a locked currency's points (resolvePointValue's `locked`) would be worth once pooled with a card that transfers
+ * them: the user's own value, else the headline median (which card would unlock them isn't known, so no outlet's
+ * figure for one kind of cardholder applies). The card page's "Combined, they're worth …" and the deal calculator's
+ * note both use this, so they agree.
+ */
+export function unlockedValue(id: string, ctx: ValueContext = {}, data: ValueData = valueData): PointValueResult | undefined {
+  return resolvePointValue(id, { own: ctx.own }, data);
+}
+
 /** `cards` plus `id`, once. */
 const withCard = (cards: readonly string[] | undefined, id: string) => (cards?.includes(id) ? [...cards] : [...(cards ?? []), id]);
 
@@ -224,13 +245,27 @@ export function cardPointValue(card: Card, ctx: ValueContext = {}, data: ValueDa
 }
 
 /**
- * What a credit is worth in dollars a period: its face value, or for a benefit paid in points (Venture X's anniversary
+ * What a credit is worth in dollars a year: its face value, or for a benefit paid in points (Venture X's anniversary
  * miles) the points at what they're worth to this visitor (resolvePointValue: their own value, else the median).
+ * Benefits paid in points are annual (a test checks), so a year and a period are the same.
  */
 export function creditValue(credit: Pick<Credit, "annualValue" | "points">, ctx: ValueContext = {}): number {
   if (!credit.points) return credit.annualValue;
   const cents = resolvePointValue(credit.points.program, ctx)?.cents;
   return cents === undefined ? credit.annualValue : Math.round((credit.points.amount * cents) / 100);
+}
+
+/** What a credit is worth each period (`amountPerPeriod`), with a benefit paid in points valued as creditValue() does. */
+export function creditPeriodValue(credit: Pick<Credit, "annualValue" | "amountPerPeriod" | "points">, ctx: ValueContext = {}): number {
+  return credit.points ? creditValue(credit, ctx) : credit.amountPerPeriod;
+}
+
+/** "10,000 miles at 1.8¢ (November 2026 median)": how a benefit paid in points is valued for this visitor. */
+export function creditPointsLabel(credit: Pick<Credit, "points">, ctx: ValueContext = {}): string | undefined {
+  if (!credit.points) return undefined;
+  const v = resolvePointValue(credit.points.program, ctx);
+  if (!v) return undefined;
+  return `${credit.points.amount.toLocaleString("en-US")} ${programUnit(credit.points.program)} at ${formatCents(v.cents)} (${basisLabel(v)})`;
 }
 
 /** A card's credits a year, as annualizedCreditValue() counts them, with points benefits at creditValue(). */

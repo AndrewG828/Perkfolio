@@ -125,7 +125,7 @@ export default function Home() {
           {[
             [String(lounges.length), "lounges mapped"],
             [String(airportCount), "airports covered"],
-            [String(bigAirports.length), "terminal maps"],
+            [String(bigAirports.length), "airports with gate directions"],
             [usd(Math.round(totalCredits / 1000) * 1000), "in card credits tracked"],
           ].map(([v, l]) => (
             <div key={l} className="px-4 py-2">

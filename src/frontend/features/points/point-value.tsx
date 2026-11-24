@@ -97,7 +97,7 @@ export function PointValuePanel({ id, name, className }: { id: BankCurrencyId | 
       </div>
     );
   }
-  // The published range for the visitor's cards (NerdWallet's lower Citi figure without a Strata card, say).
+  // The published range for the visitor's cards (NerdWallet's lower Chase figure with a Sapphire Preferred but no Reserve, say).
   const range = resolved?.forCards ?? v;
   const span = Math.max(v.high - v.low, 0.0001);
   const pos = (c: number) => `${((c - v.low) / span) * 100}%`;

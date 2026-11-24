@@ -1,5 +1,5 @@
 import { ArrowRight, BedDouble, CheckCircle2, ChevronDown, Plane, TriangleAlert } from "lucide-react";
-import { getCurrency, programName, regionPhoto, type BankCurrencyId, type SweetSpot } from "@/shared/data/points";
+import { getCurrency, programName, sweetSpotPhoto, type BankCurrencyId, type SweetSpot } from "@/shared/data/points";
 import {
   bankPointsFor,
   bridgeFrom,
@@ -40,7 +40,7 @@ export function SweetSpotCard({
 }) {
   const sources = transferSources(spot.program, data);
   const fee = FEES[spot.kind][spot.fees];
-  const photo = regionPhoto(spot.to);
+  const photo = sweetSpotPhoto(spot);
   const flight = spot.kind === "flight";
   const best = reach?.best;
 

@@ -487,6 +487,7 @@ export const amexCards: Card[] = [
       },
       {
         id: "companion-certificate",
+        afterRenewal: true,
         name: "Annual companion certificate",
         annualValue: 500,
         frequency: "annual",
@@ -590,6 +591,7 @@ export const amexCards: Card[] = [
       },
       {
         id: "companion-certificate",
+        afterRenewal: true,
         name: "Annual companion certificate",
         annualValue: 300,
         frequency: "annual",
@@ -731,6 +733,7 @@ export const amexCards: Card[] = [
       },
       {
         id: "free-night",
+        afterRenewal: true,
         name: "Annual free night award",
         annualValue: 550,
         frequency: "annual",

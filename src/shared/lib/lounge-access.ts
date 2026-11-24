@@ -85,6 +85,14 @@ export function closedLabel(l: Lounge): string {
 /** The cards get you in and the lounge is open. */
 export const openToCards = (l: Lounge, cards: Card[], today?: string | null) => !isClosed(l, today) && accessFor(l, cards).length > 0;
 
+/** Lounges closed on `today`, by airport (a listed closure counts before the visitor's date is known). */
+export function closedCountByAirport(today?: string | null): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const l of lounges) if (isClosed(l, today)) out[l.airportCode] = (out[l.airportCode] ?? 0) + 1;
+  return out;
+}
+
+
 /** How many open lounges each airport has that these cards unlock (closed ones aren't counted). */
 export function accessibleCountByAirport(cards: Card[], today?: string | null): Record<string, number> {
   const out: Record<string, number> = {};

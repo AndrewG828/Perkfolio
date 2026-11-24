@@ -21,6 +21,7 @@ import {
   type BalanceStatus,
 } from "@/shared/lib/trackers";
 import { MEDIAN_SOURCE, VALUE_EDITION, VALUE_OUTLETS, formatCents, noValueReason, resolvePointValue, type ValueContext } from "@/shared/lib/point-value";
+import type { LimitedTransfers } from "@/shared/lib/card-currency";
 import { daysSince, daysUntil, formatDate, formatMonth, isoDate } from "@/shared/lib/dates";
 import { cn, num, usd } from "@/shared/lib/format";
 import { SourceLinks } from "@/frontend/features/next-card/rule-results";
@@ -69,8 +70,9 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
   const values: ValueContext = { own: prefs.cpp, cards: wallet.cards };
   const rows = Object.entries(balances)
     .map(([id, b]) => {
-      const c = resolvePointValue(id, values)?.cents;
-      return { id, b, cents: c, value: c === undefined ? 0 : pointsValueUsd(b.points, c), status: statuses.get(id)! };
+      const resolved = resolvePointValue(id, values);
+      const c = resolved?.cents;
+      return { id, b, cents: c, resolved, value: c === undefined ? 0 : pointsValueUsd(b.points, c), status: statuses.get(id)! };
     })
     .sort((a, b) => b.value - a.value || programName(a.id).localeCompare(programName(b.id)));
   // Points past their expiry date (as far as the last activity entered shows) aren't worth anything any more.
@@ -80,7 +82,8 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
   const dated = rows.filter((r) => r.status.kind === "date" && r.status.tone && r.status.tone !== "ok").sort((a, b) => (a.status.daysLeft ?? 0) - (b.status.daysLeft ?? 0));
   const atRisk = rows.filter((r) => r.status.kind === "at-risk");
   const stale = rows.filter((r) => r.status.stale);
-  const overrides = rows.filter((r) => prefs.cpp[r.id] !== undefined).length;
+  // Own values that apply: one for points the wallet can't transfer yet waits until it can (resolvePointValue's `locked`).
+  const overrides = rows.filter((r) => r.resolved?.basis === "own").length;
   const suggestions = [...earning].filter((id) => !balances[id] && programInfo(id));
   const soon = dated.filter((r) => r.status.tone !== "expired").length;
 
@@ -171,7 +174,18 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
         ) : (
           <ul className="divide-y divide-line">
             {rows.map((r) => (
-              <BalanceRow key={r.id} id={r.id} balance={r.b} cents={r.cents} value={r.value} status={r.status} own={prefs.cpp[r.id]} cards={wallet.cards} now={now} />
+              <BalanceRow
+                key={r.id}
+                id={r.id}
+                balance={r.b}
+                cents={r.cents}
+                value={r.value}
+                status={r.status}
+                own={prefs.cpp[r.id]}
+                locked={r.resolved?.locked}
+                cards={wallet.cards}
+                now={now}
+              />
             ))}
           </ul>
         )}
@@ -326,6 +340,7 @@ function BalanceRow({
   value,
   status,
   own,
+  locked,
   cards,
   now,
 }: {
@@ -334,7 +349,10 @@ function BalanceRow({
   cents?: number;
   value: number;
   status: BalanceStatus;
+  /** The user's own value for these points, if they set one. */
   own?: number;
+  /** The wallet earns these points only on cards that can't transfer them yet: they're cash back, and `own` waits. */
+  locked?: LimitedTransfers;
   /** The wallet's cards, for the published median that applies to them. */
   cards: string[];
   now: Date;
@@ -369,7 +387,7 @@ function BalanceRow({
         </p>
         <div className="text-sm">
           {valuing ? (
-            <ValueEditor id={id} current={c} own={own} cards={cards} onDone={() => setValuing(false)} />
+            <ValueEditor id={id} current={locked ? own : c} own={own} locked={locked} cards={cards} onDone={() => setValuing(false)} />
           ) : (
             <p className="text-ink-2">
               {c === undefined ? (
@@ -389,7 +407,13 @@ function BalanceRow({
                     <span className="font-semibold text-ink">{usd(value)}</span>
                   )}
                   <span> at {cents(c)}</span>
-                  {own !== undefined && <span className="ml-1 rounded-full bg-sky px-1.5 py-0.5 text-[11px] font-semibold text-brand">your value</span>}
+                  {locked ? (
+                    <ExplainChip text={locked.note} className="ml-1 bg-canvas px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">
+                      cash back
+                    </ExplainChip>
+                  ) : (
+                    own !== undefined && <span className="ml-1 rounded-full bg-sky px-1.5 py-0.5 text-[11px] font-semibold text-brand">your value</span>
+                  )}
                   <button
                     className="ml-1 inline-grid h-10 w-10 place-items-center rounded text-ink-3 align-middle hover:bg-canvas hover:text-brand sm:h-6 sm:w-6"
                     onClick={() => setValuing(true)}
@@ -401,6 +425,9 @@ function BalanceRow({
                 </>
               )}
             </p>
+          )}
+          {!valuing && locked && own !== undefined && (
+            <p className="text-xs text-ink-3">Your {cents(own)} applies once a card of yours transfers these points.</p>
           )}
         </div>
       </div>
@@ -485,8 +512,23 @@ function EditBalance({ id, balance, todayIso, onDone }: { id: string; balance: P
   );
 }
 
-function ValueEditor({ id, current, own, cards, onDone }: { id: string; current?: number; own?: number; cards: string[]; onDone: () => void }) {
-  // What the balance falls back to without the user's own value: the published median for their cards.
+function ValueEditor({
+  id,
+  current,
+  own,
+  locked,
+  cards,
+  onDone,
+}: {
+  id: string;
+  current?: number;
+  own?: number;
+  locked?: LimitedTransfers;
+  cards: string[];
+  onDone: () => void;
+}) {
+  // What the balance falls back to without the user's own value: the published median for their cards (cash back,
+  // 1¢, while the wallet can't transfer these points; an own value set then applies once it can).
   const median = resolvePointValue(id, { cards })?.cents;
   const [draft, setDraft] = useState(current !== undefined ? String(current) : "");
   const none = median === undefined;
@@ -496,7 +538,7 @@ function ValueEditor({ id, current, own, cards, onDone }: { id: string; current?
       onSubmit={(e) => {
         e.preventDefault();
         const v = Number(draft);
-        strategyPrefs.setCpp(id, Number.isFinite(v) && v > 0 && v !== median ? v : null);
+        strategyPrefs.setCpp(id, Number.isFinite(v) && v > 0 && (locked || v !== median) ? v : null);
         onDone();
       }}
     >
@@ -514,7 +556,25 @@ function ValueEditor({ id, current, own, cards, onDone }: { id: string; current?
       <span className="text-xs text-ink-3">¢/pt</span>
       <button className="btn-primary px-2.5 py-1 text-xs">Save</button>
       {none && <span className="basis-full text-xs text-ink-3">No outlet publishes a value for this one: use what you usually get per point.</span>}
-      {own !== undefined && median !== undefined && (
+      {locked && (
+        <span className="basis-full text-xs text-ink-3">
+          Your cards can&apos;t transfer these points yet, so they count as cash back, 1¢ each. A value you set here applies once a card of yours
+          transfers them.
+        </span>
+      )}
+      {own !== undefined && locked && (
+        <button
+          type="button"
+          className="btn-ghost px-2 py-1 text-xs"
+          onClick={() => {
+            strategyPrefs.setCpp(id, null);
+            onDone();
+          }}
+        >
+          Clear my value
+        </button>
+      )}
+      {own !== undefined && !locked && median !== undefined && (
         <button
           type="button"
           className="btn-ghost px-2 py-1 text-xs"
@@ -588,6 +648,7 @@ function AboutValues({ ids, cards }: { ids: string[]; cards: string[] }) {
                       ))}
                     </ul>
                     {v.note && <p className="mt-1 text-xs text-ink-3">{v.note}</p>}
+                    {r.locked && <p className="mt-1 text-xs text-ink-2">With your cards these count as cash back, 1¢ each, for now: {r.locked.note}</p>}
                   </>
                 ) : r?.basis === "estimate" ? (
                   <p>No outlet we follow publishes a value, so balances use the card data&apos;s estimate of {cents(r.cents)}. Use &ldquo;Set your own&rdquo; next to the balance to change it.</p>

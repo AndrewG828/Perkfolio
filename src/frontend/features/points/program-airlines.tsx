@@ -61,8 +61,9 @@ export function ProgramAirlines({ program }: { program: ProgramRef }) {
           </ul>
         </div>
       ))}
+      {/* Only the caveat's first sentence: its examples of recent members span every alliance, not this program's. */}
       {LIST_CAVEATS.some((c) => /alliance membership/i.test(c)) && (
-        <p className="text-xs leading-relaxed text-ink-3">{LIST_CAVEATS.find((c) => /alliance membership/i.test(c))}</p>
+        <p className="text-xs leading-relaxed text-ink-3">{LIST_CAVEATS.find((c) => /alliance membership/i.test(c))!.split(/(?<=\.)\s/)[0]}</p>
       )}
       <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
         <span className="inline-flex items-center gap-1">

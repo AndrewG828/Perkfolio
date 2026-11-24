@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, SearchX } from "lucide-react";
+import { ChevronDown, Plus, SearchX, SlidersHorizontal } from "lucide-react";
 import { REGIONS, sweetSpots, type Cabin, type Region, type SweetSpot } from "@/shared/data/points";
+import { cn } from "@/shared/lib/format";
 import { SelectField, Segmented, Switch, ToggleChip } from "./controls";
 import { SweetSpotCard } from "./sweet-spot-card";
 import { CABIN_LABEL } from "./ui";
@@ -131,9 +132,25 @@ export function SweetSpotBrowser({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // On phones the filters fold behind one button so the first sweet spots show on the first screen.
+  const [showFilters, setShowFilters] = useState(false);
+  const active = [filters.type !== "all", filters.region !== "all", filters.cabin !== "all", filters.mine, filters.sort !== "featured"].filter(Boolean).length;
+
   return (
     <div className="space-y-6">
-      <div className="panel space-y-4 p-4 md:p-5">
+      <button
+        type="button"
+        className="btn-secondary w-full justify-between sm:hidden"
+        aria-expanded={showFilters}
+        aria-controls="sweet-spot-filters"
+        onClick={() => setShowFilters((o) => !o)}
+      >
+        <span className="inline-flex items-center gap-2">
+          <SlidersHorizontal className="h-4 w-4" aria-hidden /> Filters{active ? ` · ${active} on` : ""}
+        </span>
+        <ChevronDown className={cn("h-4 w-4 transition-transform", showFilters && "rotate-180")} aria-hidden />
+      </button>
+      <div id="sweet-spot-filters" className={cn("panel space-y-4 p-4 md:p-5", !showFilters && "hidden sm:block")}>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <Segmented<SweetSpotFilters["type"]>
             label="Type"

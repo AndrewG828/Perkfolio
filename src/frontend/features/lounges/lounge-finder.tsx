@@ -10,10 +10,12 @@ import { loungeNetworks } from "@/shared/data/networks";
 import {
   accessibleCountByAirport,
   bigAirports,
+  closedCountByAirport,
   loungeCountByAirport,
   loungesAt,
   networksFor,
 } from "@/shared/lib/lounge-access";
+import { openOfLabel } from "@/shared/lib/lounge-directory";
 import { isoDate } from "@/shared/lib/dates";
 import { useHydrated } from "@/frontend/state/wallet-store";
 import { AccessPicker, useAccessSelection } from "./access-picker";
@@ -32,6 +34,8 @@ export function LoungeFinder() {
   const today = hydrated ? isoDate(new Date()) : null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const openAt = useMemo(() => accessibleCountByAirport(access.selected, today), [selectedKey, today]);
+  // Closed lounges aren't counted against your cards: tiles say "5 of 5 open lounges · 1 closed", as airport pages do.
+  const closedAt = useMemo(() => closedCountByAirport(today), [today]);
   const totalOpen = Object.values(openAt).reduce((s, n) => s + n, 0);
   const airportsOpen = Object.keys(openAt).length;
 
@@ -49,7 +53,7 @@ export function LoungeFinder() {
         first, then your access, the big airports, the guest calculator, networks and the directory.
       */}
       <div className="container-page grid grid-cols-1 gap-8 py-10 lg:grid-cols-[320px_1fr]">
-        <div className="contents lg:sticky lg:top-28 lg:block lg:space-y-5 lg:self-start">
+        <div className="aside-sticky contents lg:block lg:space-y-5">
           <div className="order-2">
             <AccessPicker access={access} />
           </div>
@@ -113,7 +117,8 @@ export function LoungeFinder() {
                       <span className="text-ink-2">
                         {checking ? (
                           <>
-                            <strong className={open ? "text-success" : "text-ink-3"}>{open}</strong> of {loungeCountByAirport[a.code]} open to you
+                            <strong className={open ? "text-success" : "text-ink-3"}>{open}</strong>{" "}
+                            {openOfLabel(open, loungeCountByAirport[a.code], closedAt[a.code] ?? 0).replace(/^\d+ /, "")}
                           </>
                         ) : (
                           `${loungeCountByAirport[a.code]} lounges`
@@ -130,7 +135,7 @@ export function LoungeFinder() {
           </section>
 
           <div className="order-6 min-w-0">
-            <AirportDirectory openAt={openAt} checking={checking} carry={access.carry} />
+            <AirportDirectory openAt={openAt} closedAt={closedAt} checking={checking} carry={access.carry} />
           </div>
         </div>
       </div>
@@ -138,7 +143,17 @@ export function LoungeFinder() {
   );
 }
 
-function AirportDirectory({ openAt, checking, carry }: { openAt: Record<string, number>; checking: boolean; carry: string }) {
+function AirportDirectory({
+  openAt,
+  closedAt,
+  checking,
+  carry,
+}: {
+  openAt: Record<string, number>;
+  closedAt: Record<string, number>;
+  checking: boolean;
+  carry: string;
+}) {
   const byRegion = airports
     .filter((a) => loungeCountByAirport[a.code])
     .reduce<Record<string, typeof airports>>((m, a) => {
@@ -163,7 +178,7 @@ function AirportDirectory({ openAt, checking, carry }: { openAt: Record<string, 
                     <span className="w-11 font-semibold text-navy">{a.code}</span>
                     <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{a.city}</span>
                     <span className="text-xs text-ink-3">
-                      {checking ? `${openAt[a.code] ?? 0}/${loungeCountByAirport[a.code]}` : loungeCountByAirport[a.code]}
+                      {checking ? `${openAt[a.code] ?? 0}/${loungeCountByAirport[a.code] - (closedAt[a.code] ?? 0)}` : loungeCountByAirport[a.code]}
                     </span>
                   </Link>
                 ))}

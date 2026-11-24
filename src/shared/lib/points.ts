@@ -1,6 +1,9 @@
 import type { Card } from "@/shared/data/types";
 import { cards as allCards } from "@/shared/data/cards";
 import { cardsEarningIn, currencyOfCard, earnsFully, trimCents, type LimitedTransfers } from "./card-currency";
+import { ratioLabel, ratioOf } from "./ratios";
+import { daysBetween, partnerOn } from "./transfer-dates";
+import { resolvePointValue, type ValueContext } from "./point-value";
 import {
   BANK_CURRENCY_IDS,
   PROGRAM_BRIDGES,
@@ -78,6 +81,8 @@ export {
   type ClassificationRule,
   type LimitedTransfers,
 } from "./card-currency";
+export { effectiveRatio, ratioLabel, ratioOf, wholeRatio } from "./ratios";
+export { daysBetween, localIsoDate, partnerOn } from "./transfer-dates";
 
 
 /** Cards (from the dataset) that earn a program's points directly. */
@@ -156,49 +161,6 @@ export function walletPoints(cardIds: string[], data: PointsData = pointsData): 
 
 // -------------------------------------------------------------------------------------------------------- Transfers
 
-/** Partner points per bank point (1:1 → 1, 2:1.5 → 0.75). */
-export const ratioOf = (p: Pick<TransferPartner, "from" | "to">) => p.to / p.from;
-
-const trim = (n: number) => String(Math.round(n * 100) / 100);
-const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
-
-/**
- * The ratio in smallest whole numbers, so equal rates always read the same: "1:1", "5:4" (also for 1:0.8 and
- * 250:200), "4:3" (also for 2:1.5), "5:8" (1:1.6). Rates that don't reduce to small numbers keep one side at 1
- * ("1:0.67").
- */
-export function ratioLabel(p: Pick<TransferPartner, "from" | "to">): string {
-  return wholeRatio(p, 20) ?? `1:${trim(p.to / p.from)}`;
-}
-
-/**
- * An effective rate written like the pills write ratios: exact when it reduces ("5:2"), else the nearest whole-number
- * ratio within 1% with neither side above 20 (an overall rate through a hotel, 87,500 points for 35,000 miles → "5:2"),
- * else as ratioLabel would ("1:0.37").
- */
-export function effectiveRatio(from: number, to: number): Pick<TransferPartner, "from" | "to"> {
-  if (wholeRatio({ from, to }, 20) || !(from > 0) || !(to > 0)) return { from, to };
-  const r = to / from;
-  let best: { from: number; to: number; err: number } | null = null;
-  for (let a = 1; a <= 20; a++) {
-    for (let b = 1; b <= 20; b++) {
-      const err = Math.abs(b / a - r) / r;
-      if (err <= 0.01 && (!best || err < best.err - 1e-12)) best = { from: a, to: b, err };
-    }
-  }
-  return best ? { from: best.from, to: best.to } : { from, to };
-}
-
-/** `from:to` in smallest whole numbers with neither side above `max`, or null when it doesn't reduce that far. */
-export function wholeRatio(p: Pick<TransferPartner, "from" | "to">, max: number): string | null {
-  for (const scale of [1, 10, 100]) {
-    const [a, b] = [p.from * scale, p.to * scale].map((n) => Math.round(n));
-    if (Math.abs(a - p.from * scale) > 1e-6 || Math.abs(b - p.to * scale) > 1e-6 || a <= 0 || b <= 0) continue;
-    const d = gcd(a, b);
-    if (a / d <= max && b / d <= max) return `${a / d}:${b / d}`;
-  }
-  return null;
-}
 
 /** Partner points you get for a transfer of `bankPoints`. */
 export function partnerPointsFor(p: Pick<TransferPartner, "from" | "to">, bankPoints: number): number {
@@ -440,16 +402,6 @@ export function valueRangeLabel(v: Pick<PointValue, "low" | "high">): string {
 
 // ------------------------------------------------------------------------------------------------ Transfer bonuses
 
-/** The viewer's date as YYYY-MM-DD in their own time zone. Call after hydration (it reads the clock). */
-export function localIsoDate(d: Date = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** Whole days from `fromIso` to `toIso` (both YYYY-MM-DD); negative when `toIso` is earlier. */
-export function daysBetween(fromIso: string, toIso: string): number {
-  const utc = (iso: string) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
-  return Math.round((utc(toIso) - utc(fromIso)) / 86_400_000);
-}
 
 export interface LiveBonus {
   bonus: TransferBonus;
@@ -509,13 +461,15 @@ export function bookingPrograms(airline: Pick<BookableAirline, "bookableWith">, 
 }
 
 /**
- * Programs that can book an airline's award seats. With `cardIds`, the ones the wallet reaches come first. Within each
- * group the airline's own program leads (its ratio is in its own miles, so it can't be compared with another
- * program's: Aeromexico's 1.6 points per Membership Rewards point aren't worth more than Delta's 1:1), then the best
- * ratio, then the programs most banks transfer to. A bridge program (Virgin Red) is folded into the program it books
- * through (Flying Club) when both are listed.
+ * Programs that can book an airline's award seats. With `cardIds`, the ones the wallet reaches come first, the
+ * airline's own program leading, then by what a bank point is worth there: the best ratio times the program's point
+ * value (shared/lib/point-value.ts, with `values`), since ratios are in each program's own miles and can't be compared
+ * on their own (Aeromexico's 1.6 points per Membership Rewards point at 0.8¢ are worth less than Flying Blue's 1:1 at
+ * 1.3¢). Programs with no published value follow, by ratio. Without a wallet: the own program, then the programs most
+ * banks transfer to. A bridge program (Virgin Red) is folded into the program it books through (Flying Club) when both
+ * are listed.
  */
-export function bookingOptionsFor(iata: string, cardIds?: string[], data: PointsData = pointsData): BookingOption[] {
+export function bookingOptionsFor(iata: string, cardIds?: string[], data: PointsData = pointsData, values: ValueContext = {}): BookingOption[] {
   const airline = data.airlines.find((a) => a.iata === iata.toUpperCase());
   if (!airline) return [];
   const reach = cardIds ? new Map(reachablePrograms(cardIds, data).map((r) => [r.program, r])) : null;
@@ -532,10 +486,17 @@ export function bookingOptionsFor(iata: string, cardIds?: string[], data: Points
     }),
   );
   const ratio = (o: BookingOption) => (o.reach?.best ? o.reach.best.ratio : o.reach?.direct.length ? 1 : 0);
+  // Cents a bank point (or a point earned directly) is worth in the program, when the program's points have a value.
+  const worth = (o: BookingOption) => {
+    if (!o.reach) return -1;
+    const cents = resolvePointValue(o.program.id, { own: values.own })?.cents;
+    return cents === undefined ? -1 : ratio(o) * cents;
+  };
   return options.sort(
     (a, b) =>
       Number(Boolean(b.reach)) - Number(Boolean(a.reach)) ||
       Number(b.own) - Number(a.own) ||
+      worth(b) - worth(a) ||
       ratio(b) - ratio(a) ||
       b.sources.length - a.sources.length ||
       a.program.name.localeCompare(b.program.name),
@@ -579,20 +540,6 @@ export function hotelPointsFor(
   return increment ? Math.ceil(points / increment - 1e-9) * increment : points;
 }
 
-/**
- * The transfer as it stands on `today`: from its date, a scheduled ratio change replaces the ratio, becomes the row's
- * change (`changedOn`, its sources first) and stops being "scheduled". The row's note is dropped: it was written before
- * the change ("1:1 for now …"), and the change log keeps the details. Unchanged without `today` (before hydration) or
- * before the date.
- */
-export function partnerOn(p: TransferPartner, today?: string | null): TransferPartner {
-  const s = p.scheduled;
-  if (!today || !s || today < s.date) return p;
-  const dated: TransferPartner = { ...p, from: s.from, to: s.to, changedOn: s.date, sources: Array.from(new Set([...s.sources, ...p.sources])) };
-  delete dated.scheduled;
-  delete dated.note;
-  return dated;
-}
 
 const datedData = new Map<string, PointsData>();
 

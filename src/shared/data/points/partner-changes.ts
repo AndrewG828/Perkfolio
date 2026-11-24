@@ -85,7 +85,7 @@ export const partnerChanges: PartnerChange[] = [
     programName: "Copa ConnectMiles",
     change: "added",
     status: "in effect",
-    detail: "Copa ConnectMiles joined on October 25, 2026 at 1:1 for annual-fee cards and 1,000 → 700 for no-fee cards. Upgraded Points' November 2026 Citi guide lists it.",
+    detail: "Copa ConnectMiles joined on October 25, 2026 at 1:1 for annual-fee cards and 1,000 → 700 for no-fee cards.",
     sources: [
       "https://upgradedpoints.com/news/citi-thankyou-points-copa-airlines-transfers/",
       "https://www.doctorofcredit.com/citi-adds-copa-connectmiles-as-11-transfer-partner/",
@@ -491,7 +491,7 @@ export const partnerChanges: PartnerChange[] = [
     programName: "Most partners (American AAdvantage followed on August 25, 2025)",
     change: "access expanded",
     status: "in effect",
-    detail: "Citi opened nearly all of its partners to no-fee ThankYou cards (Strata, Double Cash, Custom Cash, ThankYou Preferred) at about 70% of the premium rate, usually 1,000 → 700 for airlines. Before this, those cards could reach only Choice, JetBlue and Wyndham (Upgraded Points, July 28, 2025). The Points Guy described 1,000 → 700 as the typical no-fee rate a month later, and both outlets' current Citi guides show the reduced no-fee column. The date is when Upgraded Points first reported the change; no second outlet dates it, though The Points Guy confirmed the 1,000 → 700 no-fee access by August 25, 2025, and its 2024 Double Cash guide confirms the earlier Choice, JetBlue and Wyndham-only list.",
+    detail: "Citi opened nearly all of its partners to no-fee ThankYou cards (Strata, Double Cash, Custom Cash, ThankYou Preferred) at about 70% of the premium rate, usually 1,000 → 700 for airlines. Before this, those cards could reach only Choice, JetBlue and Wyndham. The date is when the change was first reported; the 1,000 → 700 no-fee access was confirmed by August 25, 2025.",
     cards: ["citi-double-cash", "citi-custom-cash"],
     sources: [
       "https://upgradedpoints.com/news/citi-expands-transfer-partners-no-annual-fee-cards/",

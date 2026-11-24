@@ -18,6 +18,8 @@ import { OpenDateRow } from "./open-date-row";
 import { RemindersPanel } from "./reminders-panel";
 import { TrackerTabs } from "./tracker-tabs";
 import { parseWallet } from "@/shared/lib/wallet-schema";
+import { creditPeriodValue, creditPointsLabel } from "@/shared/lib/point-value";
+import { useValueContext } from "@/frontend/state/point-values";
 
 /** Dollars, with cents only when the amount isn't whole (e.g. $12.95). */
 const money = (n: number) => usd(n, { cents: n % 1 !== 0 });
@@ -49,15 +51,19 @@ function TrackerDashboard() {
   const [onboarding, setOnboarding] = useState(false);
   const [now] = useState(() => new Date());
 
+  // Benefits paid in points (Venture X's anniversary miles) are worth what the visitor's points are worth: their own
+  // value from the Points tab, else the published median (shared/lib/point-value.ts), as on every other page.
+  const values = useValueContext();
   const owned = wallet.cards.map(getCard).filter((c): c is Card => Boolean(c));
-  const statuses = owned.flatMap((card) => card.credits.map((credit) => statusFor(card, credit, wallet, now)));
+  const statuses = owned.flatMap((card) => card.credits.map((credit) => statusFor(card, credit, wallet, now, creditPeriodValue(credit, values))));
   const active = statuses.filter((s) => !s.ignored);
 
   const totalFees = owned.reduce((s, c) => s + c.annualFee, 0);
   const captured = active.reduce((s, x) => s + x.ytd, 0);
-  const available = active
-    .filter((s) => s.credit.frequency !== "every-4-years" && s.credit.frequency !== "one-time")
-    .reduce((s, x) => s + x.credit.annualValue, 0);
+  // The yearly total leaves out credits that come once every four years (Global Entry) or once only: the count does too.
+  const yearly = active.filter((s) => s.credit.frequency !== "every-4-years" && s.credit.frequency !== "one-time");
+  const notYearly = active.length - yearly.length;
+  const available = yearly.reduce((s, x) => s + x.annual, 0);
   const expiring = active
     .filter((s) => s.remaining > 0 && s.credit.frequency !== "every-4-years" && s.credit.frequency !== "one-time")
     .sort((a, b) => a.daysLeft - b.daysLeft || b.remaining - a.remaining)
@@ -94,7 +100,7 @@ function TrackerDashboard() {
       captured: rows.reduce((s, r) => s + r.ytd, 0),
       available: rows
         .filter((r) => r.credit.frequency !== "every-4-years" && r.credit.frequency !== "one-time")
-        .reduce((s, r) => s + r.credit.annualValue, 0),
+        .reduce((s, r) => s + r.annual, 0),
     };
   });
 
@@ -138,7 +144,9 @@ function TrackerDashboard() {
           <Stat
             label={`Credits in ${now.getFullYear()}`}
             value={usd(available)}
-            sub={`Across ${active.length} tracked credits; once-every-4-years credits (Global Entry) aren't counted, unlike card pages' yearly figure`}
+            sub={`Across ${yearly.length} tracked credit${yearly.length === 1 ? "" : "s"}${
+              notYearly ? `; ${notYearly} that come${notYearly === 1 ? "s" : ""} once every four years or only once (Global Entry) ${notYearly === 1 ? "isn't" : "aren't"} counted, unlike card pages' yearly figure` : ""
+            }`}
           />
           <Stat label="Cards in wallet" value={String(owned.length)} sub={`${usd(totalFees)} in annual fees`}>
             <button className="btn-secondary mt-4 w-full" onClick={() => setPickerOpen(true)}>
@@ -222,17 +230,17 @@ function TrackerDashboard() {
                   <div>
                     <Meter
                       value={s.used}
-                      max={s.credit.amountPerPeriod}
+                      max={s.amount}
                       tone={s.daysLeft <= 7 ? "warn" : "brand"}
                       label={`${s.credit.name} used this period`}
                     />
                     <p className="mt-1.5 text-xs text-ink-3">
-                      {money(s.used)} of {money(s.credit.amountPerPeriod)} used · {s.periodLabel}
+                      {money(s.used)} of {money(s.amount)} used · {s.periodLabel}
                     </p>
                   </div>
                   <button
                     className="btn-secondary w-full"
-                    onClick={() => walletActions.setUsage(s.card.id, s.credit.id, s.periodKey, s.credit.amountPerPeriod)}
+                    onClick={() => walletActions.setUsage(s.card.id, s.credit.id, s.periodKey, s.amount)}
                   >
                     <CheckCircle2 className="h-4 w-4" /> Mark as used
                   </button>
@@ -246,7 +254,7 @@ function TrackerDashboard() {
         <section className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-semibold text-navy">By card</h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <BackupButtons wallet={wallet} />
               <button className="btn-primary" onClick={() => setPickerOpen(true)}>
                 <Plus className="h-4 w-4" /> Add card
@@ -317,12 +325,15 @@ function Stat({ label, value, sub, children }: { label: string; value: string; s
 
 function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; year: number }) {
   const { card, credit } = s;
+  const values = useValueContext();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const periods = periodsInYear(credit.frequency, year);
   const showHistory = periods.length > 1;
-  const full = s.used >= credit.amountPerPeriod;
+  const full = s.used >= s.amount;
   const recurring = credit.frequency !== "every-4-years" && credit.frequency !== "one-time";
+  // "10,000 miles at 1¢ (your value)": how a benefit paid in points is valued here.
+  const pointsLabel = creditPointsLabel(credit, values);
 
   return (
     <li className={cn("grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center", s.ignored && "opacity-50")}>
@@ -337,13 +348,13 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
           <div className="mt-3 flex flex-wrap gap-1" aria-label={`${credit.name} history for ${year}`}>
             {periods.map((p) => {
               const u = wallet.usage[usageKey(card.id, credit.id, p.key)] ?? 0;
-              const state = u >= credit.amountPerPeriod ? "full" : u > 0 ? "partial" : "none";
+              const state = u >= s.amount ? "full" : u > 0 ? "partial" : "none";
               const current = p.key === s.periodKey;
               return (
                 <button
                   key={p.key}
-                  title={`${p.label}: ${usd(u)} of ${usd(credit.amountPerPeriod)} used — click to toggle`}
-                  onClick={() => walletActions.setUsage(card.id, credit.id, p.key, state === "full" ? 0 : credit.amountPerPeriod)}
+                  title={`${p.label}: ${usd(u)} of ${usd(s.amount)} used — click to toggle`}
+                  onClick={() => walletActions.setUsage(card.id, credit.id, p.key, state === "full" ? 0 : s.amount)}
                   className={cn(
                     "h-6 rounded-[3px] border text-[10px] font-semibold transition-colors",
                     periods.length > 4 ? "w-7" : "w-16",
@@ -363,13 +374,13 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
       <div className="flex flex-wrap items-center gap-3 md:justify-end">
         <div className="w-[180px] text-right">
           <p className="text-sm text-ink-2">
-            <span className="font-semibold text-ink">{money(s.used)}</span> of {money(credit.amountPerPeriod)}
+            <span className="font-semibold text-ink">{money(s.used)}</span> of {money(s.amount)}
           </p>
           <Meter
             className="my-1.5"
             size="sm"
             value={s.ignored ? 0 : s.used}
-            max={credit.amountPerPeriod}
+            max={s.amount}
             tone={full ? "success" : recurring && s.daysLeft <= 7 ? "warn" : "brand"}
             label={`${credit.name} used, ${s.periodLabel}`}
           />
@@ -381,9 +392,10 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
           </p>
           {showHistory && !s.ignored && (
             <p className="text-xs text-ink-3">
-              {money(s.ytd)} of {money(credit.annualValue)} this year
+              {money(s.ytd)} of {money(s.annual)} this year
             </p>
           )}
+          {pointsLabel && <p className="text-xs text-ink-3">{pointsLabel}</p>}
         </div>
         {editing ? (
           <form
@@ -391,7 +403,7 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
             onSubmit={(e) => {
               e.preventDefault();
               const v = Number(draft);
-              if (!Number.isNaN(v)) walletActions.setUsage(card.id, credit.id, s.periodKey, Math.min(v, credit.amountPerPeriod));
+              if (!Number.isNaN(v)) walletActions.setUsage(card.id, credit.id, s.periodKey, Math.min(v, s.amount));
               setEditing(false);
             }}
           >
@@ -400,7 +412,7 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
               type="number"
               min={0}
               step="0.01"
-              max={credit.amountPerPeriod}
+              max={s.amount}
               className="input w-24"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -418,21 +430,24 @@ function CreditRow({ s, wallet, year }: { s: CreditStatus; wallet: WalletState; 
               <button
                 className="btn-primary px-3"
                 disabled={s.ignored}
-                onClick={() => walletActions.setUsage(card.id, credit.id, s.periodKey, credit.amountPerPeriod)}
+                onClick={() => walletActions.setUsage(card.id, credit.id, s.periodKey, s.amount)}
               >
                 <CheckCircle2 className="h-4 w-4" /> Used
               </button>
             )}
-            <button
-              className="btn-secondary px-3"
-              disabled={s.ignored}
-              onClick={() => {
-                setDraft(String(s.used || ""));
-                setEditing(true);
-              }}
-            >
-              Partial
-            </button>
+            {/* Points post as one lump: there's no partial use to enter. */}
+            {!credit.points && (
+              <button
+                className="btn-secondary px-3"
+                disabled={s.ignored}
+                onClick={() => {
+                  setDraft(String(s.used || ""));
+                  setEditing(true);
+                }}
+              >
+                Partial
+              </button>
+            )}
           </>
         )}
         <button

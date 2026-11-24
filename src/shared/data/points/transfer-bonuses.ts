@@ -32,7 +32,7 @@ export const transferBonuses: TransferBonus[] = [
     startsBasis: "first reported",
     ends: "2026-12-10",
     targeted: true,
-    notes: "1,000 points become 1,350 Marriott points. Doctor of Credit describes it as targeted at some members; The Points Guy and Upgraded Points list it without saying so.",
+    notes: "1,000 points become 1,350 Marriott points. It may be targeted: some members may not see it.",
     sources: [
       "https://upgradedpoints.com/news/amex-marriott-bonvoy-transfer-bonus/",
       "https://www.doctorofcredit.com/american-express-transfer-bonus-35-to-marriott-11-35-2/",

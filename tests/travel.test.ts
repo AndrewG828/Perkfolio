@@ -627,7 +627,7 @@ test("guest cost: a lounge's own Priority Pass co-pay, Arlanda's Consumer-only r
   const sfo = atLounge("alaska-lounge-sfo-t1", ["amex-platinum", "chase-sapphire-reserve"], 2);
   assert.equal(sfo.best?.costUsd, 0);
   assert.deepEqual(sfo.best?.copay, { amount: 15, currency: "USD" });
-  assert.equal(costDetail(sfo.best!, 2), "All 2 guests are free · plus the lounge's $15 Priority Pass co-pay");
+  assert.equal(costDetail(sfo.best!, 2), "Both guests are free · plus the lounge's $15 Priority Pass co-pay");
   // Without the co-pay, the same price ranks first.
   const noCopay = { ...sfo.best!, copay: null };
   assert.ok(compareOptions(noCopay, sfo.best!) < 0);

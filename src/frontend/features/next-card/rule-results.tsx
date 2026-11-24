@@ -11,7 +11,7 @@ import { cn } from "@/shared/lib/format";
 export const CERTAINTY_TEXT: Record<ApplicationRule["certainty"], string> = {
   official: "Official: the issuer's own published wording, read on its site.",
   "widely reported":
-    "Widely reported: two or more independent outlets agree on it. Most of these are unwritten rules; a few are the issuer's own wording that we couldn't read on its site. Each rule's details say which.",
+    "Widely reported: two or more independent outlets agree on it. Most of these are unwritten rules; a few are the issuer's own wording as outlets quote it. Each rule's details say which.",
 };
 
 const CERTAINTY_STYLE: Record<ApplicationRule["certainty"], string> = { official: "bg-navy/5 text-navy", "widely reported": "bg-canvas text-ink-2" };

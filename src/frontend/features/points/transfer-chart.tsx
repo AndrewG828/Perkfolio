@@ -22,7 +22,7 @@ import { getCard } from "@/shared/data/cards";
 import { shortCardName } from "@/shared/lib/card-name";
 import { cn, num } from "@/shared/lib/format";
 import { Segmented, Switch } from "./controls";
-import { ALLIANCE_COLOR, CURRENCY_ABBR, CURRENCY_COLOR, Dot, RatioPill, formatDate, monogram, programColor, rulesLine, scheduledLabel, timeLabel } from "./ui";
+import { ALLIANCE_COLOR, CURRENCY_ABBR, CURRENCY_COLOR, Dot, RatioPill, formatDate, monogram, PROGRAM_MARKS, programColor, rulesLine, scheduledLabel, timeLabel } from "./ui";
 import type { WalletReach } from "./use-wallet-reach";
 
 // ------------------------------------------------------------------------------------------------------- Chart data
@@ -246,7 +246,7 @@ function Legend({ personal }: { personal: boolean }) {
       </li>
       {PROGRAM_BRIDGES.map((b) => (
         <li key={b.from} className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-ink-3 uppercase">via {monogram(programName(b.from))}</span> Through {programName(b.from)},
+          <span className="text-[10px] font-semibold text-ink-3 uppercase">via {PROGRAM_MARKS.get(b.from) ?? monogram(programName(b.from))}</span> Through {programName(b.from)},
           which shares {programName(b.to)}&apos;s balance
         </li>
       ))}
@@ -395,7 +395,7 @@ function RatioCell({
         <RatioPill partner={partner} mine={mine} varies={cell.varies} />
         {cell.via && (
           <span className="mt-0.5 block text-[10px] leading-none font-semibold text-ink-3 uppercase" aria-hidden>
-            via {monogram(programName(cell.via))}
+            via {PROGRAM_MARKS.get(cell.via) ?? monogram(programName(cell.via))}
           </span>
         )}
         {/* A scheduled change is marked on the cell itself, not only in its tooltip ("4:3 from Jan 1, 2027"). */}

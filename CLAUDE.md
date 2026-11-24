@@ -126,6 +126,10 @@ The repository's upsert only writes if the stored version equals `base`; the new
   version, base }` and merges with `mergeWallets3(base, local, remote)` from `shared/lib/wallet-merge.ts`.
 - **Account:** `frontend/state/account.ts` (from `/api/me`) and `frontend/components/account-menu.tsx` (sign in/out,
   sync status, Sync now, Delete account).
+- **Bundles:** client islands import data-free helpers (`shared/lib/ratios.ts`, `transfer-dates.ts`,
+  `user-facts.ts`, `account-history.ts`, `features/points/ratio-pill.tsx`), never the Points & Miles index, and the card
+  files name partners from `transfer-routes.ts`; `tests/point-value.test.ts` walks the imports to keep it that way. The
+  dynamic routes export `ensureStatic = "navigation"`, so an unknown id answers 404 on its first request.
 - **Rendering:** anything reading `new Date()` or localStorage renders after hydration (`useHydrated()`), or
   prerendering breaks. `useSearchParams` needs a `<Suspense>` boundary. Filters live in the URL so results can be
   shared: views write them with `history.replaceState` (Start here uses `pushState`, so Back works) and drop values
@@ -142,14 +146,17 @@ The repository's upsert only writes if the stored version equals `base`; the new
   consumer Platinum); a lounge with `cardAccessUnconfirmed` (Plaza Premium First) opens to no card; a `closed` lounge
   (dated `from`/`until`, checked against the visitor's date after hydration) shows "Closed until …" and is left out of
   access counts, nearest lounges and the automatic destination. With no cards to check (an empty wallet), airport pages
-  show every lounge with every card's rules, as the finder does. `airport-geo.ts` has
+  show every lounge and price guests with every card's rules, as the finder does. Tiles, the directory and the concourse
+  overview count open lounges only ("5 of 5 open lounges · 1 closed", `openOfLabel`). `airport-geo.ts` has
   coordinates for the OpenStreetMap embed and `terminalOrder` where natural sorting is wrong (ATL's T, A–F); add both
   for a new airport. The schematic terminal map spaces pins by the gate parsed from `location` ("near gate B18").
 - **Directions:** `shared/data/airport-nav.ts` describes each big airport as zones (gates, checkpoints, airside
   train/walk/bus links with minutes and optional `caution`, landside links); `shared/lib/wayfinding.ts` resolves "I'm
   at gate B18" to a zone, routes with Dijkstra (cautioned links cost extra), falls back to leave → landside → re-clear
   security, and ranks lounges by time (`ownTerminalOnly`: Heathrow, where you can only use your own terminal's lounges;
-  before a gate is given at an airport whose terminals aren't connected, nothing is called "nearest"). An airport whose
+  before a gate is given at an airport with more than one checkpoint, nothing is called "nearest": `nearestNeedsOrigin`).
+  When cards are checked, the automatic destination is only ever a lounge they open (at Heathrow, in your own
+  terminal); with none, there's no destination and the panel says why. An airport whose
   zones have no gate rules (LHR, LGA) asks which terminal a typed gate is in. Add a new lounge's terminal string to a
   zone's `terminals`. Times are estimates; re-verify links when airports announce construction.
 - **Airport map:** `frontend/features/lounges/airport-map.tsx` (SVG, pan/zoom) with the route on top. Geometry comes
@@ -186,11 +193,13 @@ listing that has ended) renders after hydration: `useWalletReach()` returns `tod
   `CASH_ONLY`), `reachablePrograms()`/`sweetSpotsFor()` take the best ratio across currencies, card-specific rows and
   bridges (Virgin Red → Flying Club, `TransferRoute.via`; direct wins a tie), `liveBonuses()` hides a bonus the day
   after it ends, `milesPlan()` lists direct routes then bank → hotel → airline (hotel minimums and steps, bonuses only
-  for their cards and up to their cap), `bookingOptionsFor()` answers who can book an airline, `ratioLabel()` writes
+  for their cards and up to their cap), `bookingOptionsFor()` answers who can book an airline (reachable programs
+  first, the own program leading, then by what a bank point is worth there: ratio × the program's value), `ratioLabel()` writes
   ratios in smallest whole numbers (1:0.8 → "5:4"), `partnerOn()` applies a scheduled ratio from its date.
 - **Photos:** files in `public/photos/`, credits in `photos.ts`. Show one with `PhotoFrame` ("Photo: author · license",
   linked to the source; a region gradient when there's none) or `PhotoAttribution` (title linked to the source, license
-  to its terms), both in `frontend/components/photo-frame.tsx`. Region photos appear on sweet spots, airport photos on
+  to its terms), both in `frontend/components/photo-frame.tsx`. Region photos appear on sweet spots (a landmark photo only on spots that go there:
+  `sweetSpotPhoto()`, `LANDMARK_PLACES` in `points/index.ts`), airport photos on
   their lounge page; `/about#photos` lists every photo a page shows (`shownPhotos()`), so extend it with any new place.
 
 ## Point values
@@ -200,14 +209,19 @@ One value per point, everywhere: every page calls `shared/lib/point-value.ts`, n
   median (`valuations.ts`: the middle of TPG, Upgraded Points and NerdWallet, or the mean of two), else a card file's
   `pointValueCents` only for points no outlet values, else undefined: pages ask for the user's own value
   (`noValueReason()`), never estimate. With `ctx.cards` (the wallet) an outlet's figure for those cards replaces its
-  headline one (`valueForWallet()`: NerdWallet's lower Citi and Chase figures). Results carry `basis` (`own`, `median`,
+  headline one (`valueForWallet()`: NerdWallet's lower Chase figure; its Citi one is in `IGNORED_VARIANTS`, since those
+  wallets' points are locked cash back). Results carry `basis` (`own`, `median`,
   `estimate`, `cash`) and the published figures.
 - `cardPointValue(card, ctx)` counts the card as held: cash back is 1¢ (own values never apply); a `LIMITED` card is
   cash back until `ctx.cards` holds one of its `unlockedBy` cards, then it's worth the currency's value. The currency
   follows the same rule: a bank currency the wallet earns only on locked `LIMITED` cards resolves to 1¢ (`locked`), so
-  the tracker, the deal calculator and card pages agree. A credit paid in points (`Credit.points`, Venture X's
-  anniversary miles) stores its value at the median (a test checks) and `creditValue()`/`annualizedCredits()` value it
-  with the visitor's context. Card classification (`currencyOfCard`, `classifyCard`) lives in `shared/lib/card-currency.ts`
+  the tracker, the deal calculator and card pages agree. Locked comes before the user's own value: theirs applies once a
+  card in the wallet transfers the points (the Points tab says so), and `unlockedValue()` is what they'd be worth then
+  (the card page's "Combined" and the deal calculator's note). A credit paid in points (`Credit.points`, Venture X's
+  anniversary miles; always annual) stores its value at the median (a test checks) and `creditValue()`,
+  `creditPeriodValue()`/`annualizedCredits()` value it with the visitor's context: card pages and tiles through client
+  islands (`credit-values.tsx`, `credits-per-year.tsx`), the tracker through `statusFor(…, amount)`, the next-card
+  ranking through `firstYearValue()`, which leaves out credits that post only at renewal (`Credit.afterRenewal`). Card classification (`currencyOfCard`, `classifyCard`) lives in `shared/lib/card-currency.ts`
   with no Points & Miles data, and point-value imports only the data modules it needs (a test keeps the big ones out).
   `returnPercent()` ranks Which Card? and Start here; `estimateRewards()`, `welcomeValue()`, `firstYearValue()`,
   `rankNextCards({ values })` and `stayPoints({ values })` go through it.
@@ -226,7 +240,7 @@ One value per point, everywhere: every page calls `shared/lib/point-value.ts`, n
   `expiryResumes`, `caveat` and `cardExemption` (no expiry while the user holds the co-brand). `programs.ts` derives the
   program list from the Points & Miles ids (names and units from `program-names.ts`, so the tracker doesn't load the
   guides); a program has a policy, a `missing` entry, or neither when the research didn't cover it (Copa ConnectMiles),
-  and pages then guess no expiry. `programForCard()` follows `currencyOfCard()` for listed cards.
+  and pages then say no policy is confirmed. `programForCard()` follows `currencyOfCard()` for listed cards.
 - **Wallet fields** (optional, `version: 1`, validated in `parseWallet`, merged by `id` in `mergeWallets3`, capped by
   `WALLET_LIMITS`): `applications` (`undefined` = history not set up, so rules that need it are unknown; `[]` = nothing
   to add; `opened`/`closed` as `YYYY-MM` or `YYYY-MM-DD`; `bonusEarned` `YYYY-MM` or `NO_BONUS`, absent = not recorded:
@@ -280,7 +294,7 @@ rewrites these modules in `src/shared/data/points/`; never edit them by hand:
 
 | Dir | Track(s) | Writes |
 | --- | --- | --- |
-| A | `transfers-a`, `transfers-b` | `currencies.ts`, `transfers.ts` |
+| A | `transfers-a`, `transfers-b` | `currencies.ts`, `transfers.ts`, `transfer-routes.ts` (names only, for card data) |
 | A | `programs-air-a`, `programs-air-b`, `programs-hotel` | `programs.ts` |
 | A | `sweet-flights-a`, `sweet-flights-b`, `sweet-hotels` | `sweet-spots.ts` (featured order) |
 | A | `photos.verified.json`, `photos.auto.json` | `photos.ts` |
@@ -335,7 +349,10 @@ scheduled-service airports with an IATA code, biggest first.
 
 Cards live in `src/shared/data/cards/{amex,chase-bilt,other}.ts` (types in `src/shared/data/types.ts`). When editing:
 - keep `lastVerified` current;
-- add earn-rate specs in `src/shared/data/calculator-rates.ts` for new cards, and classify them in `currencyOfCard()`;
+- add earn-rate specs in `src/shared/data/calculator-rates.ts` for new cards (`only` for a rate that holds for some
+  purchases, `brand` for a co-brand's airline or hotel category, which the calculator counts only when the visitor says
+  their spending is with that brand, `chooseOne` for a top-category or pick-one bonus), and classify them in
+  `currencyOfCard()`;
 - `pointValueCents` counts only for points no outlet values, and `welcomeOfferValue` only for offers that can't be
   valued from their points and cash (free nights);
 - a card that earns a bank currency gets `transferPartners: transferPartnerNames("<currency>", "<card id>")`, never a

@@ -1,8 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Info, Plus } from "lucide-react";
+import { useState } from "react";
+import { AlarmClock, ArrowRight, Info, Plus } from "lucide-react";
 import { PROGRAM_BRIDGES, getCurrency, programName } from "@/shared/data/points";
+import { programName as balanceName } from "@/shared/data/strategy/programs";
+import { useWallet } from "@/frontend/state/wallet-store";
+import { useValueContext } from "@/frontend/state/point-values";
+import { resolvePointValue } from "@/shared/lib/point-value";
+import { balanceStatus, ownCardPrograms, pointsValueUsd } from "@/shared/lib/trackers";
+import { formatDate } from "@/shared/lib/dates";
+import { num, usd } from "@/shared/lib/format";
 import { CURRENCY_COLOR, Dot, currencyProse, listJoin } from "./ui";
 import { useWalletReach } from "./use-wallet-reach";
 
@@ -88,11 +96,58 @@ export function WalletPointsSummary() {
           </span>
         </p>
       ))}
+      <WalletBalances />
       {all.length > 0 && (
         <Link href="/points/sweet-spots?mine=1" className="group inline-flex items-center gap-1 text-sm font-semibold text-white hover:underline">
           Sweet spots you can book <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </Link>
       )}
+    </div>
+  );
+}
+
+/**
+ * The balances on the tracker's Points tab, valued like every page values them, with any that expire soon (the same
+ * expiry the tracker dates from the program's policy). Nothing when the tracker has no balances.
+ */
+function WalletBalances() {
+  const wallet = useWallet();
+  const values = useValueContext();
+  const [now] = useState(() => new Date());
+  const entries = Object.entries(wallet.balances ?? {});
+  if (entries.length === 0) return null;
+  const own = ownCardPrograms(wallet);
+  const rows = entries
+    .map(([id, b]) => {
+      const cents = resolvePointValue(id, values)?.cents;
+      const status = balanceStatus(id, b, now, { earningCard: own.open.has(id), closedCardOn: own.closed.get(id) });
+      return { id, points: b.points, usd: cents === undefined ? null : pointsValueUsd(b.points, cents), status };
+    })
+    .sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0));
+  const expiring = rows.filter((r) => r.status.kind === "date" && r.status.expires && r.status.tone && r.status.tone !== "ok");
+  return (
+    <div className="max-w-xl rounded-lg border border-white/15 bg-white/[0.07] p-4 text-sm text-white/85">
+      <p className="font-semibold text-white">Your balances (from the tracker)</p>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        {rows.slice(0, 6).map((r) => (
+          <li key={r.id}>
+            <span className="font-semibold text-white tabular-nums">{num(r.points)}</span> {balanceName(r.id)}
+            {r.usd !== null ? <span className="text-white/70"> · {usd(r.usd)}</span> : null}
+          </li>
+        ))}
+      </ul>
+      {expiring.map((r) => (
+        <p key={r.id} className="mt-2 flex gap-2 text-[#ffd59a]">
+          <AlarmClock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            {num(r.points)} {balanceName(r.id)} {(r.status.daysLeft ?? 0) < 0 ? "expired" : "expire"} {formatDate(r.status.expires!)}
+            {(r.status.daysLeft ?? 0) < 0 ? "" : " unless the account has activity first"}.
+          </span>
+        </p>
+      ))}
+      <Link href="/tracker?tab=points" className="group mt-2 inline-flex items-center gap-1 font-semibold text-white hover:underline">
+        Update balances <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+      </Link>
     </div>
   );
 }

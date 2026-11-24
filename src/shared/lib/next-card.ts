@@ -2,7 +2,7 @@ import type { Card } from "@/shared/data/types";
 import { cards as allCards } from "@/shared/data/cards";
 import type { ApplicationRule } from "@/shared/data/strategy/types";
 import { NEEDS_HISTORY, evaluateCard, historyContext, type CardEligibility, type RuleResult, type UserFacts } from "./eligibility";
-import type { CardPointValue, ValueContext } from "./point-value";
+import { creditValue, type CardPointValue, type ValueContext } from "./point-value";
 import { welcomeValue, type WelcomeOffer } from "./welcome-offer";
 import type { WalletState } from "./wallet";
 
@@ -15,9 +15,9 @@ export interface FirstYearValue {
   welcome: number;
   /** The welcome offer with every tier and add-on (a second spend tier, adding an authorized user). */
   welcomeAll: number;
-  /** Credits the user marked as ones they'd use. */
+  /** Credits the user marked as ones they'd use (in the first year: not the ones that post only at renewal). */
   credits: number;
-  /** Every credit on the card, at face value. */
+  /** Every credit the first year can use, at face value (benefits paid in points at the visitor's value). */
   creditsAvailable: number;
   fee: number;
   /** welcome + credits - fee */
@@ -35,12 +35,14 @@ export const usableKey = (cardId: string, creditId: string) => `${cardId}:${cred
 /**
  * What the first year of a card is worth: welcome offer + the credits the user says they'd use - the annual fee.
  * Welcome points are worth what every other page says they are (shared/lib/point-value.ts: the user's own value, else
- * the published median, with `values.cards` the cards they hold). Credits count at face value for one year. One that
- * renews every four years, or only once, counts in full, since it can be used in year one.
+ * the published median, with `values.cards` the cards they hold), and so are benefits paid in points (creditValue()).
+ * Credits count at face value for one year. One that renews every four years, or only once, counts in full, since it
+ * can be used in year one; one that posts only at renewal (`afterRenewal`: Venture X's anniversary miles) doesn't.
  */
 export function firstYearValue(card: Card, usable: (creditId: string) => boolean, values: ValueContext = {}): FirstYearValue {
-  const creditsAvailable = card.credits.reduce((s, c) => s + c.annualValue, 0);
-  const credits = card.credits.filter((c) => usable(c.id)).reduce((s, c) => s + c.annualValue, 0);
+  const firstYear = card.credits.filter((c) => !c.afterRenewal);
+  const creditsAvailable = firstYear.reduce((s, c) => s + creditValue(c, values), 0);
+  const credits = firstYear.filter((c) => usable(c.id)).reduce((s, c) => s + creditValue(c, values), 0);
   const w = welcomeValue(card, values);
   const fee = card.annualFee;
   return {

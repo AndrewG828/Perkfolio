@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import type { Card } from "@/shared/data/types";
-import { annualizedCreditValue, categoryLabels, rateLabel } from "@/shared/data/cards";
+import { categoryLabels, rateLabel } from "@/shared/data/cards";
 import { usd } from "@/shared/lib/format";
 import { CardArt } from "./card-art";
 import { WalletButton } from "./wallet-button";
 import { CompareToggle } from "./compare-toggle";
+import { CreditsPerYear } from "./credits-per-year";
 
 export function CardTile({ card }: { card: Card }) {
-  const credits = annualizedCreditValue(card);
   // The base rate shows too when it's more than 1x (Double Cash's 2%, Venture X's 2x) or the card has no bonus
   // categories (Active Cash): for a flat-rate card it's the whole point.
   const showBase = card.baseRate > 1 || card.earnRates.length === 0;
@@ -36,7 +36,9 @@ export function CardTile({ card }: { card: Card }) {
           </div>
           <div>
             <dt className="text-xs text-ink-3">Credits / yr</dt>
-            <dd className="font-semibold text-ink">{credits > 0 ? usd(credits) : "—"}</dd>
+            <dd className="font-semibold text-ink">
+              <CreditsPerYear cardId={card.id} />
+            </dd>
           </div>
         </dl>
         <ul className="space-y-1.5 text-sm text-ink-2">

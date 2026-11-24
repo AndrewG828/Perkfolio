@@ -5,7 +5,7 @@ import { useId, useState } from "react";
 import { Calculator, Info, RotateCcw } from "lucide-react";
 import { valuationEditions } from "@/shared/data/points";
 import { judgeRedemption, trimCents, valueRangeLabel, type DealVerdict } from "@/shared/lib/points";
-import { MEDIAN_SOURCE, resolvePointValue, valueSources } from "@/shared/lib/point-value";
+import { MEDIAN_SOURCE, basisLabel, resolvePointValue, unlockedValue, valueSources } from "@/shared/lib/point-value";
 import { Meter, type MeterTone } from "@/frontend/components/meter";
 import { useValueContext } from "@/frontend/state/point-values";
 import { cn, usd } from "@/shared/lib/format";
@@ -48,9 +48,11 @@ export function DealCalculator() {
   const sourceId = picked ?? walletDefault ?? SOURCES[0]?.id ?? OTHER;
   const source = SOURCES.find((s) => s.id === sourceId);
   // What the points are worth everywhere on the site: the user's own value, else the median for the wallet's cards
-  // (NerdWallet's 1.3¢ for Citi cards without a Strata Premier or Elite).
+  // (NerdWallet's 1.4¢ for Chase points with a Sapphire Preferred but no Reserve).
   const resolved = source ? resolvePointValue(source.id, values) : undefined;
   const forCards = resolved?.forCards;
+  // Points the wallet can't transfer yet: what they'd be worth once it can, as the card pages say ("Combined, …").
+  const unlocked = source && resolved?.locked ? unlockedValue(source.id, values) : undefined;
   const median = resolved?.cents;
   const typed = override[sourceId];
   const valueText = typed ?? (median !== undefined ? trimCents(median) : "");
@@ -137,7 +139,7 @@ export function DealCalculator() {
             <span>
               Your cards earn {source.label} but can&apos;t transfer them yet, so they&apos;re worth 1¢ each as cash back.{" "}
               {resolved.locked.note}
-              {forCards ? ` Transferable, they're valued at ${trimCents(forCards.median)}¢ (${EDITION} median).` : ""}
+              {unlocked ? ` Transferable, they're worth ${trimCents(unlocked.cents)}¢ (${unlocked.basis === "own" ? "your value" : basisLabel(unlocked)}).` : ""}
             </span>
           ) : source && forCards ? (
             <span>
@@ -204,7 +206,7 @@ export function DealCalculator() {
             <div className="flex justify-between text-xs text-ink-3">
               <span>0¢</span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-3 w-[2px] rounded-full bg-navy" /> {custom || own ? "Your value" : "Median value"} for {label}:{" "}
+                <span className="inline-block h-3 w-[2px] rounded-full bg-navy" /> {custom || own ? "Your value" : resolved?.locked ? "Cash-back value" : "Median value"} for {label}:{" "}
                 {trimCents(result.baselineCents)}¢
               </span>
             </div>

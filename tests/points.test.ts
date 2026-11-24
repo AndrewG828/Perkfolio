@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import { shownPhotos } from "../src/shared/data/points/shown-photos";
+import { transferRoutes } from "../src/shared/data/points/transfer-routes";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -35,6 +36,7 @@ import {
   programRef,
   regionPhotos,
   sweetSpots,
+  sweetSpotPhoto,
   transferBonuses,
   transferPartnerNames,
   transferPartners,
@@ -102,6 +104,38 @@ test("data modules are generated from research: no seed markers or placeholder t
   for (const f of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
     const text = readFileSync(join(dir, f), "utf8");
     assert.doesNotMatch(text, /SEED DATA|Placeholder/, f);
+  }
+});
+
+test("a landmark region photo heads only the sweet spots that go there", () => {
+  const madrid = sweetSpots.find((s) => s.to === "Europe" && s.destinations.length === 1 && s.destinations[0] === "Madrid");
+  assert.ok(madrid, "a Madrid sweet spot");
+  assert.equal(sweetSpotPhoto(madrid!), undefined, "no Eiffel Tower over Madrid");
+  const paris = sweetSpots.find((s) => s.to === "Europe" && s.destinations.includes("Paris"));
+  assert.equal(sweetSpotPhoto(paris!), regionPhotos.Europe);
+  const usWide = sweetSpots.find((s) => s.to === "United States" && s.destinations.includes("Orlando"));
+  assert.equal(sweetSpotPhoto(usWide!), undefined, "no New York skyline over Orlando and San Antonio");
+  // Every photo the About page credits is one a sweet spot shows.
+  const shown = new Set(sweetSpots.map(sweetSpotPhoto).filter(Boolean));
+  for (const p of shownPhotos().regions) assert.ok(shown.has(p), p.title);
+});
+
+test("the card data's route list is the partner list without ratios (both generated from the same research)", () => {
+  const projection = Array.from(
+    new Map(
+      transferPartners.map((p) => {
+        const r = { currency: p.currency, program: p.program, ...(p.cards ? { cards: p.cards } : {}) };
+        return [JSON.stringify(r), r] as const;
+      }),
+    ).values(),
+  );
+  assert.deepEqual(transferRoutes, projection);
+  // The card files name their partners from it, so they still match the full list.
+  for (const c of cards) {
+    const p = currencyOfCard(c);
+    if (p?.kind !== "currency" || !c.transferPartners) continue;
+    const ids = new Set(transferPartners.filter((t) => t.currency === p.currency && (!t.cards || t.cards.includes(c.id))).map((t) => t.program));
+    assert.equal(c.transferPartners.length, ids.size, c.id);
   }
 });
 
@@ -696,6 +730,18 @@ test("who can book: an airline's programs, with the wallet's best routes first",
     const own = opts.find((o) => o.own);
     if (own?.reach) assert.equal(opts[0], own, `${iata}: ${opts[0].program.id} first`);
   }
+  // After the own program, what a bank point is worth there (ratio × the program's value), not the raw ratio: at
+  // Korean Air, Flying Blue's 1:1 at 1.3¢ beats Aeromexico's 5:8 at 0.8¢, with or without a wallet.
+  const worth = (o: (typeof ana)[number]) => (o.reach?.best?.ratio ?? 1) * (resolvePointValue(o.program.id)?.cents ?? 0);
+  for (const iata of ["KE", "AR", "MU", "SK", "SV", "UX", "VN", "DL", "AF", "VS"]) {
+    const opts = bookingOptionsFor(iata, ["amex-platinum"]).filter((o) => o.reach && !o.own);
+    for (let i = 1; i < opts.length; i++) {
+      if (resolvePointValue(opts[i].program.id) && resolvePointValue(opts[i - 1].program.id)) {
+        assert.ok(worth(opts[i - 1]) >= worth(opts[i]) - 1e-9, `${iata}: ${opts[i - 1].program.id} before ${opts[i].program.id}`);
+      }
+    }
+  }
+  assert.equal(bookingOptionsFor("KE", ["amex-platinum"])[0].program.id, bookingOptionsFor("KE")[0].program.id, "cards don't flip Korean Air's top pick");
   // Program side: Copa books Copa (its own airline first).
   assert.equal(airlinesBookableWith("copa-connectmiles")[0]?.iata, "CM");
   for (const a of bookableAirlines) for (const p of a.bookableWith) assert.ok(airlinesBookableWith(p).includes(a));

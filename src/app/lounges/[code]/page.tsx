@@ -10,6 +10,10 @@ import { cn } from "@/shared/lib/format";
 import { AirportView } from "@/frontend/features/lounges/airport-view";
 import { AirportPhoto } from "@/frontend/features/lounges/airport-photo";
 
+// An unknown id must answer 404 on its first request too: wait for the complete static page (which calls notFound())
+// instead of streaming the route's shell with a 200 first (ISR with Cache Components serves unlisted params that way).
+export const ensureStatic = "navigation";
+
 export function generateStaticParams() {
   return airports.filter((a) => loungeCountByAirport[a.code]).map((a) => ({ code: a.code }));
 }

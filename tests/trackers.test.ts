@@ -305,8 +305,8 @@ test("inactivity programs whose research narrows or disputes what counts as acti
   assert.match(caveat("finnair-plus"), /British Airways Club/);
   assert.match(caveat("air-france-klm-flying-blue"), /co-brand card/);
   // Aeroméxico's "doesn't expire" rests on its card terms and TPG; Upgraded Points still gives 24 months.
-  assert.match(caveat("aeromexico-rewards"), /Upgraded Points still describes a 24-month/);
-  assert.match(expirationPolicies.programs.find((p) => p.id === "aeromexico-rewards")?.notes ?? "", /Upgraded Points' 2026 earning and redemption guides/);
+  assert.match(caveat("aeromexico-rewards"), /one report still describes a 24-month/);
+  assert.match(expirationPolicies.programs.find((p) => p.id === "aeromexico-rewards")?.notes ?? "", /Some 2026 guides still give a 24-month inactivity rule/);
 });
 
 test("anniversary credits count from the card history's open date when none is entered on the tracker", async () => {
@@ -332,6 +332,13 @@ test("anniversary credits count from the card history's open date when none is e
   const exact = statusFor(vx, miles, { ...used, openDates: { [vx.id]: "2025-08-15" } }, now);
   assert.equal(exact.openMonthOnly, false);
   assert.equal(exact.used, miles.amountPerPeriod);
+  // The calendar export dates them the same way: the card year from Aug 1, reminded 30 days before, not "reset Jan 1".
+  const { buildCalendar } = await import("../src/frontend/lib/ics");
+  // (Lines are folded at 75 octets: unfold them first.)
+  const ics = buildCalendar([vx], history, now).replace(/\r\n /g, "");
+  assert.match(ics, /reset on your card anniversary/);
+  assert.doesNotMatch(ics, /reset Jan 1/);
+  assert.match(ics, /DTSTART;VALUE=DATE:20270702/, "30 days before Aug 1, 2027");
   // A closed account or an authorized-user card doesn't set the date.
   assert.equal(openDateFor(vx, { ...base, applications: [{ id: "a2", issuer: "Capital One", cardId: vx.id, opened: "2025-08", business: false, closed: "2026-01" }] }), null);
   assert.equal(openDateFor(vx, { ...base, applications: [{ id: "a3", issuer: "Capital One", cardId: vx.id, opened: "2025-08", business: false, authorizedUser: true }] }), null);

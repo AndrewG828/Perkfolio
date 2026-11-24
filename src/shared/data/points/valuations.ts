@@ -276,7 +276,7 @@ export const pointValues: PointValue[] = [
         url: "https://thepointsguy.com/loyalty-programs/monthly-valuations/",
       },
     ],
-    note: "Single outlet (TPG); Upgraded Points and NerdWallet do not list Aeromexico.",
+    note: "Only The Points Guy publishes a value for these points.",
     sources: ["https://thepointsguy.com/loyalty-programs/monthly-valuations/"],
   },
   {
@@ -696,7 +696,7 @@ export const pointValues: PointValue[] = [
         url: "https://upgradedpoints.com/travel/points-and-miles-valuations/",
       },
     ],
-    note: "Single outlet (Upgraded Points); TPG and NerdWallet do not list JAL.",
+    note: "Only Upgraded Points publishes a value for these points.",
     sources: ["https://upgradedpoints.com/travel/points-and-miles-valuations/"],
   },
   {
@@ -746,7 +746,7 @@ export const pointValues: PointValue[] = [
         method: "Points Path award-search data",
       },
     ],
-    note: "Single outlet (TPG, up from 1.25 in its previous edition); Upgraded Points and NerdWallet do not list Qantas.",
+    note: "Only The Points Guy publishes a value for these points (up from 1.25 in its previous edition).",
     sources: ["https://thepointsguy.com/loyalty-programs/monthly-valuations/"],
   },
   {
@@ -1184,7 +1184,7 @@ export const pointValues: PointValue[] = [
         url: "https://upgradedpoints.com/travel/points-and-miles-valuations/",
       },
     ],
-    note: "Single outlet; Upgraded Points labels it 'Preferred Hotels & Resorts I Prefer points'.",
+    note: "Only Upgraded Points publishes a value for these points, as 'Preferred Hotels & Resorts I Prefer points'.",
     sources: ["https://upgradedpoints.com/travel/points-and-miles-valuations/"],
   },
 ];

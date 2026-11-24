@@ -1,5 +1,5 @@
 import { BedDouble, Plane } from "lucide-react";
-import { regionPhoto, sweetSpots, type Region } from "@/shared/data/points";
+import { sweetSpotPhoto, sweetSpots, type Region } from "@/shared/data/points";
 import { PhotoFrame } from "@/frontend/components/photo-frame";
 
 /**
@@ -9,7 +9,7 @@ import { PhotoFrame } from "@/frontend/components/photo-frame";
  */
 export function PostcardStack() {
   const seen = new Set<Region>();
-  const photo = (s: (typeof sweetSpots)[number]) => Boolean(regionPhoto(s.to));
+  const photo = (s: (typeof sweetSpots)[number]) => Boolean(sweetSpotPhoto(s));
   const abroad = (s: (typeof sweetSpots)[number]) => s.to !== "United States";
   const picks = [
     ...sweetSpots.filter((s) => photo(s) && abroad(s)),
@@ -27,7 +27,7 @@ export function PostcardStack() {
   ];
 
   // The cards overlap, so their credits go in one line under the stack, where none is covered.
-  const credits = picks.map((s) => regionPhoto(s.to)).filter((p) => p !== undefined);
+  const credits = picks.map((s) => sweetSpotPhoto(s)).filter((p) => p !== undefined);
   return (
     <figure className="mx-auto w-full max-w-[540px]">
       <div className="relative aspect-[3/2] w-full">
@@ -38,7 +38,7 @@ export function PostcardStack() {
             style={{ left: layout[i].left, top: layout[i].top, transform: `rotate(${layout[i].rotate}deg)`, zIndex: i + 1 }}
           >
             <PhotoFrame
-              photo={regionPhoto(s.to)}
+              photo={sweetSpotPhoto(s)}
               region={s.to}
               label={s.to}
               sublabel={s.destinations[0]}

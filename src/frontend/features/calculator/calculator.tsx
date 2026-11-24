@@ -5,8 +5,8 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Info } from "lucide-react";
 import type { Card } from "@/shared/data/types";
-import { cards, categoryLabels } from "@/shared/data/cards";
-import { SPEND_CATEGORIES, estimateRewards, type SpendCategory } from "@/shared/data/calculator-rates";
+import { cards, categoryLabels, rateLabel } from "@/shared/data/cards";
+import { SPEND_CATEGORIES, estimateRewards, isBrandOnly, rateCondition, rateFor, type SpendCategory } from "@/shared/data/calculator-rates";
 import { CardArt } from "@/frontend/components/card-art";
 import { useWallet } from "@/frontend/state/wallet-store";
 import { useValueContext } from "@/frontend/state/point-values";
@@ -39,6 +39,9 @@ export function Calculator() {
     return share === undefined ? 60 : Math.round(share * 100);
   });
   const [includeBonus, setIncludeBonus] = useState(false);
+  // A co-brand card's bonus on flights or hotels counts only on that airline's or chain's purchases: off by default,
+  // those categories earn the card's base rate.
+  const [brand, setBrand] = useState(false);
   const [scope, setScope] = useState<"all" | "wallet" | "premium-travel" | "travel" | "cash-back">("all");
 
   const results = useMemo(() => {
@@ -46,13 +49,13 @@ export function Calculator() {
     return cards
       .filter((c) => (scope === "all" ? c.category !== "business" : scope === "wallet" ? wallet.cards.includes(c.id) : c.category === scope))
       .map((card) => {
-        const { points, value, breakdown } = estimateRewards(card, annualSpend, portal, values);
+        const { points, value, breakdown } = estimateRewards(card, annualSpend, portal, values, { brand });
         const credits = annualizedCredits(card, values) * (utilization / 100);
         const bonus = includeBonus ? welcomeValue(card, values).usd : 0;
-        return { card, points, rewards: value, credits, bonus, breakdown, net: value + credits + bonus - card.annualFee };
+        return { card, points, rewards: value, credits, bonus, breakdown, conditions: conditionsFor(card, breakdown, portal), net: value + credits + bonus - card.annualFee };
       })
       .sort((a, b) => b.net - a.net);
-  }, [spend, portal, utilization, includeBonus, scope, wallet.cards, values]);
+  }, [spend, portal, utilization, includeBonus, brand, scope, wallet.cards, values]);
 
   const totalMonthly = Object.values(spend).reduce((a, b) => a + b, 0);
   const max = Math.max(1, ...results.map((r) => r.net));
@@ -60,7 +63,7 @@ export function Calculator() {
   return (
     <div className="bg-canvas">
       <div className="container-page grid gap-8 py-10 lg:grid-cols-[360px_1fr]">
-        <aside className="panel h-fit space-y-6 p-6 lg:sticky lg:top-28">
+        <aside className="panel h-fit space-y-6 p-6 lg:sticky lg:top-28 lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto lg:overscroll-contain">
           <div>
             <h2 className="font-semibold text-navy">Monthly spending</h2>
             <p className="text-sm text-ink-3">{usd(totalMonthly)}/mo · {usd(totalMonthly * 12)}/yr</p>
@@ -106,6 +109,13 @@ export function Calculator() {
             <label className="flex items-center gap-2 text-sm font-medium text-ink">
               <input type="checkbox" className="h-4 w-4 accent-[var(--color-brand)]" checked={portal} onChange={(e) => setPortal(e.target.checked)} />
               I book travel through card portals
+            </label>
+            <label className="flex items-start gap-2 text-sm font-medium text-ink">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-brand)]" checked={brand} onChange={(e) => setBrand(e.target.checked)} />
+              <span>
+                My flights and hotels are with the card&apos;s own airline or hotel chain
+                <span className="block text-xs font-normal text-ink-3">Co-brand bonuses (United&apos;s 5x on United purchases, say) count only then.</span>
+              </span>
             </label>
             <label className="flex items-center gap-2 text-sm font-medium text-ink">
               <input type="checkbox" className="h-4 w-4 accent-[var(--color-brand)]" checked={includeBonus} onChange={(e) => setIncludeBonus(e.target.checked)} />
@@ -163,19 +173,47 @@ export function Calculator() {
                     <Cell label={includeBonus ? "Net yr 1" : "Net / yr"} value={usd(r.net)} strong tone={r.net >= 0 ? "pos" : "neg"} />
                   </dl>
                 </div>
+                {r.conditions.length > 0 && (
+                  <ul className="mt-3 space-y-0.5 border-t border-line pt-2 text-xs text-ink-3 sm:pl-11">
+                    {r.conditions.map((c) => (
+                      <li key={c}>{c}</li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ol>
           <p className="flex gap-2 text-xs leading-relaxed text-ink-3">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             Points are valued at {MEDIAN_SOURCE}, or at your own value from the tracker&apos;s Points tab; cash back counts at face
-            value. Estimates ignore spending caps beyond those noted on each card. Credits are counted at face value × your
-            utilization. Real results depend on how you redeem.
+            value. Estimates ignore spending caps beyond those noted on each card. A rate that holds only for some purchases says
+            so under its card, and a co-brand airline or hotel bonus counts only when you tick that your spending is with that
+            brand. Credits are counted at face value × your utilization (benefits paid in points at their point value). Real
+            results depend on how you redeem.
           </p>
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * The conditions behind a card's estimate, for the categories with spending: "Flights at 1x: the 5x is for United
+ * purchases only" when a co-brand bonus isn't counted, else "Flights at 5x: United purchases only".
+ */
+function conditionsFor(card: Card, breakdown: { cat: SpendCategory; rate: number }[], portal: boolean): string[] {
+  return breakdown.flatMap(({ cat, rate }) => {
+    const condition = rateCondition(card, cat, portal);
+    if (!condition) return [];
+    const label = SPEND_CATEGORIES.find((c) => c.id === cat)?.label ?? cat;
+    const full = rateFor(card, cat, portal);
+    if (rate < full) {
+      return isBrandOnly(card, cat)
+        ? [`${label} at ${rateLabel(card, rate)}: the ${rateLabel(card, full)} is for ${condition.replace(/ only$/, "")} only`]
+        : [`${label} at ${rateLabel(card, rate)}: ${condition}, and another category earns more for your spending`];
+    }
+    return [`${label} at ${rateLabel(card, full)}: ${condition}`];
+  });
 }
 
 function Cell({ label, value, strong, tone }: { label: string; value: string; strong?: boolean; tone?: "pos" | "neg" }) {

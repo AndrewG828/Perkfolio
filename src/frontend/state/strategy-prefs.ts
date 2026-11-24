@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { UserFact } from "@/shared/data/strategy/types";
-import { USER_FACTS, type UserFacts } from "@/shared/lib/eligibility";
+import { USER_FACTS, type UserFacts } from "@/shared/lib/user-facts";
 
 /**
  * Small per-browser preferences for the points tracker and the next-card ranking, kept in localStorage
@@ -10,7 +10,7 @@ import { USER_FACTS, type UserFacts } from "@/shared/lib/eligibility";
  * - `cpp`: the user's own cents-per-point for a program, overriding the published median on every page (read through
  *   useValueContext() in ./point-values.ts and shared/lib/point-value.ts);
  * - `usable`: credits on cards they don't have yet that they'd actually use, keyed `${cardId}:${creditId}`;
- * - `facts`: answers to the questions some issuer rules depend on (USER_FACTS in shared/lib/eligibility), like
+ * - `facts`: answers to the questions some issuer rules depend on (USER_FACTS in shared/lib/user-facts), like
  *   whether they have a Bank of America deposit account.
  */
 export interface StrategyPrefs {

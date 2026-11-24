@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowDownWideNarrow, ChevronDown, Search } from "lucide-react";
+import { ArrowDownWideNarrow, ChevronDown, Search, SlidersHorizontal } from "lucide-react";
 import {
   ALLIANCES,
   BOOKING_RULE_KEYS,
@@ -103,15 +103,20 @@ export function filterRules(f: RuleFilters): Row[] {
   const days = (r: Row) => r.rules.bookingWindowDays ?? -1;
   // A program that uses another's rules (Virgin Red) has nothing of its own to rank, so it goes last.
   const borrowed = (r: Row) => Number(Boolean(r.rules.sameAs));
-  const byWindow = f.sort === "window" && f.cols.includes("bookingWindowDays");
+  // With no confirmed window among the programs shown, the window can't order them: most rules confirmed instead.
+  const byWindow = f.sort === "window" && f.cols.includes("bookingWindowDays") && windowsShown(out);
   return out.sort((a, b) =>
     byWindow
       ? borrowed(a) - borrowed(b) || days(b) - days(a) || a.name.localeCompare(b.name)
-      : f.sort === "known"
+      : f.sort === "known" || f.sort === "window"
         ? borrowed(a) - borrowed(b) || b.known - a.known || a.name.localeCompare(b.name)
         : a.name.localeCompare(b.name),
   );
 }
+
+/** True when any of these programs has a confirmed booking window (so sorting by it means something). */
+const windowsShown = (rows: { rules: { bookingWindowDays?: number | null; sameAs?: unknown } }[]) =>
+  rows.some((r) => !r.rules.sameAs && typeof r.rules.bookingWindowDays === "number");
 
 /**
  * Programs × booking rules. md+: a table (first column sticky, scrolls sideways inside its panel); phones: one card
@@ -133,6 +138,10 @@ export function BookingRulesMatrix({ filters = DEFAULT_RULE_FILTERS, onChange }:
     onChange?.({ cols: next.length ? next : [k] });
   };
   const unknownCount = rows.filter((r) => !r.rules.sameAs).reduce((n, r) => n + cols.filter((k) => ruleText(r.rules, k) === null).length, 0);
+  const noWindows = filters.sort === "window" && rows.length > 0 && !windowsShown(rows);
+  // On phones the sort, alliance and rule choices fold behind one button, so the programs start on the first screen.
+  const [more, setMore] = useState(false);
+  const moreOn = [filters.alliance !== "all", filters.sort !== "known", cols.length < BOOKING_RULE_KEYS.length].filter(Boolean).length;
 
   return (
     <div className="space-y-5">
@@ -152,19 +161,34 @@ export function BookingRulesMatrix({ filters = DEFAULT_RULE_FILTERS, onChange }:
               />
             </span>
           </label>
-          <SelectField<RuleFilters["sort"]>
-            id="rules-sort"
-            label="Sort"
-            value={filters.sort}
-            onChange={onChange && ((sort) => onChange({ sort }))}
-            options={[
-              { value: "known", label: "Most rules confirmed" },
-              { value: "window", label: "Longest booking window" },
-              { value: "name", label: "Program name" },
-            ]}
-            className="w-full sm:w-56"
-          />
+          <div className={cn("w-full sm:block sm:w-56", !more && "hidden")}>
+            <SelectField<RuleFilters["sort"]>
+              id="rules-sort"
+              label="Sort"
+              value={filters.sort}
+              onChange={onChange && ((sort) => onChange({ sort }))}
+              options={[
+                { value: "known", label: "Most rules confirmed" },
+                { value: "window", label: "Longest booking window" },
+                { value: "name", label: "Program name" },
+              ]}
+              className="w-full"
+            />
+          </div>
         </div>
+        <button
+          type="button"
+          className="flex min-h-10 w-full items-center justify-between text-sm font-semibold text-brand sm:hidden"
+          aria-expanded={more}
+          aria-controls="rules-more"
+          onClick={() => setMore((o) => !o)}
+        >
+          <span className="inline-flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4" aria-hidden /> Sort, alliance and rules{moreOn ? ` · ${moreOn} changed` : ""}
+          </span>
+          <ChevronDown className={cn("h-4 w-4 transition-transform", more && "rotate-180")} aria-hidden />
+        </button>
+        <div id="rules-more" className={cn("space-y-4 sm:block", !more && "hidden")}>
         <Segmented<RuleFilters["alliance"]>
           label="Alliance"
           value={filters.alliance}
@@ -184,6 +208,7 @@ export function BookingRulesMatrix({ filters = DEFAULT_RULE_FILTERS, onChange }:
             </ToggleChip>
           ))}
         </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-ink-2" aria-live="polite">
@@ -196,6 +221,7 @@ export function BookingRulesMatrix({ filters = DEFAULT_RULE_FILTERS, onChange }:
             </>
           )}{" "}
           · <abbr title="The Points Guy">TPG</abbr> = The Points Guy, <abbr title="Upgraded Points">UP</abbr> = Upgraded Points
+          {noWindows && <span className="block text-ink-3">None of these programs has a confirmed booking window, so they&apos;re sorted by rules confirmed.</span>}
         </p>
         {onChange && (filters.q || filters.alliance !== "all" || filters.sort !== "known" || cols.length < BOOKING_RULE_KEYS.length) && (
           <button type="button" className="font-semibold text-brand hover:underline" onClick={() => onChange(DEFAULT_RULE_FILTERS)}>

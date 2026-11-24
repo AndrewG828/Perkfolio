@@ -56,3 +56,11 @@ export function terminalsAt(code: string): TerminalGroup[] {
       ),
     }));
 }
+
+/**
+ * "5 of 5 open lounges · 1 closed": what a visitor's cards open at an airport (or in a terminal), out of the lounges
+ * open today, as the airport page counts them, so a tile never reads as if a closed lounge turned the cards away.
+ */
+export function openOfLabel(open: number, total: number, closed: number): string {
+  return closed > 0 ? `${open} of ${total - closed} open lounges · ${closed} closed` : `${open} of ${total} open to you`;
+}

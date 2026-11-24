@@ -96,7 +96,12 @@ function BonusCard({ live, yours, compact }: { live: LiveBonus; yours: boolean; 
       <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
         {yours && <span className="rounded-full bg-brand px-2 py-0.5 text-white">You earn {currency?.shortName}</span>}
         {bonus.targeted && <span className="rounded-full bg-warn/12 px-2 py-0.5 text-warn">Targeted: check your account</span>}
-        {cards.length > 0 && <span className="rounded-full bg-canvas px-2 py-0.5 text-ink-2">{listJoin(cards)} only</span>}
+        {/* The rate above is for these cards; a note says what others get (Citi's no-fee cards, at their own rate). */}
+        {cards.length > 0 && (
+          <span className="rounded-full bg-canvas px-2 py-0.5 text-ink-2">
+            {num(1000)} → {num(partnerPointsFor(bonus, 1000))} with {listJoin(cards)}
+          </span>
+        )}
         {bonus.startsBasis === "first reported" && live.started && (
           <span className="rounded-full bg-canvas px-2 py-0.5 font-medium text-ink-3">First reported {formatDate(bonus.starts)}</span>
         )}

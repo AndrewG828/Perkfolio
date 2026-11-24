@@ -12,7 +12,8 @@ import { programUnit } from "@/shared/data/strategy/programs";
 import type { UserFact } from "@/shared/data/strategy/types";
 import { NEEDS_HISTORY, USER_FACTS, chase524, historyContext, type RuleResult } from "@/shared/lib/eligibility";
 import { NEXT_CARD_SCOPES, byRankValue, rankNextCards, usableKey, type Candidate, type NextCardScope } from "@/shared/lib/next-card";
-import { MEDIAN_SOURCE, basisLabel, formatCents } from "@/shared/lib/point-value";
+import { MEDIAN_SOURCE, basisLabel, creditValue, formatCents } from "@/shared/lib/point-value";
+import { useValueContext } from "@/frontend/state/point-values";
 import { frequencyShort } from "@/shared/lib/periods";
 import { cn, num, usd } from "@/shared/lib/format";
 import { ApplicationsEditor } from "./applications-editor";
@@ -181,7 +182,7 @@ function NextCardDashboard() {
           )}
         </div>
 
-        <aside className="order-2 space-y-5 lg:sticky lg:top-28 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
+        <aside className="aside-sticky order-2 space-y-5 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <FiveTwentyFourPanel status={counter} today={now} collapsible />
           <AboutYou asked={asked} relevant={relevant} />
           <HowWeCheck className="hidden lg:block" />
@@ -253,8 +254,8 @@ function HowWeCheck({ className }: { className?: string }) {
         <li>
           <CertaintyChip certainty="widely reported" explain={false} /> rules are ones two or more independent outlets (The Points
           Guy, Upgraded Points, NerdWallet, Doctor of Credit) agree on. Most are unwritten rules; a few are the issuer&apos;s own
-          wording that we couldn&apos;t read on its site, like Amex&apos;s Platinum, Gold and Blue Cash offer terms. Each
-          rule&apos;s details say which.
+          wording as outlets quote it, like Amex&apos;s Platinum, Gold and Blue Cash offer terms. Each rule&apos;s details say
+          which.
         </li>
         <li>Soft limits are tendencies, not cutoffs, and so is a bonus the issuer says it &quot;may&quot; withhold: those show as warnings, not blocks.</li>
       </ul>
@@ -554,7 +555,9 @@ function Toggle({ open, onClick, children }: { open: boolean; onClick: () => voi
 
 function CreditPicker({ c, usable }: { c: Candidate; usable: Record<string, true> }) {
   const { card } = c;
-  const all = card.credits.map((x) => x.id);
+  const values = useValueContext();
+  // Credits that post only at renewal (Venture X's anniversary miles) can't be used in the first year.
+  const all = card.credits.filter((x) => !x.afterRenewal).map((x) => x.id);
   const marked = all.filter((id) => usable[usableKey(card.id, id)]);
   return (
     <div className="border-t border-line bg-canvas/40 px-5 py-4">
@@ -572,6 +575,17 @@ function CreditPicker({ c, usable }: { c: Candidate; usable: Record<string, true
       <ul className="grid gap-2 sm:grid-cols-2">
         {card.credits.map((credit) => {
           const on = Boolean(usable[usableKey(card.id, credit.id)]);
+          const yearly = usd(creditValue(credit, values));
+          if (credit.afterRenewal) {
+            return (
+              <li key={credit.id} className="flex items-start gap-3 rounded-md border border-dashed border-line bg-white/60 p-3 text-sm">
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-ink-2">{credit.name}</span>
+                  <span className="text-xs text-ink-3">{yearly} a year from the first renewal, so it isn&apos;t counted in the first year</span>
+                </span>
+              </li>
+            );
+          }
           return (
             <li key={credit.id}>
               <label
@@ -590,12 +604,12 @@ function CreditPicker({ c, usable }: { c: Candidate; usable: Record<string, true
                   <span className="block font-medium text-ink">{credit.name}</span>
                   <span className="text-xs text-ink-3">
                     {credit.frequency === "every-4-years"
-                      ? `${usd(credit.annualValue)} once every 4 years`
+                      ? `${yearly} once every 4 years`
                       : credit.frequency === "one-time"
-                        ? `${usd(credit.annualValue)} one time`
+                        ? `${yearly} one time`
                         : credit.frequency === "annual"
-                          ? `${usd(credit.annualValue)} a year`
-                          : `${usd(credit.amountPerPeriod, { cents: credit.amountPerPeriod % 1 !== 0 })}${frequencyShort[credit.frequency]} · ${usd(credit.annualValue)} a year`}
+                          ? `${yearly} a year`
+                          : `${usd(credit.amountPerPeriod, { cents: credit.amountPerPeriod % 1 !== 0 })}${frequencyShort[credit.frequency]} · ${yearly} a year`}
                   </span>
                 </span>
               </label>

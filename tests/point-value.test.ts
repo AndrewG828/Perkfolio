@@ -8,12 +8,17 @@ import { hotelEarning } from "../src/shared/data/travel/hotel-earning";
 import { pointValues, unvaluedIds, type PointValue } from "../src/shared/data/points";
 import { estimateRewards } from "../src/shared/data/calculator-rates";
 import { classifyCard, currencyOfCard } from "../src/shared/lib/points";
+import { cardsEarningIn, earnsFully } from "../src/shared/lib/card-currency";
+import { statusFor } from "../src/shared/lib/credit-status";
 import {
   MEDIAN_SOURCE,
   annualizedCredits,
   basisLabel,
   cardPointValue,
+  creditPeriodValue,
   creditValue,
+  IGNORED_VARIANTS,
+  unlockedValue,
   formatCents,
   noValueReason,
   resolvePointValue,
@@ -100,8 +105,10 @@ test("cash back counts at face value, and cards that need another card to transf
 
 test("an outlet's figure for the wallet's cards replaces its headline one, like the deal calculator always did", () => {
   const citi = published("citi-typ");
-  assert.equal(valueForWallet(citi, ["citi-double-cash"]).median, 1.6, "NerdWallet's 1.3¢ for other Citi cards");
-  assert.equal(valueForWallet(citi, ["citi-double-cash"]).variant?.cents, 1.3);
+  // NerdWallet's 1.3¢ for "other Citi cards" never applies: those cards' points are cash back until pooled with a
+  // Strata card, and then the headline figure does (IGNORED_VARIANTS).
+  assert.equal(valueForWallet(citi, ["citi-double-cash"]).median, citi.median);
+  assert.equal(valueForWallet(citi, ["citi-double-cash"]).variant, undefined);
   assert.equal(valueForWallet(citi, ["citi-strata-premier", "citi-double-cash"]).median, citi.median);
   assert.equal(valueForWallet(citi, []).variant, undefined);
   // A wallet whose only ThankYou card is a Double Cash earns them as cash back (1¢), as the card itself counts.
@@ -218,6 +225,42 @@ test("benefits paid in points are valued at the one point value, not a card file
   const vx = getCard("capital-one-venture-x")!;
   assert.equal(annualizedCredits(vx), annualizedCreditValue(vx));
   assert.equal(annualizedCredits(vx, { own: { "capital-one": 1 } }), annualizedCreditValue(vx) - 180 + 100);
+  // Benefits paid in points are annual, so a period's value is the year's (creditPeriodValue, the tracker's rows).
+  for (const { c, cr } of withPoints) {
+    assert.equal(cr.frequency, "annual", `${c.id} ${cr.id}`);
+    assert.equal(creditPeriodValue(cr, { own: { [cr.points!.program]: 1 } }), cr.points!.amount / 100);
+  }
+});
+
+test("own values reach benefits paid in points on every page: card pages, tiles, the tracker and the next-card ranking", () => {
+  const vx = getCard("capital-one-venture-x")!;
+  const miles = vx.credits.find((c) => c.id === "anniversary-miles")!;
+  const own: ValueContext = { own: { "capital-one": 1 }, cards: [vx.id] };
+  // Card pages and tiles (CreditsPerYear, CreditValueCell, ValueAtAGlance) read annualizedCredits / creditValue.
+  assert.equal(creditValue(miles, own), 100);
+  assert.equal(annualizedCredits(vx, own), annualizedCreditValue(vx) - 80);
+  // The tracker passes creditPeriodValue to statusFor: $100 a year, and marking it used once counts all of it.
+  const wallet = { version: 1, cards: [vx.id], usage: {}, ignored: {} } as unknown as WalletState;
+  const now = new Date(2026, 10, 24);
+  const fresh = statusFor(vx, miles, wallet, now, creditPeriodValue(miles, own));
+  assert.equal(fresh.amount, 100);
+  assert.equal(fresh.annual, 100);
+  assert.equal(fresh.remaining, 100);
+  const marked = statusFor(vx, miles, { ...wallet, usage: { [`${vx.id}:${miles.id}:${fresh.periodKey}`]: 180 } } as WalletState, now, 100);
+  assert.equal(marked.used, 100, "marked at the median before the own value was set: still used in full");
+  assert.equal(marked.remaining, 0);
+  // Next card: the visitor's value, and nothing for points that post only at renewal in the first year.
+  const all = firstYearValue(vx, () => true, own);
+  assert.equal(all.credits, vx.credits.filter((c) => !c.afterRenewal).reduce((s, c) => s + creditValue(c, own), 0));
+  assert.ok(miles.afterRenewal, "Venture X's anniversary miles post from the first renewal");
+  assert.equal(firstYearValue(vx, (id) => id === miles.id, own).credits, 0);
+  const sw = getCard("southwest-priority")!;
+  assert.equal(firstYearValue(sw, () => true, { own: { "southwest-rapid-rewards": 1 } }).creditsAvailable, 0, "7,500 anniversary points");
+  // Every credit marked afterRenewal says so in its own description.
+  for (const c of cards) for (const cr of c.credits.filter((x) => x.afterRenewal)) {
+    assert.match(cr.description, /renewal|anniversary/i, `${c.id} ${cr.id}`);
+    assert.doesNotMatch(cr.description, /opening/i, `${c.id} ${cr.id}: one that also posts at opening counts in year one`);
+  }
 });
 
 test("no page keeps its own copy of the valuations or compares two of our own figures", () => {
@@ -288,22 +331,42 @@ test("value-only modules don't import the Points & Miles dataset", () => {
   };
   // The lounge list too, except for Start here, whose airport flow lists airports and their lounges.
   assert.ok(!graph("src/shared/lib/point-value.ts").has("src/shared/data/lounges.ts"));
-  for (const entry of [
-    "src/shared/lib/point-value.ts",
-    "src/shared/data/calculator-rates.ts",
-    "src/shared/lib/welcome-offer.ts",
-    "src/shared/data/strategy/programs.ts",
-    "src/shared/lib/start-flows.ts",
-    "src/shared/lib/hotel-points.ts",
-    "src/shared/lib/trackers.ts",
-  ]) {
-    const reached = graph(entry);
-    for (const heavy of HEAVY) {
-      const via: string[] = [];
-      for (let at = heavy; reached.has(at) && at !== entry; at = reached.get(at)!) via.unshift(at);
-      assert.ok(!reached.has(heavy), `${entry} reaches ${heavy} via ${[entry, ...via].join(" → ")}`);
+  const keepsOut = (entries: string[], heavyList: string[]) => {
+    for (const entry of entries) {
+      const reached = graph(entry);
+      for (const heavy of heavyList) {
+        const via: string[] = [];
+        for (let at = heavy; reached.has(at) && at !== entry; at = reached.get(at)!) via.unshift(at);
+        assert.ok(!reached.has(heavy), `${entry} reaches ${heavy} via ${[entry, ...via].join(" → ")}`);
+      }
     }
-  }
+  };
+  keepsOut(
+    [
+      "src/shared/lib/point-value.ts",
+      "src/shared/data/calculator-rates.ts",
+      "src/shared/lib/welcome-offer.ts",
+      "src/shared/data/strategy/programs.ts",
+      "src/shared/lib/start-flows.ts",
+      "src/shared/lib/hotel-points.ts",
+      "src/shared/lib/trackers.ts",
+      // The browser side: the value context every value-only page reads, and the card page's client islands.
+      "src/frontend/state/point-values.ts",
+      "src/frontend/state/strategy-prefs.ts",
+      "src/frontend/features/points/dated-partner.tsx",
+      "src/frontend/features/cards/welcome-value.tsx",
+      "src/frontend/features/cards/credit-values.tsx",
+      "src/frontend/components/credits-per-year.tsx",
+    ],
+    HEAVY,
+  );
+  // The issuer application rules stay with the pages that check eligibility: the value context doesn't need them.
+  keepsOut(
+    ["src/frontend/state/point-values.ts", "src/frontend/state/strategy-prefs.ts", "src/shared/lib/point-value.ts"],
+    ["src/shared/lib/eligibility.ts", "src/shared/data/strategy/application-rules.ts", "src/shared/data/strategy/other-products.ts"],
+  );
+  // Every page loads the root layout's reminder banner, and with it the card data: never the full transfer list.
+  keepsOut(["src/frontend/components/reminder-banner.tsx", "src/shared/data/cards/index.ts"], ["src/shared/data/points/transfers.ts", ...HEAVY]);
 });
 
 test("each stored median is the middle of its outlets' figures (as valueForWallet recomputes it)", () => {
@@ -331,6 +394,34 @@ test("an outlet's lower figure applies only to the cards its own wording names",
   assert.ok(valueForWallet(chase, ["chase-ink-business-preferred"]).variant, "Ink Preferred holders");
   assert.equal(valueForWallet(chase, ["chase-sapphire-preferred", "chase-sapphire-reserve"]).variant, undefined, "a Reserve transfers 1:1");
   const citi = pointValues.find((v) => v.id === "citi-typ")!;
-  assert.ok(valueForWallet(citi, ["citi-double-cash"]).variant, "other Citi cards");
+  // Left out on purpose, with the reason (IGNORED_VARIANTS): every wallet it would match counts these points as cash.
+  assert.ok(IGNORED_VARIANTS["citi-typ"]?.["other Citi cards"], "other Citi cards");
+  for (const id of cardsEarningIn("citi-typ", cards).filter((c) => !earnsFully(c, "citi-typ")).map((c) => c.id)) {
+    assert.equal(resolvePointValue("citi-typ", { cards: [id] })?.basis, "cash", `${id}: locked, so a variant couldn't set a value`);
+  }
+  assert.equal(valueForWallet(citi, ["citi-double-cash"]).variant, undefined);
   assert.equal(valueForWallet(citi, ["citi-strata-premier"]).variant, undefined, "a Strata card isn't an other Citi card");
+});
+
+test("points a wallet can't transfer yet: one value once they can, and an own value waits until then", () => {
+  // The deal calculator's "Transferable, they're worth …" and the card page's "Combined, they're … worth …" both use
+  // unlockedValue(): with only a Double Cash, ThankYou points are 1¢ now and the headline median once pooled.
+  const alone: ValueContext = { cards: ["citi-double-cash"] };
+  assert.equal(resolvePointValue("citi-typ", alone)?.cents, 1);
+  assert.equal(unlockedValue("citi-typ", alone)?.cents, published("citi-typ").median, "the Strata median, not a lower figure");
+  assert.equal(unlockedValue("citi-typ", alone)?.cents, cardPointValue(card("citi-double-cash"), { cards: ["citi-strata-premier"] }).cents);
+  assert.equal(unlockedValue("chase-ur", { cards: ["chase-freedom-unlimited"] })?.cents, published("chase-ur").median);
+  // An own value doesn't apply while the points are locked (the Points tab says it waits), and does once unlocked.
+  const own: ValueContext = { own: { "chase-ur": 1.5 }, cards: ["chase-freedom-unlimited"] };
+  assert.equal(resolvePointValue("chase-ur", own)?.basis, "cash");
+  assert.equal(unlockedValue("chase-ur", own)?.cents, 1.5);
+  assert.equal(resolvePointValue("chase-ur", { ...own, cards: ["chase-freedom-unlimited", "chase-sapphire-preferred"] })?.cents, 1.5);
+  // The deal calculator's note reads the same figure the card page prints for a limited card.
+  for (const c of cards.filter((x) => { const p = currencyOfCard(x); return p?.kind === "currency" && p.limited; })) {
+    const p = currencyOfCard(c)!;
+    if (p.kind !== "currency") continue;
+    const ctx: ValueContext = { cards: [c.id] };
+    assert.ok(resolvePointValue(p.currency, ctx)?.locked, c.id);
+    assert.equal(unlockedValue(p.currency, ctx)?.cents, resolvePointValue(p.currency)?.cents, `${c.id}: transferable value is the headline median`);
+  }
 });

@@ -5,7 +5,7 @@ import type { Lounge } from "@/shared/data/types";
 import type { NavLink } from "@/shared/data/airport-nav";
 import { loungeNetworks } from "@/shared/data/networks";
 import type { LoungeAccessGrant } from "@/shared/lib/lounge-access";
-import { gateOf } from "@/shared/lib/lounge-directory";
+import { gateOf, openOfLabel } from "@/shared/lib/lounge-directory";
 import { cn } from "@/shared/lib/format";
 
 export interface MapRow {
@@ -132,7 +132,7 @@ export function TerminalMap({
                     {row.lounges.length === 0
                       ? "No lounges"
                       : checking
-                        ? `${open} of ${row.lounges.length} open to you`
+                        ? openOfLabel(open, row.lounges.length, row.lounges.filter(closed).length)
                         : `${row.lounges.length} lounge${row.lounges.length === 1 ? "" : "s"}`}
                   </p>
                 </div>

@@ -36,3 +36,11 @@ export function checkTerms(
   const notes = Array.from(new Set(hits.map((c) => c.note).filter((n): n is string => Boolean(n))));
   return { text: hits.some((c) => c.hide) ? tidy(out) : text, notes, checks: hits };
 }
+
+/**
+ * True for a perk line that records a benefit the card no longer has ("Saks credit discontinued after June 30, 2026",
+ * "Priority Pass membership no longer included"): pages list it as a change, without the check mark of a benefit.
+ */
+export function isRemovedBenefit(perk: string): boolean {
+  return /\bdiscontinued\b|\bno longer (?:included|offered|available)\b|\bwere removed\b|\bwas removed\b|^No lounge visits\b|\bended (?:on )?[A-Z][a-z]{2,8} \d/.test(perk);
+}

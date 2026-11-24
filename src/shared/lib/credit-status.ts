@@ -9,6 +9,13 @@ export interface CreditStatus {
   periodLabel: string;
   periodEnd: Date;
   used: number;
+  /**
+   * What the credit is worth each period for this visitor: `amountPerPeriod`, or for a benefit paid in points the
+   * points at the visitor's value (point-value's creditPeriodValue(), passed to statusFor).
+   */
+  amount: number;
+  /** What it's worth a year on the same basis (`annualValue`, or the points at the visitor's value). */
+  annual: number;
   remaining: number;
   daysLeft: number;
   /** Used in the current year (calendar year, or the current cardmember year for anniversary credits). */
@@ -65,19 +72,28 @@ export function creditPeriod(card: Card, credit: Credit, wallet: WalletState, no
   return periodFor(credit.frequency, now);
 }
 
-export function statusFor(card: Card, credit: Credit, wallet: WalletState, now: Date): CreditStatus {
+/**
+ * Where a credit stands this period. `amount` is what it's worth each period for this visitor (point-value's
+ * creditPeriodValue(): a benefit paid in points at their own value); it defaults to the card data's `amountPerPeriod`,
+ * the published median for points.
+ */
+export function statusFor(card: Card, credit: Credit, wallet: WalletState, now: Date, amount: number = credit.amountPerPeriod): CreditStatus {
   const anniversary = isAnniversaryCredit(credit);
   const open = anniversary ? openDateFor(card, wallet) : null;
   const p = creditPeriod(card, credit, wallet, now);
   // A card year first counted from its month (card history) and later from the exact day keeps what was marked used.
   const monthKey = p.key.startsWith("cm-") ? `${p.key.slice(0, 10)}-01` : null;
-  const used = wallet.usage[usageKey(card.id, credit.id, p.key)] ?? (monthKey ? wallet.usage[usageKey(card.id, credit.id, monthKey)] : undefined) ?? 0;
-  const ytd = p.key.startsWith("cm-")
-    ? used
-    : periodsInYear(credit.frequency, now.getFullYear()).reduce(
-        (s, per) => s + (wallet.usage[usageKey(card.id, credit.id, per.key)] ?? 0),
-        0,
-      );
+  const marked = wallet.usage[usageKey(card.id, credit.id, p.key)] ?? (monthKey ? wallet.usage[usageKey(card.id, credit.id, monthKey)] : undefined) ?? 0;
+  // A benefit paid in points posts as one lump, so anything marked means all of it, whatever the points are worth now
+  // (the visitor's own value may have changed since they marked it).
+  const used = credit.points && marked > 0 ? amount : marked;
+  const ytd =
+    p.key.startsWith("cm-") || credit.points
+      ? used
+      : periodsInYear(credit.frequency, now.getFullYear()).reduce(
+          (s, per) => s + (wallet.usage[usageKey(card.id, credit.id, per.key)] ?? 0),
+          0,
+        );
   return {
     card,
     credit,
@@ -85,7 +101,10 @@ export function statusFor(card: Card, credit: Credit, wallet: WalletState, now: 
     periodLabel: p.label,
     periodEnd: p.end,
     used,
-    remaining: Math.max(0, credit.amountPerPeriod - used),
+    amount,
+    // Benefits paid in points are annual (a test checks), so their year is their period.
+    annual: credit.points ? amount : credit.annualValue,
+    remaining: Math.max(0, amount - used),
     daysLeft: daysLeft(p, now),
     ytd,
     ignored: Boolean(wallet.ignored[`${card.id}:${credit.id}`]),

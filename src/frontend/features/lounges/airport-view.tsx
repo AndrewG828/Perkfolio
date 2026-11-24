@@ -24,6 +24,7 @@ import {
   rankByDistance,
   resolveOrigin,
   routeTo,
+  nearestNeedsOrigin,
   terminalsSeparate,
   zoneForLounge,
   type Origin,
@@ -98,9 +99,10 @@ export function AirportView({ code }: { code: string }) {
   // Until the traveler gives a gate, show the route from security so directions are always visible.
   const origin = useMemo<Origin | null>(() => (nav ? (resolved?.ok ? resolved.origin : { kind: "landside" }) : null), [nav, resolved]);
   const fromSecurityDefault = Boolean(nav) && !resolved?.ok;
-  // Before you say where you are, at an airport whose terminals aren't connected after security, every terminal's
-  // lounges tie: the first one isn't "nearest".
-  const nearestUnknown = Boolean(nav && origin?.kind === "landside" && terminalsSeparate(nav));
+  // Before you say where you are, at an airport with more than one checkpoint (or terminals that aren't connected after
+  // security), each lounge is timed from its own checkpoint and they tie: the first one isn't "nearest".
+  const nearestUnknown = Boolean(nav && origin?.kind === "landside" && nearestNeedsOrigin(nav));
+  const separate = Boolean(nav && terminalsSeparate(nav));
   const isOpen = (l: Lounge) => !closed(l) && (grants.get(l.id)?.length ?? 0) > 0;
   // Closed lounges are never ranked or picked for you (you can still choose one to see where it is).
   const ranked =
@@ -111,12 +113,19 @@ export function AirportView({ code }: { code: string }) {
           all.filter((l) => !closed(l)),
         ).map((r) => ({ ...r, open: isOpen(r.lounge) }))
       : [];
-  const preferOpen = checking && hydrated && open.length > 0;
   const explicit = all.find((l) => l.id === toId) ?? null;
   const firstOpenToAll = all.find((l) => !closed(l)) ?? null;
+  // The automatic destination, when checking cards, is only ever a lounge they open: the nearest one the ranking
+  // reaches (at Heathrow, in your own terminal), or with no directions here, the first one. None: no destination, and
+  // the panel says why. Without cards to check, the nearest lounge (or the first open one).
+  const ownTerminalOnly = Boolean(nav?.ownTerminalOnly && origin?.kind !== "landside");
   const target =
     explicit ??
-    (ranked.find((r) => !preferOpen || r.open)?.lounge ?? (preferOpen ? open[0] : checking && hydrated ? null : firstOpenToAll));
+    (checking && hydrated
+      ? (ranked.find((r) => r.open)?.lounge ?? (nav ? null : (open[0] ?? null)))
+      : (ranked[0]?.lounge ?? firstOpenToAll));
+  // Your cards open lounges here, but none you can use from your terminal (Heathrow: no airside connections).
+  const otherTerminalsOnly = checking && hydrated && !explicit && !target && ownTerminalOnly && open.length > 0;
   const route = nav && origin && target ? routeTo(nav, origin, target) : null;
 
   const pick = (l: Lounge) => {
@@ -154,7 +163,7 @@ export function AirportView({ code }: { code: string }) {
   return (
     <div className="bg-canvas">
       <div className="container-page grid gap-8 py-10 lg:grid-cols-[320px_1fr]">
-        <aside className="order-2 min-w-0 space-y-5 lg:order-1 lg:sticky lg:top-28 lg:self-start">
+        <aside className="aside-sticky order-2 min-w-0 space-y-5 lg:order-1">
           <div id="check-access" className="scroll-mt-28">
             <AccessPicker access={access} />
           </div>
@@ -194,7 +203,7 @@ export function AirportView({ code }: { code: string }) {
         <div className="order-1 min-w-0 space-y-6 lg:order-2">
           {noCards && (
             <p className="rounded-md border border-line bg-white p-3 text-sm text-ink-2">
-              {access.mode === "wallet" ? "Your wallet is empty, so every lounge is shown with every card's rules. " : "No cards chosen yet, so every lounge is shown. "}
+              {access.mode === "wallet" ? "Your wallet is empty, so every lounge is shown, and guest costs compare every card's rules. " : "No cards chosen yet, so every lounge is shown. "}
               <Link href="/tracker" className="link">
                 Add your cards
               </Link>{" "}
@@ -248,6 +257,8 @@ export function AirportView({ code }: { code: string }) {
             closed={closed}
             onlyClosed={checking && hydrated && open.length === 0 && closedHere.some((l) => (grants.get(l.id)?.length ?? 0) > 0)}
             nearestUnknown={nearestUnknown}
+            terminalsSeparate={separate}
+            otherTerminalsOnly={otherTerminalsOnly}
             checking={checking && hydrated}
             map={
               nav ? (

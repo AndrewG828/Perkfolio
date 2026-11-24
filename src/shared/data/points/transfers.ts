@@ -498,7 +498,7 @@ export const transferPartners: TransferPartner[] = [
     to: 1,
     minimum: 1000,
     increment: 1000,
-    note: "1:1 for Sapphire Reserve for Business (its Chase page advertises 1:1 transfers to hotel and airline partners) and, per coverage, Sapphire Reserve. Ink Business Preferred points (and, per coverage, Sapphire Preferred points) transfer to Hyatt at 4:3 instead.",
+    note: "1:1 for Sapphire Reserve for Business (its Chase page advertises 1:1 transfers to hotel and airline partners) and, reportedly, Sapphire Reserve. Ink Business Preferred points (and, reportedly, Sapphire Preferred points) transfer to Hyatt at 4:3 instead.",
     sources: [
       "https://creditcards.chase.com/business-credit-cards/sapphire/reserve",
       "https://creditcards.chase.com/rewards-credit-cards/sapphire/reserve",
@@ -793,7 +793,7 @@ export const transferPartners: TransferPartner[] = [
     to: 1,
     minimum: 1000,
     increment: 1000,
-    note: "Copa ConnectMiles joined on October 25, 2026 at 1:1 for annual-fee cards and 1,000 → 700 for no-fee cards. Upgraded Points' November 2026 Citi guide lists it.",
+    note: "Copa ConnectMiles joined on October 25, 2026 at 1:1 for annual-fee cards and 1,000 → 700 for no-fee cards.",
     sources: [
       "https://upgradedpoints.com/news/citi-thankyou-points-copa-airlines-transfers/",
       "https://www.doctorofcredit.com/citi-adds-copa-connectmiles-as-11-transfer-partner/",

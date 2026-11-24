@@ -127,6 +127,9 @@ export interface TransferPartner {
   scheduled?: { date: string; from: number; to: number; detail: string; sources: string[] };
 }
 
+/** Which program a currency reaches, and with which cards (transfer-routes.ts: TransferPartner without the ratio). */
+export type TransferRoute = Pick<TransferPartner, "currency" | "program" | "cards">;
+
 /**
  * A program whose points are spent through another one with no transfer in between: once the accounts are linked
  * they share one balance (Virgin Red and Virgin Atlantic Flying Club share Virgin Points). Banks that transfer to

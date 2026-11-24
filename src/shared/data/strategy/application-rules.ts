@@ -1025,7 +1025,7 @@ export const applicationRules: ApplicationRulesData = {
       certainty: "widely reported",
       asOf: "2026-11",
       lastVerified: "2026-11-24",
-      basis: "Amex's own offer-terms wording as several outlets quote or paraphrase it; Amex's terms page couldn't be read directly.",
+      basis: "Amex's own offer-terms wording, as several outlets quote or paraphrase it.",
       notes: "Amex's wording, as The Points Guy quotes it in 2026, says Amex will tell you before processing the application if no welcome offer is available, so you can withdraw; The Points Guy and Upgraded Points add that this comes before any hard inquiry. Targeted offers that leave this wording out sometimes exist. The wording is 'may not be eligible', and some 2025-2026 reports describe applicants getting an offer despite their history, so it's shown as a risk rather than a firm no.",
       sources: [
         "https://thepointsguy.com/credit-cards/american-express-bonus-lifetime-restrictions/",
@@ -1095,7 +1095,7 @@ export const applicationRules: ApplicationRulesData = {
       certainty: "widely reported",
       asOf: "2026-11",
       lastVerified: "2026-11-24",
-      basis: "Amex's own offer-terms wording as several outlets quote or paraphrase it; Amex's terms page couldn't be read directly.",
+      basis: "Amex's own offer-terms wording, as several outlets quote or paraphrase it.",
       notes: "Amex's wording, as Doctor of Credit copies it, says Amex will tell you before processing the application if no welcome offer is available, so you can withdraw; Upgraded Points says this comes before the hard inquiry. Targeted offers that leave this wording out sometimes exist. The wording is 'may not be eligible', and some 2025-2026 reports describe applicants getting an offer despite their history, so it's shown as a risk rather than a firm no. Amex added the Platinum to the Gold's wording in October 2023. The Green Card (closed to new applicants) sits below both and doesn't block the Gold. The Business Gold is a separate product.",
       sources: [
         "https://www.doctorofcredit.com/american-express-adds-family-language-to-personal-gold-card/",
@@ -1157,7 +1157,7 @@ export const applicationRules: ApplicationRulesData = {
       certainty: "widely reported",
       asOf: "2026-11",
       lastVerified: "2026-11-24",
-      basis: "Amex's own offer-terms wording as several outlets quote or paraphrase it; Amex's terms page couldn't be read directly.",
+      basis: "Amex's own offer-terms wording, as several outlets quote or paraphrase it.",
       notes: "Amex's wording (Doctor of Credit's 2023 copy) says Amex will tell you before processing the application if no welcome offer is available, so you can withdraw. Targeted offers that leave this wording out sometimes exist. The wording is 'may not be eligible', so it's shown as a risk rather than a firm no. Because the Everyday's wording names the Preferred but not the reverse, the Everyday comes first if you want both.",
       sources: [
         "https://www.doctorofcredit.com/american-express-adds-family-language-to-blue-cash-cards/",
@@ -1207,7 +1207,7 @@ export const applicationRules: ApplicationRulesData = {
       certainty: "widely reported",
       asOf: "2026-11",
       lastVerified: "2026-11-24",
-      basis: "Amex's own offer-terms wording as several outlets quote or paraphrase it; Amex's terms page couldn't be read directly.",
+      basis: "Amex's own offer-terms wording, as several outlets quote or paraphrase it.",
       notes: "Amex's wording (Doctor of Credit's 2023 copy) says Amex will tell you before processing the application if no welcome offer is available, so you can withdraw. Targeted offers that leave this wording out sometimes exist. The wording is 'may not be eligible', so it's shown as a risk rather than a firm no.",
       sources: [
         "https://www.doctorofcredit.com/american-express-adds-family-language-to-blue-cash-cards/",
@@ -2147,7 +2147,7 @@ export const applicationRules: ApplicationRulesData = {
       certainty: "widely reported",
       asOf: "2026-11",
       lastVerified: "2026-11-24",
-      basis: "From two or more independent outlets that agree, including Doctor of Credit's copies of Bank of America's earlier card terms; Bank of America's current Atmos terms couldn't be read.",
+      basis: "From two or more independent outlets, including Doctor of Credit's copies of Bank of America's earlier card terms; Bank of America's current Atmos terms aren't confirmed.",
       notes: "Wording has differed by card: Doctor of Credit's 2021-2022 copies show the Alaska card (the Atmos Ascent's predecessor) and Premium Rewards barring anyone who held the card in the previous 24 months, several other cards adopting a softer may-not-be-available version of that test in late 2021, and business cards gaining a similar 24-month line in 2022. The Points Guy phrases it as having opened the card in the past 24 months.",
       sources: [
         "https://thepointsguy.com/credit-cards/credit-card-application-restrictions/",
@@ -2246,7 +2246,7 @@ export const applicationRules: ApplicationRulesData = {
       asOf: "2026-11",
       lastVerified: "2026-11-24",
       basis: "From two or more independent outlets that agree; not in the issuer's own published terms.",
-      notes: "The two outlets agree on 'strict', not on a number. Doctor of Credit suggests freezing the SageStream and ARS reports, which U.S. Bank checks.",
+      notes: "Reports call it strict but give no number. Doctor of Credit suggests freezing the SageStream and ARS reports, which U.S. Bank checks.",
       sources: [
         "https://upgradedpoints.com/credit-cards/u-s-bank-altitude-credit-cards-and-points/",
         "https://upgradedpoints.com/credit-cards/applying-for-credit-cards-bank-rules/",

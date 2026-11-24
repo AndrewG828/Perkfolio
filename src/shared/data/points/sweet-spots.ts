@@ -1110,7 +1110,7 @@ export const sweetSpots: SweetSpot[] = [
     pointsMax: 75000,
     per: "night",
     fees: "low",
-    feesNote: "Hyatt waives the resort fee on award stays (TPG, Upgraded Points; Upgraded Points' reviews of 2022 stays put the fees then at about $40 a night plus tax at the Hyatt Regency Maui and $48 plus tax at Andaz Maui), so the points cover the room; parking isn't included.",
+    feesNote: "Hyatt waives the resort fee on award stays (in 2022 the fees were about $40 a night plus tax at the Hyatt Regency Maui and $48 plus tax at Andaz Maui), so the points cover the room; parking isn't included.",
     howToBook: "Hyatt Regency Maui on Ka'anapali Beach is now Category 6, down from 7 (TPG, Upgraded Points), so a standard room costs 20,000, 25,000, 30,000, 35,000 or 40,000 points a night depending on the pricing level. Andaz Maui at Wailea is Category 8 (Upgraded Points, TPG): 35,000 to 75,000. Search hyatt.com with points, then transfer from a Chase Sapphire Reserve card or Bilt at 1:1.",
     caveats: "Award nights at Andaz Maui are scarce and often carry minimum-stay rules (TPG; Upgraded Points says the hotel usually holds back its points room for stays shorter than about three nights), so search well ahead. Categories are reviewed every year, and the World of Hyatt card's Category 1–4 certificates don't cover either resort. Sapphire Preferred and Ink Business Preferred points now move to Hyatt at 4:3 (1,000 become 750), and Bilt's 1:1 rate is reported to drop to 4:3 on January 1, 2027.",
     sources: [

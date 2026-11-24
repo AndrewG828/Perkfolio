@@ -664,7 +664,7 @@ export const hotelToAirline: HotelToAirline[] = [
     programName: "Qantas Frequent Flyer",
     fromPoints: 10,
     toMiles: 1.5,
-    notes: "One of Hilton's better rates: 10,000 Hilton points become 1,500 Qantas points (Upgraded Points and NerdWallet agree).",
+    notes: "One of Hilton's better rates: 10,000 Hilton points become 1,500 Qantas points.",
     asOf: "2026-09-28",
     sources: [
       "https://upgradedpoints.com/travel/hotels/hilton-honors-transfer-partners/",
@@ -704,7 +704,7 @@ export const hotelToAirline: HotelToAirline[] = [
     programName: "Virgin Atlantic Flying Club",
     fromPoints: 10,
     toMiles: 1.5,
-    notes: "10,000 Hilton points become 1,500 Virgin points (Upgraded Points and NerdWallet agree).",
+    notes: "10,000 Hilton points become 1,500 Virgin points.",
     asOf: "2026-09-28",
     sources: [
       "https://upgradedpoints.com/travel/hotels/hilton-honors-transfer-partners/",
@@ -717,7 +717,7 @@ export const hotelToAirline: HotelToAirline[] = [
     programName: "Malaysia Airlines Enrich",
     fromPoints: 10,
     toMiles: 1.2,
-    notes: "10,000 Hilton points become 1,200 Enrich points (Upgraded Points and NerdWallet agree).",
+    notes: "10,000 Hilton points become 1,200 Enrich points.",
     asOf: "2026-09-28",
     sources: [
       "https://upgradedpoints.com/travel/hotels/hilton-honors-transfer-partners/",
@@ -730,7 +730,7 @@ export const hotelToAirline: HotelToAirline[] = [
     programName: "Virgin Australia Velocity",
     fromPoints: 10,
     toMiles: 1.5,
-    notes: "10,000 Hilton points become 1,500 Velocity points (Upgraded Points and NerdWallet agree).",
+    notes: "10,000 Hilton points become 1,500 Velocity points.",
     asOf: "2026-09-28",
     sources: [
       "https://upgradedpoints.com/travel/hotels/hilton-honors-transfer-partners/",
@@ -758,7 +758,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. Upgraded Points, The Points Guy and NerdWallet agree. Lands as Avios. The Points Guy's October 2026 Choice redemption page leaves the three Avios programs off its list, but Upgraded Points (October 2026), NerdWallet (November 2026) and The Points Guy's own August 2026 guide include them, and no outlet reports them being dropped.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. Lands as Avios. Not every published list of Choice's partners includes the Avios programs, but none reports them being dropped.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -773,7 +773,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. Upgraded Points, The Points Guy and NerdWallet agree.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -788,7 +788,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. All three outlets agree.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -804,7 +804,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. All three outlets agree.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -835,7 +835,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. All three outlets agree.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -851,7 +851,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. Upgraded Points, The Points Guy and NerdWallet agree. Lands as Avios. The Points Guy's October 2026 Choice redemption page leaves the three Avios programs off its list, but Upgraded Points (October 2026), NerdWallet (November 2026) and The Points Guy's own August 2026 guide include them, and no outlet reports them being dropped.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. Lands as Avios. Not every published list of Choice's partners includes the Avios programs, but none reports them being dropped.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -866,7 +866,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. Upgraded Points, The Points Guy and NerdWallet agree. Lands as Avios. The Points Guy's October 2026 Choice redemption page leaves the three Avios programs off its list, but Upgraded Points (October 2026), NerdWallet (November 2026) and The Points Guy's own August 2026 guide include them, and no outlet reports them being dropped.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. Lands as Avios. Not every published list of Choice's partners includes the Avios programs, but none reports them being dropped.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -881,7 +881,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 2,
     minimum: 2000,
-    notes: "Better than Choice's usual rate: 2,000 Choice points become 800 Qantas points (5:2), starting at 2,000. All three outlets agree.",
+    notes: "Better than Choice's usual rate: 2,000 Choice points become 800 Qantas points (5:2), starting at 2,000.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -897,7 +897,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 10,
     toMiles: 3,
     minimum: 6000,
-    notes: "6,000 Choice points become 1,800 Southwest points (10:3), starting at 6,000. All three outlets agree.",
+    notes: "6,000 Choice points become 1,800 Southwest points (10:3), starting at 6,000.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -913,7 +913,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. All three outlets agree.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -943,7 +943,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. All three outlets agree. Upgraded Points dates this partnership to May 2025.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. The partnership dates to May 2025.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -960,7 +960,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 1,
     minimum: 5000,
-    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points. Upgraded Points, The Points Guy and NerdWallet agree.",
+    notes: "5,000 Choice points become 1,000 miles, starting at 5,000 points.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -975,7 +975,7 @@ export const hotelToAirline: HotelToAirline[] = [
     fromPoints: 5,
     toMiles: 2,
     minimum: 2000,
-    notes: "2,000 Choice points become 800 Velocity points (5:2). Upgraded Points, The Points Guy and NerdWallet agree.",
+    notes: "2,000 Choice points become 800 Velocity points (5:2).",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",
@@ -1033,7 +1033,7 @@ export const hotelTransferRules: HotelTransferRule[] = [
     from: "hilton-honors",
     standardRatio: "10:1",
     minimum: 10000,
-    rule: "Hilton converts most airline partners at 10:1 (10,000 points to 1,000 miles); neither Upgraded Points nor NerdWallet mentions a bonus for large transfers. Some partners pay more: Aeromexico at 50:13 (25,000 points to 6,500), Qantas, Virgin Atlantic and Virgin Australia at 20:3, and Malaysia Airlines at 25:3 (Upgraded Points and NerdWallet agree; The Points Guy confirms the 10:1 United and Delta examples). Singapore KrisFlyer is disputed (Upgraded Points 8:1, NerdWallet 20:1). Upgraded Points counts 26 airline partners and says transfers can take up to 30 days. Upgraded Points lists a 10,000-point minimum for most partners (20,000 for Flying Blue, 25,000 for Aeromexico).",
+    rule: "Hilton converts most airline partners at 10:1 (10,000 points to 1,000 miles), with no published bonus for large transfers. Some partners pay more: Aeromexico at 50:13 (25,000 points to 6,500), Qantas, Virgin Atlantic and Virgin Australia at 20:3, and Malaysia Airlines at 25:3. Singapore KrisFlyer's rate isn't settled: it's reported at both 8:1 and 20:1. It has 26 airline partners, and transfers can take up to 30 days. Most partners have a 10,000-point minimum (20,000 for Flying Blue, 25,000 for Aeromexico).",
     asOf: "2026-09-28",
     sources: [
       "https://upgradedpoints.com/travel/hotels/hilton-honors-transfer-partners/",
@@ -1046,7 +1046,7 @@ export const hotelTransferRules: HotelTransferRule[] = [
     standardRatio: "5:1",
     minimum: 10000,
     increment: 10000,
-    rule: "IHG converts almost all of its airline partners at 5:1 (Upgraded Points and NerdWallet agree). Conversions are made by phone through the IHG One Rewards Service Center (NerdWallet, The Points Guy), usually in 10,000-point increments (The Points Guy; Upgraded Points lists 10,000 as the minimum). Timing estimates differ: NerdWallet says four to six weeks and The Points Guy up to six weeks, while Upgraded Points says 14 to 21 days. Upgraded Points names 34 airlines and lists Air Miles (40:1) and Air New Zealand Airpoints (400:1) as the only exceptions.",
+    rule: "IHG converts almost all of its airline partners at 5:1. Conversions are made by phone through the IHG One Rewards Service Center, usually in 10,000-point increments, with a 10,000-point minimum. How long it takes isn't settled: estimates run from 14 to 21 days to six weeks. It has 34 airline partners; the only exceptions are Air Miles (40:1) and Air New Zealand Airpoints (400:1).",
     asOf: "2026-11-19",
     sources: [
       "https://upgradedpoints.com/travel/hotels/ihg-rewards-transfer-partners/",
@@ -1058,7 +1058,7 @@ export const hotelTransferRules: HotelTransferRule[] = [
     from: "choice-privileges",
     standardRatio: "5:1",
     minimum: 5000,
-    rule: "Choice converts most airline partners at 5:1 with a 5,000-point minimum. Exceptions: Qantas and Virgin Australia at 5:2 from 2,000 points, and Southwest at 6,000 points to 1,800. Upgraded Points, The Points Guy and NerdWallet agree. Timing estimates differ: Upgraded Points says conversions usually take two to six weeks, while The Points Guy says they usually arrive within 72 hours and take up to seven days.",
+    rule: "Choice converts most airline partners at 5:1 with a 5,000-point minimum. Exceptions: Qantas and Virgin Australia at 5:2 from 2,000 points, and Southwest at 6,000 points to 1,800. How long conversions take isn't settled: estimates run from within 72 hours (up to seven days) to two to six weeks.",
     asOf: "2026-11-17",
     sources: [
       "https://upgradedpoints.com/travel/hotels/choice-privileges-transfer-partners/",

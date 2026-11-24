@@ -99,9 +99,9 @@ export default function AboutPage() {
                 </span>
               ))}
               , each read on the outlet&apos;s own page on {formatDate(valuationEditions[0]?.readOn ?? "")}: the middle of the three
-              figures, or the mean of two when only two outlets list the points. NerdWallet gives a lower figure for some
-              cardholders (Chase points with a Sapphire Preferred or Ink Business Preferred but no Sapphire Reserve, Citi points
-              without a Strata Premier or Strata Elite); when your wallet matches, that figure replaces its headline one. Points
+              figures, or the mean of two when only two outlets list the points. NerdWallet gives a lower figure for Chase points
+              with a Sapphire Preferred or Ink Business Preferred but no Sapphire Reserve; when your wallet matches, that figure
+              replaces its headline one. Points
               none of the outlets list have no value until you set one
               {estimated.length > 0 ? `, except ${listJoin(estimated.map((r) => r.name))}, which our cards earn and value at the card's own estimate` : ""}.
             </p>
@@ -116,8 +116,10 @@ export default function AboutPage() {
             <p>
               Cash back counts at face value. Cards whose points transfer only with another card (
               {listJoin(limited.map((c) => shortCardName(c.name)))}) count as cash back until your wallet has a card that unlocks
-              transfers; then their points are worth what the currency&apos;s are. Statement credits are shown at face value; use
-              the calculator&apos;s utilization slider or the tracker to see what you actually capture.
+              transfers; then their points are worth what the currency&apos;s are, and a value you set for those points applies
+              from then. Statement credits are shown at face value, and benefits paid in points (Venture X&apos;s anniversary
+              miles) at the points&apos; value; use the calculator&apos;s utilization slider or the tracker to see what you
+              actually capture.
             </p>
           </section>
           <section id="points-data" className="scroll-mt-28 space-y-3">

@@ -32,6 +32,10 @@ import {
   hotelRatio,
 } from "@/frontend/features/points/ui";
 
+// An unknown id must answer 404 on its first request too: wait for the complete static page (which calls notFound())
+// instead of streaming the route's shell with a 200 first (ISR with Cache Components serves unlisted params that way).
+export const ensureStatic = "navigation";
+
 export function generateStaticParams() {
   return programList.map((p) => ({ id: p.id }));
 }
@@ -72,7 +76,7 @@ export default async function ProgramPage({ params }: PageProps<"/points/program
         eyebrow={airline ? "Airline program" : "Hotel program"}
         title={ref.name}
         mark={<ProgramMark program={ref} size="lg" onDark />}
-        subtitle={program ? `Run by ${program.owner}. Earns ${program.currency}.` : "The transfers, airlines and values we've verified for this program."}
+        subtitle={program ? `Run by ${program.owner}. Earns ${program.currency}.` : `The transfers into ${ref.name} and the airlines it books.`}
       >
         <div className="flex flex-wrap gap-2">
           {airline && <AllianceBadge alliance={ref.alliance} onDark />}
@@ -118,7 +122,7 @@ export default async function ProgramPage({ params }: PageProps<"/points/program
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" aria-hidden />
               <span>
                 No program guide yet: we only publish pricing, strengths and watch-outs once they&apos;re verified. The transfers,
-                airlines and conversion rates below are.
+                airlines and conversion rates below are verified.
               </span>
             </p>
           )}
@@ -182,7 +186,7 @@ export default async function ProgramPage({ params }: PageProps<"/points/program
           </section>
         </div>
 
-        <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">
+        <aside className="aside-sticky space-y-5">
           <ProgramAccess program={ref} />
           <PointValuePanel id={ref.id} name={ref.name} />
           <PlanTransferLink program={ref} />

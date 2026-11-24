@@ -45,13 +45,14 @@ export const otherCards: Card[] = [
       },
       {
         id: "anniversary-miles",
+        afterRenewal: true,
         name: "10,000 anniversary bonus miles",
         annualValue: 180,
         frequency: "annual",
         amountPerPeriod: 180,
         category: "travel",
         description: "10,000 bonus miles posted every account anniversary, starting at the first renewal.",
-        note: "Miles, not a statement credit: valued at the published median for Capital One miles. Worth a flat $100 if used to cover travel purchases.",
+        note: "Miles, not a statement credit. Worth a flat $100 if used to cover travel purchases.",
         points: { amount: 10_000, program: "capital-one" },
       },
       {
@@ -125,13 +126,14 @@ export const otherCards: Card[] = [
       },
       {
         id: "anniversary-miles",
+        afterRenewal: true,
         name: "10,000 anniversary bonus miles",
         annualValue: 180,
         frequency: "annual",
         amountPerPeriod: 180,
         category: "travel",
         description: "10,000 bonus miles posted every account anniversary.",
-        note: "Miles, not a statement credit: valued at the published median for Capital One miles. Worth a flat $100 if used to cover travel purchases.",
+        note: "Miles, not a statement credit. Worth a flat $100 if used to cover travel purchases.",
         points: { amount: 10_000, program: "capital-one" },
       },
       {
@@ -539,7 +541,7 @@ export const otherCards: Card[] = [
         amountPerPeriod: 120,
         category: "travel",
         description: "Statement credit of up to $120 for the Global Entry or TSA PreCheck application fee.",
-        note: "This benefit predates the 2026 refresh. Confirm it in the current benefit terms.",
+        note: "Listed in the terms from before the 2026 refresh; Citi's current benefit terms have the details.",
       },
     ],
     loungeAccess: [

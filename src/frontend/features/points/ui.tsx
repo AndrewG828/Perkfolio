@@ -3,10 +3,13 @@ import type { ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 import {
   PROGRAM_BRIDGES,
+  PROGRAM_IDS,
+  bookableAirlines,
   getCurrency,
   hasProgramPage,
   partnerChangeOf,
   programName,
+  programNames,
   programRef,
   whoCanBookCaveats,
   type Alliance,
@@ -20,8 +23,11 @@ import {
   type SweetSpot,
   type TransferPartner,
 } from "@/shared/data/points";
-import { ratioLabel, wholeRatio } from "@/shared/lib/points";
+import { wholeRatio } from "@/shared/lib/points";
 import { cn } from "@/shared/lib/format";
+import { formatDate } from "./ratio-pill";
+
+export { RatioPill, formatDate, scheduledLabel } from "./ratio-pill";
 
 // Small presentational pieces shared by the Points & Miles pages. No hooks, so server and client components can
 // both use them.
@@ -115,10 +121,6 @@ export const CABIN_LABEL: Record<Cabin, string> = {
   first: "First",
 };
 
-/** "Nov 1, 2026" from an ISO date, the same on server and client. */
-export function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-}
 
 /** "Until Dec 16, 2026" for a listing that ends on 2026-12-17 (BookableAirline.endsOn: the first day it no longer applies). */
 export function untilLabel(endsOn: string): string {
@@ -149,13 +151,6 @@ export function timeLabel(p: Pick<TransferPartner, "time">): string {
   return p.time ?? "Time not confirmed";
 }
 
-/**
- * "4:3 from Jan 1, 2027" for a transfer with a scheduled ratio change, else null. A dated row (partnerOn(), after
- * hydration) no longer carries `scheduled` once the date comes; changeLabel() then says when it changed.
- */
-export function scheduledLabel(p: Pick<TransferPartner, "scheduled">): string | null {
-  return p.scheduled ? `${ratioLabel(p.scheduled)} from ${formatDate(p.scheduled.date)}` : null;
-}
 
 /** "Added Nov 18, 2026" / "Ratio changed Mar 1, 2026" for a row the partner-change log added or changed, else null. */
 export function changeLabel(p: Pick<TransferPartner, "currency" | "program" | "changedOn">): string | null {
@@ -236,6 +231,35 @@ export function monogram(name: string): string {
     .toUpperCase();
 }
 
+/**
+ * One two-letter mark per program, never shared: an airline program shows its airline's IATA code (ANA's NH,
+ * Aeromexico's AM, Air France-KLM's AF), as the who-can-book finder writes airlines; hotel programs and the rest show
+ * their initials, unless another program or an airline's code has them, then their first letter and the next free one.
+ */
+export const PROGRAM_MARKS: ReadonlyMap<ProgramId, string> = (() => {
+  const out = new Map<ProgramId, string>();
+  const iata = new Set(bookableAirlines.map((a) => a.iata));
+  const used = new Set<string>();
+  for (const id of PROGRAM_IDS) {
+    const own = bookableAirlines.find((a) => a.ownProgram === id);
+    if (own && !used.has(own.iata)) {
+      out.set(id, own.iata);
+      used.add(own.iata);
+    }
+  }
+  for (const id of PROGRAM_IDS) {
+    if (out.has(id)) continue;
+    const name = programNames[id].name;
+    const first = monogram(name);
+    const letters = name.replace(/[^A-Za-z]/g, "").toUpperCase();
+    const options = [first, ...Array.from(letters.slice(1), (c) => `${first[0]}${c}`)];
+    const mark = options.find((m) => m.length === 2 && !used.has(m) && !iata.has(m)) ?? first;
+    out.set(id, mark);
+    used.add(mark);
+  }
+  return out;
+})();
+
 export function Dot({ color, className }: { color: string; className?: string }) {
   return <span aria-hidden className={cn("inline-block h-2 w-2 shrink-0 rounded-full", className)} style={{ background: color }} />;
 }
@@ -245,7 +269,7 @@ export function ProgramMark({
   size = "md",
   onDark = false,
 }: {
-  program: Pick<AwardProgram, "name" | "kind" | "alliance">;
+  program: Pick<AwardProgram, "name" | "kind" | "alliance"> & { id?: ProgramId };
   size?: "sm" | "md" | "lg";
   /** Adds a light ring so the mark stands out on the navy hero. */
   onDark?: boolean;
@@ -257,7 +281,7 @@ export function ProgramMark({
       className={cn("grid shrink-0 place-items-center rounded-md font-bold tracking-wide text-white shadow-sm", box, onDark && "ring-2 ring-white/30")}
       style={{ background: `linear-gradient(135deg, ${programColor(program)} 0%, #00175a 140%)` }}
     >
-      {monogram(program.name)}
+      {(program.id && PROGRAM_MARKS.get(program.id)) ?? monogram(program.name)}
     </span>
   );
 }
@@ -297,32 +321,6 @@ export function AllianceBadge({ alliance, onDark = false }: { alliance?: Allianc
   );
 }
 
-/** "1:1" / "2:1.5" pill. `mine` marks a currency the wallet earns. */
-export function RatioPill({
-  partner,
-  mine = false,
-  varies = false,
-  className,
-}: {
-  partner: Pick<TransferPartner, "from" | "to">;
-  mine?: boolean;
-  /** Ratio depends on the card: adds a marker (explain it nearby). */
-  varies?: boolean;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex min-w-[3.25rem] items-center justify-center gap-0.5 rounded-full px-2.5 py-1 text-xs leading-none font-semibold tabular-nums",
-        mine ? "bg-brand text-white" : "bg-sky text-brand-dark ring-1 ring-brand/15",
-        className,
-      )}
-    >
-      {ratioLabel(partner)}
-      {varies && <span aria-hidden>*</span>}
-    </span>
-  );
-}
 
 export function FeeLevelTag({ kind, level }: { kind: SweetSpot["kind"]; level: FeeLevel }) {
   return (

@@ -399,6 +399,9 @@ export function costLabel(o: GuestCostOption): string {
 /** "the lounge's $15 Priority Pass co-pay", for an option that has one. */
 export const copayText = (o: GuestCostOption) => (o.copay ? `the lounge's ${moneyText(o.copay)} Priority Pass co-pay` : "");
 
+/** "Your guest is", "Both guests are", "All 3 guests are". */
+const allGuests = (guests: number) => (guests === 1 ? "Your guest is" : guests === 2 ? "Both guests are" : `All ${guests} guests are`);
+
 /** How the cost comes about, in one line: "1 free + 2 × $45", "2 free + 1 more (fee not published)". */
 export function costDetail(o: GuestCostOption, guests: number): string {
   if (o.location?.notAdmitted) return "This lounge doesn't admit this card";
@@ -429,8 +432,8 @@ export function costDetail(o: GuestCostOption, guests: number): string {
   }
   const head =
     o.paidGuests === 0 && !family
-      ? `${guests === 1 ? "Your guest is" : `All ${guests} guests are`} free`
-      : [free, paid].filter(Boolean).join(" + ") || `${guests === 1 ? "Your guest is" : `All ${guests} guests are`} free`;
+      ? `${allGuests(guests)} free`
+      : [free, paid].filter(Boolean).join(" + ") || `${allGuests(guests)} free`;
   return [head, family, o.paidGuests > 0 && o.rule.guestPasses ? `or use ${o.rule.guestPasses}` : "", copay].filter(Boolean).join(" · ");
 }
 

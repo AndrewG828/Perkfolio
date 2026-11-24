@@ -96,7 +96,7 @@ export const expirationPolicies: ExpirationData = {
       rule: "never",
       months: null,
       activity: "None needed, per the sources below.",
-      notes: "Amex Mexico's Platinum Aeroméxico card terms (PDF created June 2026) say Aeroméxico Rewards points don't expire, subject to the program's rules. TPG says the same for members generally: its August 2026 program guide says points stopped expiring with the move from Club Premier to Aeroméxico Rewards, and its December 2025 table lists no expiration while the account stays active and in good standing. Upgraded Points' 2026 earning and redemption guides and its October 2026 summary table still give a 24-month inactivity rule, which looks like a leftover from Club Premier. Aeroméxico's own terms couldn't be read, so an occasional earn or redemption is cheap insurance.",
+      notes: "Amex Mexico's Platinum Aeroméxico card terms (PDF created June 2026) say Aeroméxico Rewards points don't expire, subject to the program's rules. TPG says the same for members generally: its August 2026 program guide says points stopped expiring with the move from Club Premier to Aeroméxico Rewards, and its December 2025 table lists no expiration while the account stays active and in good standing. Some 2026 guides still give a 24-month inactivity rule, which looks like a leftover from Club Premier. Aeroméxico's own terms aren't confirmed, so an occasional earn or redemption is cheap insurance.",
       asOf: "2026-11",
       sources: [
         "https://www.americanexpress.com/content/dam/amex/es-mx/tarjetas-de-credito/aeromexico/TC_Platinum_Aeromexico.pdf",
@@ -104,7 +104,7 @@ export const expirationPolicies: ExpirationData = {
         "https://thepointsguy.com/loyalty-programs/ultimate-guide-to-aeromexico-club-premier/",
         "https://upgradedpoints.com/travel/airlines/best-ways-to-earn-aeromexico-rewards-points/",
       ],
-      caveat: "Aeroméxico's own terms couldn't be read and Upgraded Points still describes a 24-month inactivity rule, so an occasional earn or redemption is cheap insurance.",
+      caveat: "Aeroméxico's own terms aren't confirmed, and one report still describes a 24-month inactivity rule, so an occasional earn or redemption is cheap insurance.",
     },
     {
       id: "air-canada-aeroplan",

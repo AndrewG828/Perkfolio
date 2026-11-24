@@ -57,7 +57,7 @@ export const bankCurrencies: BankCurrency[] = [
     shortName: "ThankYou Points",
     issuer: "Citi",
     earnedWith: "Citi Strata Elite and Citi Strata Premier, which get the ratios listed here (so does the closed Citi Prestige). The no-fee Citi Strata, Double Cash and Custom Cash also earn ThankYou points. Custom Cash stopped taking applications on May 28, 2026; existing cardholders keep it.",
-    restrictions: "The ratios listed are for the annual-fee cards (Strata Elite, Strata Premier, Prestige). Citi's page for the no-fee Citi Strata shows the same partners, but coverage reports that no-fee ThankYou cards (Citi Strata, Double Cash, Custom Cash) transfer at reduced rates, usually 1,000 points to 700 miles, and not to every partner. Points pooled into a Strata Premier or Strata Elite account can be moved at that card's ratios. Citi's card pages set a 1,000-point minimum; transfers go in 1,000-point steps and can't be undone.",
+    restrictions: "The ratios listed are for the annual-fee cards (Strata Elite, Strata Premier, Prestige). Citi's page for the no-fee Citi Strata shows the same partners, but no-fee ThankYou cards (Citi Strata, Double Cash, Custom Cash) transfer at reduced rates, usually 1,000 points to 700 miles, and not to every partner. Points pooled into a Strata Premier or Strata Elite account can be moved at that card's ratios. Citi's card pages set a 1,000-point minimum; transfers go in 1,000-point steps and can't be undone.",
     sources: [
       "https://www.citi.com/credit-cards/citi-strata-premier-credit-card",
       "https://www.citi.com/credit-cards/citi-strata-elite-credit-card",

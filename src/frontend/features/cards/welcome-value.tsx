@@ -6,7 +6,7 @@ import { programName, programUnit } from "@/shared/data/strategy/programs";
 import { useValueContext } from "@/frontend/state/point-values";
 import { shortCardName } from "@/shared/lib/card-name";
 import { num, usd } from "@/shared/lib/format";
-import { VALUE_EDITION_LABEL, basisSentence, cardPointValue, formatCents, resolvePointValue } from "@/shared/lib/point-value";
+import { VALUE_EDITION_LABEL, basisSentence, cardPointValue, formatCents, unlockedValue } from "@/shared/lib/point-value";
 import { welcomeValue } from "@/shared/lib/welcome-offer";
 
 const thousands = (n: number) => `$${num(Math.round(n / 1000))}k`;
@@ -63,7 +63,7 @@ export function PointValueNote({ cardId }: { cardId: string }) {
   );
   if (v.basis === "cash") {
     // A card that needs another card to transfer: what its points become once combined.
-    const combined = v.limited && v.id ? resolvePointValue(v.id, { own: values.own }) : undefined;
+    const combined = v.limited && v.id ? unlockedValue(v.id, values) : undefined;
     return (
       <p className="mt-3 text-sm text-ink-3">
         {v.limited && v.id && combined ? (

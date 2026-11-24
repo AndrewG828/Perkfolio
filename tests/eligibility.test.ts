@@ -503,7 +503,8 @@ test("titles match the effect, and 'widely reported' bases say why", () => {
     if (effects.length && effects.every((e) => e === "bonus-at-risk")) assert.doesNotMatch(r.name, /block|once per lifetime|\bno (?:bonus|intro)|not available|ineligible/i, r.id);
     if (r.certainty === "widely reported") assert.ok(r.basis, r.id);
   }
-  assert.match(rule("bofa-24-month-same-card").basis ?? "", /couldn't be read/);
+  // The basis says what isn't confirmed (the current terms), without how the research went.
+  assert.match(rule("bofa-24-month-same-card").basis ?? "", /current Atmos terms aren't confirmed/);
   assert.match(rule("amex-gold-bonus").basis ?? "", /Amex's own offer-terms wording/);
   assert.equal(rule("amex-gold-bonus").name, "Gold: a past Gold or Platinum may cost the bonus");
   assert.equal(rule("wells-fargo-48-month-bonus").name, "Same card within 48 months: bonus and intro APR may not apply");

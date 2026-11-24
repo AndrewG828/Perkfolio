@@ -1149,7 +1149,7 @@ export const bookableAirlines: BookableAirline[] = [
     ownProgram: "emirates-skywards",
     bookableWith: ["emirates-skywards", "qantas-frequent-flyer", "air-canada-aeroplan", "japan-airlines-mileage-bank"],
     restrictions: "Qantas has priced Emirates rewards on their own, pricier table since March 31, 2026, and Emirates-operated rewards booked with Qantas points carry very high carrier charges. Aeroplan prices Emirates flights on its 'Air Canada and select partners' chart (since March 25, 2025). JAL Mileage Bank partner awards collect fuel surcharges where the operating airline charges them, so check the cash cost of an Emirates award before transferring.",
-    notes: "Qantas shows Emirates reward seats on qantas.com. Thrifty Traveler lists Emirates among JAL Mileage Bank's partner airlines.",
+    notes: "Qantas shows Emirates reward seats on qantas.com. Emirates is also among JAL Mileage Bank's partner airlines.",
     asOf: "2026-11",
     sources: [
       "https://qantas.com/au/en/frequent-flyer/use-points/classic-flight-rewards.html",
@@ -1448,7 +1448,7 @@ export const programBookingNotes: ProgramBookingNote[] = [
   },
   {
     program: "copa-connectmiles",
-    notes: "Capital One lists Copa as a 4:3 transfer partner (guide dated November 2, 2026). Listed for Star Alliance airlines by alliance membership; booking channels aren't confirmed.",
+    notes: "Listed for Star Alliance airlines by alliance membership; booking channels aren't confirmed.",
     sources: ["https://www.capitalone.com/learn-grow/money-management/venture-miles-transfer-partnerships/"],
   },
 ];

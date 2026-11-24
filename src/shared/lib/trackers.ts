@@ -3,7 +3,7 @@ import { expirationPolicies } from "@/shared/data/strategy/expiration";
 import { programForCard, programForName } from "@/shared/data/strategy/programs";
 import type { ExpirationPolicy } from "@/shared/data/strategy/types";
 import type { Certificate, PointsBalance, Redemption, WalletState } from "./wallet";
-import { accountHistory } from "./eligibility";
+import { accountHistory } from "./account-history";
 import { addMonths, daysSince, daysUntil } from "./dates";
 import { resolvePointValue, type ValueContext } from "./point-value";
 

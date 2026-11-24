@@ -323,6 +323,11 @@ function Summary({
     );
   }
   const { extra, nonstop } = summary;
+  // The extra distance from the totals as shown (each leg rounded, as the total adds them up), so the numbers agree.
+  const shownTotal = legTotal(summary, "miles");
+  const shownDirect = nonstop ? Math.round(nonstop.miles) : 0;
+  const shownExtra = shownTotal - shownDirect;
+  const shownPercent = shownDirect ? (shownExtra / shownDirect) * 100 : 0;
   return (
     <section className="panel grid divide-y divide-line sm:grid-cols-3 sm:divide-x sm:divide-y-0" aria-live="polite" aria-label="Route summary">
       <Stat
@@ -341,8 +346,8 @@ function Summary({
         <Stat
           icon={ArrowUpDown}
           label="Versus nonstop"
-          value={`+${whole(extra.miles)} mi`}
-          sub={`${extra.percent < 0.05 ? "0" : extra.percent.toFixed(extra.percent < 10 ? 1 : 0)}% farther than ${whole(nonstop.miles)} mi direct`}
+          value={`+${whole(shownExtra)} mi`}
+          sub={`${shownPercent < 0.05 ? "0" : shownPercent.toFixed(shownPercent < 10 ? 1 : 0)}% farther than ${whole(shownDirect)} mi direct`}
         />
       ) : (
         <Stat

@@ -62,6 +62,11 @@ export interface Credit {
    * visitor's own values use creditValue() instead.
    */
   points?: { amount: number; program: string };
+  /**
+   * Posts only when the card renews (each account anniversary, "starting at the first renewal"), so the first year
+   * never gets it: the next-card ranking leaves it out of the first-year value. Set only where the issuer's terms say so.
+   */
+  afterRenewal?: boolean;
 }
 
 export interface EarnRate {

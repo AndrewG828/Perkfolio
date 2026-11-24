@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Minus, Plus, X } from "lucide-react";
+import { Check, CircleSlash, Minus, Plus, X } from "lucide-react";
 import type { Card, LoungeNetwork } from "@/shared/data/types";
 import { cards, featuredIds, getCard, issuers, rateLabel } from "@/shared/data/cards";
 import { loungeNetworks } from "@/shared/data/networks";
@@ -14,7 +14,7 @@ import { useValueContext } from "@/frontend/state/point-values";
 import { frequencyShort } from "@/shared/lib/periods";
 import { annualizedCredits, basisLabel, cardPointValue, creditValue, formatCents } from "@/shared/lib/point-value";
 import { welcomeValue } from "@/shared/lib/welcome-offer";
-import { checkTerms } from "@/shared/lib/card-terms";
+import { checkTerms, isRemovedBenefit } from "@/shared/lib/card-terms";
 import { currencyOfCard } from "@/shared/lib/card-currency";
 import { currencyPartnerCount } from "@/shared/data/points/card-partners";
 import { cn, usd } from "@/shared/lib/format";
@@ -119,7 +119,7 @@ export function CompareView() {
           <tbody>
             <Group label="Cost & value" cols={cols} />
             <Row label="Annual fee" cards={selected} cols={cols} render={(c) => <Val best={c.annualFee === bestFee && selected.length > 1}>{c.annualFee ? usd(c.annualFee) : "$0"}</Val>} />
-            <Row label="Credits per year" hint="Face value, annualized" cards={selected} cols={cols} render={(_c, i) => <Val best={credits[i] === bestCredits && credits[i] > 0 && selected.length > 1}>{credits[i] ? usd(credits[i]) : "—"}</Val>} />
+            <Row label="Credits per year" hint="Annualized; points benefits at your point value" cards={selected} cols={cols} render={(_c, i) => <Val best={credits[i] === bestCredits && credits[i] > 0 && selected.length > 1}>{credits[i] ? usd(credits[i]) : "—"}</Val>} />
             <Row
               label="Net if fully used"
               cards={selected}
@@ -259,9 +259,18 @@ export function CompareView() {
                 <ul className="space-y-1.5">
                   {c.perks.slice(0, 8).map((p) => {
                     const checked = checkTerms(c.id, "perks", p);
+                    // A benefit the card lost is listed as a change, without a check mark.
+                    const removed = isRemovedBenefit(p);
                     return (
-                      <li key={p} className="flex gap-2 text-ink-2">
-                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+                      <li key={p} className={cn("flex gap-2", removed ? "text-ink-3" : "text-ink-2")}>
+                        {removed ? (
+                          <>
+                            <CircleSlash className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-3" aria-hidden />
+                            <span className="sr-only">No longer offered: </span>
+                          </>
+                        ) : (
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+                        )}
                         <span>
                           {checked.text}
                           {checked.notes.length > 0 && <span className="mt-0.5 block text-xs text-ink-3">{checked.notes.join(" ")}</span>}
@@ -328,7 +337,7 @@ function Row({
         {hint && <span className="block text-xs font-normal text-ink-3">{hint}</span>}
       </th>
       {cards.map((c, i) => (
-        <td key={c.id} className="border-b border-line px-3 py-4 align-top group-hover:bg-canvas">
+        <td key={c.id} className="border-b border-line px-3 py-4 align-top [overflow-wrap:anywhere] group-hover:bg-canvas">
           {render(c, i)}
         </td>
       ))}

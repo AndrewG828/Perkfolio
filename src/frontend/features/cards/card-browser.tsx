@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal } from "lucide-react";
 import type { CardCategory, Issuer } from "@/shared/data/types";
-import { annualizedCreditValue, cards, categoryLabels, issuers } from "@/shared/data/cards";
+import { cards, categoryLabels, issuers } from "@/shared/data/cards";
 import { CardTile } from "@/frontend/components/card-tile";
 import { useValueContext } from "@/frontend/state/point-values";
 import { welcomeValue } from "@/shared/lib/welcome-offer";
+import { annualizedCredits } from "@/shared/lib/point-value";
 import { cn } from "@/shared/lib/format";
 
 type Sort = "popular" | "fee-asc" | "fee-desc" | "credits" | "bonus";
@@ -47,7 +48,8 @@ export function CardBrowser() {
       popular: () => 0,
       "fee-asc": (a, b) => a.annualFee - b.annualFee,
       "fee-desc": (a, b) => b.annualFee - a.annualFee,
-      credits: (a, b) => annualizedCreditValue(b) - annualizedCreditValue(a),
+      // Credits as the tiles show them: benefits paid in points at the visitor's value.
+      credits: (a, b) => annualizedCredits(b, values) - annualizedCredits(a, values),
       // Welcome offers valued like every page values them (shared/lib/point-value.ts).
       bonus: (a, b) => welcomeValue(b, values).usd - welcomeValue(a, values).usd,
     };

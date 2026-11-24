@@ -1,6 +1,6 @@
 import type { Card, CreditFrequency } from "@/shared/data/types";
 import { shortCardName } from "@/shared/lib/card-name";
-import { cardmemberYear, isAnniversaryCredit } from "@/shared/lib/credit-status";
+import { cardmemberYear, isAnniversaryCredit, openDateFor } from "@/shared/lib/credit-status";
 import type { WalletState } from "@/shared/lib/wallet";
 
 /**
@@ -49,10 +49,13 @@ export function buildCalendar(cards: Card[], wallet: WalletState, now: Date = ne
   for (const card of cards) {
     const name = shortCardName(card.name);
     const live = card.credits.filter((c) => !wallet.ignored[`${card.id}:${c.id}`]);
+    // The open date as the tracker reads it: the day typed on the tracker, else the card history's open date (a
+    // month-only date counts from the 1st, the earliest the card year can turn, as the tracker counts it).
+    const open = openDateFor(card, wallet);
     const groups = new Map<CreditFrequency | "anniversary", typeof live>();
     for (const c of live) {
       if (c.frequency === "every-4-years" || c.frequency === "one-time") continue;
-      const k = isAnniversaryCredit(c) && wallet.openDates?.[card.id] ? "anniversary" : c.frequency;
+      const k = isAnniversaryCredit(c) && open ? "anniversary" : c.frequency;
       groups.set(k, [...(groups.get(k) ?? []), c]);
     }
 
@@ -93,7 +96,7 @@ export function buildCalendar(cards: Card[], wallet: WalletState, now: Date = ne
           summary: `${name}: ${money(total)} in ${what} reset Jan 1`,
         });
       } else if (freq === "anniversary") {
-        const cm = cardmemberYear(wallet.openDates![card.id], today);
+        const cm = cardmemberYear(open!.date, today);
         const remind = new Date(cm.end.getTime() - 30 * 86_400_000);
         events.push({
           ...base,

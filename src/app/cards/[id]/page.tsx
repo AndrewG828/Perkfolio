@@ -1,17 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight, Check, ChevronLeft, Info, Plane } from "lucide-react";
-import { annualizedCreditValue, cards, categoryLabels, getCard, rateLabel } from "@/shared/data/cards";
+import { ArrowUpRight, Check, ChevronLeft, CircleSlash, Info, Plane } from "lucide-react";
+import { cards, categoryLabels, getCard, rateLabel } from "@/shared/data/cards";
 import { loungeNetworks } from "@/shared/data/networks";
 import { CardArt } from "@/frontend/components/card-art";
 import { WalletButton } from "@/frontend/components/wallet-button";
 import { EligibilityPanel } from "@/frontend/features/cards/eligibility-panel";
 import { PointValueNote, WelcomeValue } from "@/frontend/features/cards/welcome-value";
+import { CreditValueCell, ValueAtAGlance } from "@/frontend/features/cards/credit-values";
+import { CreditsPerYear } from "@/frontend/components/credits-per-year";
 import { CardTransferPartners } from "@/frontend/features/points/card-transfer-partners";
-import { frequencyLabel, frequencyShort } from "@/shared/lib/periods";
-import { checkTerms } from "@/shared/lib/card-terms";
+import { frequencyLabel } from "@/shared/lib/periods";
+import { checkTerms, isRemovedBenefit } from "@/shared/lib/card-terms";
 import { usd } from "@/shared/lib/format";
+
+// An unknown id must answer 404 on its first request too: wait for the complete static page (which calls notFound())
+// instead of streaming the route's shell with a 200 first (ISR with Cache Components serves unlisted params that way).
+export const ensureStatic = "navigation";
 
 export function generateStaticParams() {
   return cards.map((c) => ({ id: c.id }));
@@ -29,7 +35,6 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
   const card = getCard(id);
   if (!card) notFound();
 
-  const credits = annualizedCreditValue(card);
   const earn = card.earnRates;
   const similar = cards
     .filter((c) => c.id !== card.id && c.category === card.category)
@@ -63,12 +68,14 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
               <EligibilityPanel cardId={card.id} />
             </div>
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
-              {[
-                ["Annual fee", card.annualFee === 0 ? "$0" : usd(card.annualFee)],
-                ["Credits / yr", credits > 0 ? usd(credits) : "—"],
-                ["Rewards", card.rewardsCurrency.replace(/ points| miles/i, "")],
-                ["Foreign fees", card.foreignTransactionFee ? "Yes" : "None"],
-              ].map(([k, v]) => (
+              {(
+                [
+                  ["Annual fee", card.annualFee === 0 ? "$0" : usd(card.annualFee)],
+                  ["Credits / yr", <CreditsPerYear key="credits" cardId={card.id} />],
+                  ["Rewards", card.rewardsCurrency.replace(/ points| miles/i, "")],
+                  ["Foreign fees", card.foreignTransactionFee ? "Yes" : "None"],
+                ] as [string, React.ReactNode][]
+              ).map(([k, v]) => (
                 <div key={k} className="bg-white p-4">
                   <dt className="text-xs text-ink-3">{k}</dt>
                   <dd className="mt-1 leading-snug font-semibold break-words text-ink">
@@ -135,13 +142,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
                         </td>
                         <td className="hidden px-5 py-4 whitespace-nowrap text-ink-2 sm:table-cell">{frequencyLabel[c.frequency]}</td>
                         <td className="px-5 py-4 text-right whitespace-nowrap">
-                          <p className="font-semibold text-navy">{usd(c.annualValue)}</p>
-                          {c.frequency !== "annual" && c.frequency !== "one-time" && (
-                            <p className="text-xs text-ink-3">
-                              {usd(c.amountPerPeriod)}
-                              {frequencyShort[c.frequency]}
-                            </p>
-                          )}
+                          <CreditValueCell cardId={card.id} creditId={c.id} />
                         </td>
                       </tr>
                     ))}
@@ -186,9 +187,18 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
                 {card.perks.map((p) => {
                   // Perks go through the same checks as lounge terms (a clause the issuer doesn't confirm, with a note).
                   const checked = checkTerms(card.id, "perks", p);
+                  // A line that records a benefit the card lost is a change, not a perk: no check mark.
+                  const removed = isRemovedBenefit(p);
                   return (
-                    <li key={p} className="flex gap-3 text-sm text-ink">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                    <li key={p} className={removed ? "flex gap-3 text-sm text-ink-3" : "flex gap-3 text-sm text-ink"}>
+                      {removed ? (
+                        <>
+                          <CircleSlash className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" aria-hidden />
+                          <span className="sr-only">No longer offered: </span>
+                        </>
+                      ) : (
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                      )}
                       <span>
                         {checked.text}
                         {checked.notes.map((n) => (
@@ -207,16 +217,10 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
           <CardTransferPartners card={card} />
         </div>
 
-        <aside className="min-w-0 space-y-5 lg:sticky lg:top-28 lg:self-start">
+        <aside className="aside-sticky min-w-0 space-y-5">
           <div className="panel p-6">
             <h2 className="text-sm font-semibold tracking-wide text-ink-3 uppercase">Value at a glance</h2>
-            <dl className="mt-4 space-y-3 text-sm">
-              <Row label="Annual credits (face value)" value={usd(credits)} />
-              <Row label="Annual fee" value={`−${usd(card.annualFee)}`} />
-              <div className="border-t border-line pt-3">
-                <Row label="If you use every credit" value={usd(credits - card.annualFee)} strong positive={credits - card.annualFee >= 0} />
-              </div>
-            </dl>
+            <ValueAtAGlance cardId={card.id} />
             <p className="mt-4 flex gap-2 text-xs leading-relaxed text-ink-3">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               Face value overstates real value for most people. Use the tracker to see what you actually capture.
@@ -251,11 +255,3 @@ function Section({ title, id, children }: { title: string; id: string; children:
   );
 }
 
-function Row({ label, value, strong, positive }: { label: string; value: string; strong?: boolean; positive?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <dt className={strong ? "font-semibold text-ink" : "text-ink-2"}>{label}</dt>
-      <dd className={strong ? (positive ? "text-lg font-semibold text-success" : "text-lg font-semibold text-danger") : "font-medium text-ink"}>{value}</dd>
-    </div>
-  );
-}

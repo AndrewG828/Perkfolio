@@ -67,3 +67,27 @@ test("Heathrow: no lounges behind another terminal's security once we know your 
   assert.ok(terminalsSeparate(airportNav.JFK) && terminalsSeparate(lhr));
   assert.ok(!terminalsSeparate(airportNav.ATL) && !terminalsSeparate(airportNav.DFW));
 });
+
+test("before a gate is given, no lounge is 'nearest' where each is timed from its own checkpoint", async () => {
+  const { nearestNeedsOrigin, terminalsSeparate } = await import("../src/shared/lib/wayfinding");
+  for (const [code, nav] of Object.entries(airportNav)) {
+    const checkpoints = nav.zones.filter((z) => z.checkpoint).length;
+    assert.equal(nearestNeedsOrigin(nav), checkpoints > 1, code);
+    // Every airport whose terminals aren't connected has several checkpoints, so it's covered too.
+    if (terminalsSeparate(nav)) assert.ok(nearestNeedsOrigin(nav), code);
+  }
+  // DFW: from before security, the first lounges tie (each from its own terminal's checkpoint).
+  const dfw = rankByDistance(airportNav.DFW, { kind: "landside" }, loungesAt("DFW"));
+  assert.ok(dfw.length > 1 && dfw[0].route.minutes === dfw[1].route.minutes, "tied, so the first isn't nearest");
+  // One checkpoint: the order from security means something.
+  assert.ok(!nearestNeedsOrigin(airportNav.DEN));
+});
+
+test("the last step keeps names and codes capitalized", async () => {
+  const { inSentence } = await import("../src/shared/lib/wayfinding");
+  assert.equal(inSentence("Near gate B18"), "near gate B18");
+  assert.equal(inSentence("Across from gate B22"), "across from gate B22");
+  for (const kept of ["A/B connector", "D/E connector, just past security", "S1 concourse", "Concourse F", "Concourse D atrium, 2nd level", "Lounge F, one level up"]) {
+    assert.equal(inSentence(kept), kept);
+  }
+});

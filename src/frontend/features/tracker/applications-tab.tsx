@@ -26,7 +26,7 @@ export function ApplicationsTab({ wallet, now }: { wallet: WalletState; now: Dat
         <div className="order-last min-w-0 lg:order-none">
           <ApplicationsEditor wallet={wallet} today={now} counter={counter} />
         </div>
-        <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">
+        <aside className="aside-sticky space-y-5">
           <FiveTwentyFourPanel status={counter} today={now} collapsible />
           <Link href="/next-card" className="panel group flex items-center gap-4 p-5 transition-colors hover:border-brand">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sky text-brand">
