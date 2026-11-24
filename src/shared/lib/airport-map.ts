@@ -231,9 +231,9 @@ interface ZoneInfo {
   zone: NavZone;
   /**
    * The middle of the zone, inside the building: where its train stops, its name goes and lounges without a gate
-   * sit. A concourse's roomy core central among its gates (where ATL's and DEN's trains stop, mid-arc on DFW's
-   * curved terminals); for a zone without gates (a main hall or atrium), the roomy spot in its building on the side
-   * of the zones it connects to, a little away from other zones' gates.
+   * sit. For a concourse, a roomy spot near the middle of its part of the building (the core where ATL's and DEN's
+   * trains stop; mid-arc on DFW's curved terminals); for a zone without gates (a main hall or atrium), a roomy spot on
+   * the side of the zones it connects to, a little away from other zones' gates.
    */
   anchor: Pt | null;
 }
