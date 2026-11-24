@@ -6,6 +6,7 @@ import { annualizedCreditValue, cards, categoryLabels, getCard, rateLabel } from
 import { loungeNetworks } from "@/shared/data/networks";
 import { CardArt } from "@/frontend/components/card-art";
 import { WalletButton } from "@/frontend/components/wallet-button";
+import { CardTransferPartners } from "@/frontend/features/points/card-transfer-partners";
 import { frequencyLabel, frequencyShort } from "@/shared/lib/periods";
 import { usd } from "@/shared/lib/format";
 
@@ -188,17 +189,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
             </Section>
           )}
 
-          {card.transferPartners && card.transferPartners.length > 0 && (
-            <Section title="Transfer partners" id="partners">
-              <div className="flex flex-wrap gap-2">
-                {card.transferPartners.map((p) => (
-                  <span key={p} className="chip text-sm">
-                    {p}
-                  </span>
-                ))}
-              </div>
-            </Section>
-          )}
+          <CardTransferPartners card={card} />
         </div>
 
         <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">

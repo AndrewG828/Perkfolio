@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { cards } from "@/shared/data/cards";
+import { allPhotos } from "@/shared/data/points";
 import { PageHero } from "@/frontend/components/page-hero";
 
 export const metadata: Metadata = {
@@ -8,6 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default function AboutPage() {
+  const photos = allPhotos();
   const valuations = Array.from(
     cards
       .filter((c) => !/cash/i.test(c.rewardsCurrency))
@@ -36,6 +39,42 @@ export default function AboutPage() {
               cards are valued at face value. Statement credits are shown at face value; use the calculator&apos;s utilization
               slider or the tracker to see what you actually capture.
             </p>
+          </section>
+          <section id="points-data" className="scroll-mt-28 space-y-3">
+            <h2 className="text-2xl font-semibold text-navy">Points &amp; miles data</h2>
+            <p>
+              Transfer ratios, award prices and program rules in{" "}
+              <Link href="/points" className="link">
+                Points &amp; Miles
+              </Link>{" "}
+              come from the banks&apos; and programs&apos; own published partner lists, award charts and terms, cross-checked against
+              points-and-miles coverage. Every sweet spot links its sources and shows when it was last checked, and every program and
+              currency shows its last-verified date. Award prices and partner lists change without notice, so search for space before
+              you transfer: transfers can&apos;t be undone.
+            </p>
+            <p>
+              Photos are used under their licenses and always credited: each one shows its author and license, linked to the page it
+              came from.
+            </p>
+            {photos.length > 0 && (
+              <ul className="space-y-1 text-sm">
+                {photos.map((p) => (
+                  <li key={p.src}>
+                    <a href={p.sourcePage} target="_blank" rel="noopener noreferrer" className="link font-medium">
+                      {p.title}
+                    </a>{" "}
+                    · {p.author} ·{" "}
+                    {p.licenseUrl ? (
+                      <a href={p.licenseUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                        {p.license}
+                      </a>
+                    ) : (
+                      p.license
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
           <section className="space-y-3">
             <h2 className="text-2xl font-semibold text-navy">Your privacy</h2>

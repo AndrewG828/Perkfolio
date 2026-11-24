@@ -36,8 +36,9 @@ src/backend/    Server only. Modules start with `import "server-only"` (a client
   services/       Business rules: identity.ts (sign-in → user), wallet.ts (validation + versioned save)
   http/           handler.ts (withUser wrapper), security.ts (origin/JSON/size/rate checks), errors.ts (HttpError)
   log.ts          JSON log lines; tag() hashes user ids
-src/shared/     Pure code used by both sides: data/ (card, lounge, earn-rate data), lib/ (wallet types, schema
-                validation, three-way merge, credit periods, caps/limits, formatting). No React, no server APIs.
+src/shared/     Pure code used by both sides: data/ (card, lounge, earn-rate, points data), lib/ (wallet types, schema
+                validation, three-way merge, credit periods, caps/limits, points logic, formatting). No React, no
+                server APIs.
 src/proxy.ts    Rewrites the old domain (credit-card-hacking.vercel.app) to /move.
 scripts/        CLI scripts (db-migrate.ts). tests/  node:test unit tests, run with tsx.
 ```
@@ -112,6 +113,8 @@ The repository's upsert only writes if the stored version equals `base`; the new
   `perkfolio:banner-dismissed`.
 - Anything reading `new Date()` or localStorage must render after hydration (`useHydrated()`), or prerendering
   breaks. `useSearchParams` needs a `<Suspense>` boundary.
+- Header (`frontend/components/site-header.tsx`): the seven primary links fit on one line only from `xl` (1280px), next
+  to Sign in and My Wallet; below that they're in the menu. Check 1280px with sign-in enabled when adding a link.
 
 ## Security rules (keep these true)
 
@@ -141,6 +144,40 @@ Cards live in `src/shared/data/cards/{amex,chase-bilt,other}.ts` (types in `src/
 
 **Never rename a card or credit `id`**: they're keys in saved wallets. A scheduled Claude task runs on the 1st of
 each month to verify terms and open a PR (paths listed in its prompt match this layout).
+
+## Points & Miles
+
+Pages: `/points` (hub: wallet summary, featured sweet spots, transfer explorer, program preview, "is this a good
+deal?" calculator), `/points/sweet-spots`, `/points/transfers` (matrix; per-currency tabs on phones),
+`/points/programs` and `/points/programs/[id]`. Views are in `frontend/features/points/`. Each page server-renders the
+full content; the wallet personalizes it after hydration (`useWalletReach()`), and filters live in the URL
+(`useSearchParams` inside `<Suspense>` whose fallback is the same view, unfiltered; writes use
+`history.replaceState`). Card pages show structured transfer partners (`card-transfer-partners.tsx`).
+
+Data lives in `src/shared/data/points/` (types and the fixed id lists in `types.ts`, lookups in `index.ts`):
+- `currencies.ts` `bankCurrencies`: one entry per `BANK_CURRENCY_IDS` (amex-mr, chase-ur, capital-one, citi-typ, bilt,
+  wells-fargo).
+- `programs.ts` `awardPrograms`: `id` must be in `PROGRAM_IDS`. Ids are URL slugs: never rename one.
+- `transfers.ts` `transferPartners`: `from` bank points become `to` program points. When the ratio depends on the card,
+  add one entry per ratio, each with `cards` (card ids); an entry with `cards` is usable only by those cards.
+- `sweet-spots.ts` `sweetSpots`, in featured order. Flights have a cabin and are one-way or round-trip; hotels are
+  `per: "night"` with `from` = `to`.
+- `photos.ts` `regionPhotos` (by Region), `airportPhotos` (by code), `loungePhotos` (by lounge id).
+- `program-names.ts` (not seed data): a display name for every fixed id, plus aliases that map the free-text
+  `transferPartners` names in card data to program ids.
+
+Files starting with `// SEED DATA: replaced by verified research before release` still hold placeholder values
+(`grep -rl "SEED DATA" src` lists them). Delete that line once a file holds verified data.
+
+Logic lives in `shared/lib/points.ts`: `currencyOfCard()` classifies every card (cards whose transfers need another card
+are listed in `LIMITED`, plain cash back in `CASH_ONLY`; a test fails for an unclassified card, so classify new cards
+there), `reachablePrograms()` and `sweetSpotsFor()` pick the best ratio across currencies and card-specific entries,
+and `judgeRedemption()` compares cents per point with the cards' `pointValueCents`.
+
+Photos go in `public/photos/` and every one needs its credit fields (author, license, sourcePage). Show them with
+`PhotoFrame` (`frontend/components/photo-frame.tsx`): it prints "Photo: author · license" linked to the source, and
+falls back to a region gradient when there's no photo. The About page lists every credit. `tests/points.test.ts`
+checks ids, references, ratios, regions, ISO dates, https URLs and photo credits.
 
 ## Environment
 

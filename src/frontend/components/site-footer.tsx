@@ -18,6 +18,7 @@ const COLUMNS = [
       { href: "/compare", label: "Compare cards" },
       { href: "/tracker", label: "Benefits tracker" },
       { href: "/lounges", label: "Lounge finder" },
+      { href: "/points", label: "Points & miles" },
       { href: "/calculator", label: "Value calculator" },
       { href: "/best-card", label: "Which card should I use?" },
     ],
