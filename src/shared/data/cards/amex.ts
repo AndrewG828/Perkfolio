@@ -23,14 +23,38 @@ const PLATINUM_LOUNGES: Card["loungeAccess"] = [
     network: "priority-pass",
     terms: "Priority Pass Select (enrollment required): unlimited lounge visits plus 2 guests free. Restaurants/non-lounge experiences excluded.",
   },
-  { network: "plaza-premium", terms: "Cardmember access at participating Plaza Premium lounges; guest policy varies by location." },
-  { network: "escape", terms: "Cardmember access to Escape Lounges – The Centurion Studio Partner (US); guest fees apply." },
-  { network: "airspace", terms: "Cardmember access at participating Airspace Lounges; guest fees apply." },
+  // Plaza Premium, Escape and Airspace guests per Amex's Global Lounge Collection terms and its San Diego (SAN) listing,
+  // https://www.americanexpress.com/en-us/travel/lounges/the-platinum-card/terms/ (checked 2026-11-24).
   {
-    network: "amex-international",
-    terms: "Access to international American Express lounges (e.g. Sydney, Mexico City, São Paulo); guest policy varies.",
+    network: "plaza-premium",
+    terms: "Cardmember access at any Plaza Premium Lounge, plus 2 complimentary guests per visit; Plaza Premium's own house rules still apply.",
+  },
+  {
+    network: "escape",
+    terms: "Cardmember access to every Escape Lounge, including The Centurion Studio Partner locations, plus 2 complimentary guests per visit.",
+  },
+  {
+    network: "airspace",
+    terms: "Cardmember access at participating Airspace Lounges. Amex's San Diego listing (now the Aspire Lounge, Terminal 2) allows up to 2 complimentary guests per visit.",
   },
 ];
+
+/** Amex partner lounges abroad that aren't Centurion Lounges (Amex's ARN and GRU listings, checked 2026-11-24). */
+const AMEX_INTERNATIONAL = (card: "consumer" | "business"): Card["loungeAccess"][number] => ({
+  network: "amex-international",
+  terms:
+    card === "consumer"
+      ? "Access to American Express partner lounges abroad that aren't Centurion Lounges, such as the American Express Lounge at Stockholm Arlanda and the W Premium lounges at São Paulo Guarulhos; each lounge sets its own guest rules."
+      : "Access to American Express partner lounges abroad that aren't Centurion Lounges, such as the W Premium lounges at São Paulo Guarulhos (the Stockholm Arlanda lounge admits only the consumer Platinum Card); each lounge sets its own guest rules.",
+});
+
+/**
+ * The Delta SkyMiles cards' bag benefit, per Amex's Delta baggage guide and Delta's announcement of the June 2026
+ * changes (https://www.americanexpress.com/en-us/credit-cards/credit-intel/delta-baggage-fees/,
+ * https://news.delta.com/more-travel-value-added-delta-skymiles-cards-no-increase-annual-fees; checked 2026-11-24).
+ */
+const DELTA_BAGS =
+  "First checked bag free for the cardmember and up to 8 companions on the same reservation (flights Delta markets and operates, booked with the card); since June 4, 2026, the Basic Card Member also checks a second bag free on domestic Delta-operated flights";
 
 export const amexCards: Card[] = [
   // ---------------------------------------------------------------------------
@@ -171,7 +195,7 @@ export const amexCards: Card[] = [
         description: "Up to $120 for Global Entry every 4 years, or up to $85 for TSA PreCheck every 4.5 years.",
       },
     ],
-    loungeAccess: PLATINUM_LOUNGES,
+    loungeAccess: [...PLATINUM_LOUNGES, AMEX_INTERNATIONAL("consumer")],
     perks: [
       "Hilton Honors Gold and Marriott Bonvoy Gold Elite status (enrollment required)",
       "Leaders Club Sterling status with The Leading Hotels of the World (enrollment required)",
@@ -179,7 +203,7 @@ export const amexCards: Card[] = [
       "Fine Hotels + Resorts benefits: room upgrade, daily breakfast for two, $100+ property credit, late checkout",
       "Platinum Nights by Resy and priority restaurant reservations",
       "Trip delay, trip cancellation/interruption insurance and car rental loss & damage coverage",
-      "Lufthansa lounge access ended October 1, 2026; Saks credit discontinued after June 30, 2026",
+      "Saks credit discontinued after June 30, 2026",
     ],
     tagline: "The flagship lounge-and-credits card: the broadest airport lounge access of any US card plus 5x on flights.",
     bestFor: "Frequent flyers who want lounge access and will actively use a long list of lifestyle credits.",
@@ -188,7 +212,7 @@ export const amexCards: Card[] = [
     transferPartners: transferPartnerNames("amex-mr", "amex-platinum"),
     art: { from: "#eef0f2", to: "#9aa1a9", text: "dark", finish: "metal" },
     url: "https://www.americanexpress.com/us/credit-cards/card/platinum/",
-    lastVerified: "2026-11-22",
+    lastVerified: "2026-11-24",
   },
 
   // ---------------------------------------------------------------------------
@@ -492,10 +516,16 @@ export const amexCards: Card[] = [
         network: "centurion",
         terms: "Access when flying a same-day Delta-marketed or -operated flight; guests $50 each.",
       },
+      {
+        // Amex's Global Lounge Collection terms and the card's page (checked 2026-11-24).
+        network: "escape",
+        terms:
+          "Access to Escape Lounges when flying a same-day Delta-marketed or -operated flight booked with a U.S.-issued Amex card. Guests must be flying Delta that day and pay the lounge's own guest fee.",
+      },
     ],
     perks: [
       "$2,500 MQD Headstart each Medallion Year plus $1 MQD per $10 spent",
-      "First checked bag free for cardmember and up to 8 companions on the reservation",
+      DELTA_BAGS,
       "15% off Delta award flights (TakeOff 15)",
       "Complimentary upgrade priority as a cardmember",
       "Trip delay and cancellation/interruption insurance",
@@ -506,7 +536,7 @@ export const amexCards: Card[] = [
     authorizedUserFee: "$175 per additional Reserve card",
     art: { from: "#4a5058", to: "#1a1d21", text: "light", finish: "metal" },
     url: "https://www.americanexpress.com/us/credit-cards/card/delta-skymiles-reserve-american-express-card/",
-    lastVerified: "2026-11-22",
+    lastVerified: "2026-11-24",
   },
 
   // ---------------------------------------------------------------------------
@@ -582,7 +612,7 @@ export const amexCards: Card[] = [
     loungeAccess: [],
     perks: [
       "MQD Headstart each Medallion Year plus $1 MQD per $20 spent",
-      "First checked bag free for cardmember and up to 8 companions on the reservation",
+      DELTA_BAGS,
       "15% off Delta award flights (TakeOff 15)",
       "Complimentary upgrade priority as a cardmember",
     ],
@@ -592,7 +622,7 @@ export const amexCards: Card[] = [
     authorizedUserFee: "$0",
     art: { from: "#d3d7dc", to: "#7c838b", text: "dark", finish: "metal" },
     url: "https://www.americanexpress.com/us/credit-cards/card/delta-skymiles-platinum-american-express-card/",
-    lastVerified: "2026-11-22",
+    lastVerified: "2026-11-24",
   },
 
   // ---------------------------------------------------------------------------
@@ -875,12 +905,11 @@ export const amexCards: Card[] = [
         description: "Up to $120 for Global Entry every 4 years, or up to $85 for TSA PreCheck every 4.5 years.",
       },
     ],
-    loungeAccess: PLATINUM_LOUNGES,
+    loungeAccess: [...PLATINUM_LOUNGES, AMEX_INTERNATIONAL("business")],
     perks: [
       "35% points back on Pay with Points flights with your selected airline (up to 1,000,000 points back per year)",
       "Hilton Honors Gold and Marriott Bonvoy Gold Elite status (enrollment required)",
       "Fine Hotels + Resorts benefits and The Hotel Collection on-property credit",
-      "Lufthansa lounge access ended October 1, 2026",
     ],
     tagline: "The business version of the Platinum: full lounge access, 5x travel and a stack of business credits.",
     bestFor: "Business owners with large spend who will use the Dell, Adobe, Indeed and travel credits.",
@@ -888,7 +917,7 @@ export const amexCards: Card[] = [
     transferPartners: transferPartnerNames("amex-mr", "amex-business-platinum"),
     art: { from: "#dfe2e6", to: "#6c737c", text: "dark", finish: "metal" },
     url: "https://www.americanexpress.com/us/credit-cards/business/business-credit-cards/american-express-business-platinum-credit-card-amex/",
-    lastVerified: "2026-11-22",
+    lastVerified: "2026-11-24",
   },
 
   // ---------------------------------------------------------------------------

@@ -24,6 +24,9 @@ function lounge(
   return l;
 }
 
+/** A lounge that's closed for now (see `Lounge.closed`). */
+const closedLounge = (l: Lounge, closed: NonNullable<Lounge["closed"]>): Lounge => ({ ...l, closed });
+
 export const airports: Airport[] = [
   // United States
   { code: "ATL", name: "Hartsfield-Jackson Atlanta International Airport", city: "Atlanta", country: "United States" },
@@ -99,7 +102,10 @@ export const lounges: Lounge[] = [
   lounge("centurion-mia-d", "The Centurion Lounge", "centurion", "MIA", "Concourse D", "Near gate D12, 4th floor"),
   lounge("centurion-jfk-t4", "The Centurion Lounge", "centurion", "JFK", "Terminal 4", "After security"),
   lounge("centurion-lga-b", "The Centurion Lounge", "centurion", "LGA", "Terminal B", "After security, on Level 4 near the entrance to the Eastern Concourse pedestrian bridge; next to the Chase Sapphire Lounge"),
-  lounge("centurion-phl-a", "The Centurion Lounge", "centurion", "PHL", "Terminal A-West", "Near gate A14", "TEMPORARILY CLOSED from Oct 16, 2026 for expansion to ~12,000 sq ft; reopening expected by end of 2027"),
+  closedLounge(
+    lounge("centurion-phl-a", "The Centurion Lounge", "centurion", "PHL", "Terminal A-West", "Near gate A14", "Temporarily closed from Oct 16, 2026 for expansion to ~12,000 sq ft; reopening expected by end of 2027"),
+    { from: "2026-10-16", until: "2028-01-01", untilLabel: "end of 2027 (expected)" },
+  ),
   lounge("centurion-phx-t4", "The Centurion Lounge", "centurion", "PHX", "Terminal 4", "Across from gate B22, level 3"),
   lounge("centurion-slc-b", "The Centurion Lounge", "centurion", "SLC", "Concourse B", "East wing, near gate B31 (2nd floor)", "Opened Oct 28, 2025; ~18,000 sq ft"),
   lounge("centurion-sea-b", "The Centurion Lounge", "centurion", "SEA", "Concourse B", "Mezzanine above the Central Terminal food court, near gate B3 (facing the food court windows, turn left and follow signs for the elevator)", "Expanded in 2024"),
@@ -113,7 +119,10 @@ export const lounges: Lounge[] = [
   lounge("centurion-hkg-t1", "The Centurion Lounge", "centurion", "HKG", "Terminal 1", "Airside"),
   lounge("centurion-hnd-t3", "The Centurion Lounge", "centurion", "HND", "Terminal 3", "4th floor, near gate 114", "Opened July 2025; first Centurion Lounge in Japan"),
   lounge("centurion-del-t1", "The Centurion Lounge", "centurion", "DEL", "Terminal 1", "Level 4, near gate 2 (security hold area)", "Opened March 30, 2026; open 24 hours; replaced the former Terminal 3 lounge"),
-  lounge("centurion-bom-t2", "The Centurion Lounge", "centurion", "BOM", "Terminal 2", "Domestic departures area", "Status reported inconsistently in 2026; verify before visiting"),
+  closedLounge(
+    lounge("centurion-bom-t2", "The Centurion Lounge", "centurion", "BOM", "Terminal 2", "Domestic departures area", "Amex's lounge finder lists it as temporarily closed, with no reopening date"),
+    {},
+  ),
   lounge("centurion-syd-t1", "The Centurion Lounge", "centurion", "SYD", "Terminal 1 (International)", "After security"),
   lounge("centurion-mel-t2", "The Centurion Lounge", "centurion", "MEL", "Terminal 2 (International)", "After security"),
   lounge("centurion-eze-a", "The Centurion Lounge", "centurion", "EZE", "Terminal A"),
@@ -149,7 +158,7 @@ export const lounges: Lounge[] = [
   lounge("chase-sapphire-phl-de", "Chase Sapphire Lounge by The Club", "chase-sapphire", "PHL", "Terminals D/E", "D/E connector, just past security"),
   lounge("chase-sapphire-phx-t4", "Chase Sapphire Lounge by The Club", "chase-sapphire", "PHX", "Terminal 4", "S1 concourse, on the left on the way to gates D11–D18 (past the first D gates)"),
   lounge("chase-sapphire-san-t2", "Chase Sapphire Lounge by The Club", "chase-sapphire", "SAN", "Terminal 2 West", "After security"),
-  lounge("chase-sapphire-iad-etihad", "Etihad Lounge (Chase Sapphire partner)", "chase-sapphire", "IAD", "Concourse A", "Near gate A14", "Etihad-operated partner lounge open to Sapphire Reserve cardmembers; not a Chase-run lounge. The HKG Sapphire Lounge closed Jan 5, 2026; LAX and SEA are planned"),
+  lounge("chase-sapphire-iad-etihad", "Etihad Lounge (Chase Sapphire partner)", "chase-sapphire", "IAD", "Concourse A", "Near gate A14", "Etihad-operated partner lounge open to Sapphire Reserve cardmembers; not a Chase-run lounge"),
 
   // ---------------------------------------------------------------------------
   // Delta Sky Clubs (representative set at hubs and major airports)
@@ -245,12 +254,15 @@ export const lounges: Lounge[] = [
   // ---------------------------------------------------------------------------
   // Plaza Premium Lounges
   // ---------------------------------------------------------------------------
-  lounge("plaza-premium-first-dfw-d", "Plaza Premium First", "plaza-premium", "DFW", "Terminal D", undefined, "Opened April 2026; first Plaza Premium First in the US. Not in Priority Pass"),
+  {
+    ...lounge("plaza-premium-first-dfw-d", "Plaza Premium First", "plaza-premium", "DFW", "Terminal D", undefined, "Opened April 2026; first Plaza Premium First in the US. Not in Priority Pass"),
+    cardAccessUnconfirmed: "The card terms we track cover Plaza Premium Lounges and don't mention Plaza Premium First, so no card is counted as getting in.",
+  },
   lounge("plaza-premium-dfw-d", "Plaza Premium Lounge", "plaza-premium", "DFW", "Terminal D", undefined, "Reimagined lounge opened April 2026; reported to have left Priority Pass"),
   lounge("plaza-premium-mco-c", "Plaza Premium Lounge", "plaza-premium", "MCO", "Terminal C", "Level 2, near gate 241", `${PP_NOTE}. Terminal C is not airside-connected to Terminals A/B`),
   lounge("plaza-premium-lhr-t2", "Plaza Premium Lounge", "plaza-premium", "LHR", "Terminal 2", "Level 4, near the Terminal Transfers area, after security", `${PP_NOTE} (listed by Priority Pass; some reports say PP entry is restricted)`),
-  lounge("plaza-premium-lhr-t4", "Plaza Premium Lounge", "plaza-premium", "LHR", "Terminal 4", "Level 2, opposite gate 10 (10A/10B)", `${PP_NOTE} (listed by Priority Pass; verify)`),
-  lounge("plaza-premium-lhr-t5", "Plaza Premium Lounge", "plaza-premium", "LHR", "Terminal 5", "Next to gate A7, level 2, after security", `${PP_NOTE} (listed by Priority Pass; verify)`),
+  lounge("plaza-premium-lhr-t4", "Plaza Premium Lounge", "plaza-premium", "LHR", "Terminal 4", "Level 2, opposite gate 10 (10A/10B)", `${PP_NOTE} (listed by Priority Pass; check its app before you go)`),
+  lounge("plaza-premium-lhr-t5", "Plaza Premium Lounge", "plaza-premium", "LHR", "Terminal 5", "Next to gate A7, level 2, after security", `${PP_NOTE} (listed by Priority Pass; check its app before you go)`),
   lounge("plaza-premium-hkg-gate1", "Plaza Premium Lounge (Gate 1)", "plaza-premium", "HKG", "Terminal 1", "Near gate 1", PP_NOTE),
   lounge("plaza-premium-hkg-gate35", "Plaza Premium Lounge (Gate 35)", "plaza-premium", "HKG", "Terminal 1", "Near gate 35", PP_NOTE),
   lounge("plaza-premium-hkg-gate60", "Plaza Premium Lounge (Gate 60)", "plaza-premium", "HKG", "Terminal 1", "Level 7, near gate 60", `${PP_NOTE}; open 6:00am–1:00am`),
@@ -263,7 +275,7 @@ export const lounges: Lounge[] = [
   // ---------------------------------------------------------------------------
   // Escape Lounges (US)
   // ---------------------------------------------------------------------------
-  lounge("escape-msp-t1", "Escape Lounge – The Centurion Studio Partner", "escape", "MSP", "Terminal 1", "Mezzanine level", "Amex Platinum access; most US Escape Lounges joined Priority Pass in 2024 (verify MSP in app)"),
+  lounge("escape-msp-t1", "Escape Lounge – The Centurion Studio Partner", "escape", "MSP", "Terminal 1", "Mezzanine level", "Amex Platinum access; most US Escape Lounges joined Priority Pass in 2024 (check the Priority Pass app for this one)"),
   lounge("escape-phx-t3", "Escape Lounge", "escape", "PHX", "Terminal 3", "Level 4, airside between the E and F gates", PP_NOTE),
   lounge("escape-phx-t4", "Escape Lounge – The Centurion Studio Partner", "escape", "PHX", "Terminal 4", "Concourse B, level 3, across from gate B22", "Not in Priority Pass"),
   lounge("escape-cvg-b", "Escape Lounge – The Centurion Studio Partner", "escape", "CVG", "Concourse B", undefined, PP_NOTE),
@@ -316,7 +328,10 @@ export const lounges: Lounge[] = [
   // Priority Pass lounges — International hubs
   // ---------------------------------------------------------------------------
   lounge("pp-lhr-no1-t3", "No1 Lounge", "priority-pass", "LHR", "Terminal 3", "Lounge F, one level up on the way to gates 13–22", "Pre-booking recommended"),
-  lounge("pp-lhr-club-aspire-t3", "Club Aspire", "priority-pass", "LHR", "Terminal 5", "To the left of gate A18, main departure building (5A)", "Temporarily closed for refurbishment (reported Nov 2, 2026–Apr 16, 2027), due to reopen as a No1 Lounge. Terminal 3's Club Aspire became My Lounge in July 2025"),
+  closedLounge(
+    lounge("pp-lhr-club-aspire-t3", "Club Aspire", "priority-pass", "LHR", "Terminal 5", "To the left of gate A18, main departure building (5A)", "Temporarily closed for refurbishment (reported Nov 2, 2026–Apr 16, 2027), due to reopen as a No1 Lounge. Terminal 3's Club Aspire became My Lounge in July 2025"),
+    { from: "2026-11-02", until: "2027-04-16", untilLabel: "Apr 16, 2027 (reported)" },
+  ),
   lounge("pp-cdg-star-alliance-t1", "Star Alliance Lounge", "priority-pass", "CDG", "Terminal 1", "Airside"),
   lounge("pp-fra-priority-lounge-t3", "Priority Lounge", "priority-pass", "FRA", "Terminal 3", "Level 5", "Terminal 3 opened April 2026; open approx. 6:15am–9:15pm"),
   lounge("pp-ams-aspire-26", "Aspire Lounge 26", "priority-pass", "AMS", "Main terminal (Schengen)", "Lounge 26"),

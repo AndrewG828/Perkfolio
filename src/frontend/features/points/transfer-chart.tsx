@@ -27,6 +27,9 @@ import type { WalletReach } from "./use-wallet-reach";
 
 // ------------------------------------------------------------------------------------------------------- Chart data
 
+/** "Jan 1": a short date for a cell, the year left out (the tooltip has it). */
+const formatShortDate = (iso: string) => formatDate(iso).replace(/, \d{4}$/, "");
+
 interface Cell {
   /** The ratio shown without a wallet. */
   best: TransferPartner;
@@ -395,10 +398,24 @@ function RatioCell({
             via {monogram(programName(cell.via))}
           </span>
         )}
+        {/* A scheduled change is marked on the cell itself, not only in its tooltip ("4:3 from Jan 1, 2027"). */}
+        {cell.entries.some((e) => e.scheduled) && (
+          <span className="mt-0.5 block text-[10px] leading-tight font-semibold whitespace-nowrap text-warn">
+            {cell.entries
+              .filter((e) => e.scheduled)
+              .map((e) => `→ ${ratioLabel(e.scheduled!)} ${formatShortDate(e.scheduled!.date)}`)
+              .filter((t, i, all) => all.indexOf(t) === i)
+              .join(" · ")}
+          </span>
+        )}
         <span className="sr-only">
           {" "}
           {currency.shortName} to {program.name}
           {cell.via ? ` via ${programName(cell.via)}` : ""}
+          {cell.entries
+            .filter((e) => e.scheduled)
+            .map((e) => `, changing to ${scheduledLabel(e)}`)
+            .join("")}
         </span>
       </Link>
       <span
@@ -471,7 +488,12 @@ function PhoneLists({
 
   return (
     <div className="md:hidden">
-      <div role="tablist" aria-label="Bank currency" className="relative -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+      {/* The right edge fades, so the strip reads as scrollable when tabs run off screen. */}
+      <div
+        role="tablist"
+        aria-label="Bank currency"
+        className="relative -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)]"
+      >
         {currencies.map((c, i) => {
           const selected = c.id === current.id;
           return (

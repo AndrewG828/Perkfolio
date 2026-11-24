@@ -18,7 +18,7 @@ import {
   type UserFacts,
 } from "../src/shared/lib/eligibility";
 import { byRankValue, firstYearValue, rankNextCards } from "../src/shared/lib/next-card";
-import { centsFor } from "../src/shared/lib/trackers";
+import { resolvePointValue } from "../src/shared/lib/point-value";
 
 const TODAY = new Date(2026, 10, 24); // Nov 24, 2026, local time
 const card = (id: string) => getCard(id) as Card;
@@ -535,14 +535,15 @@ test("the ranking leaves out held and closed cards and lists warnings and unknow
 test("first-year value adds only the credits the user marks usable, valuing points like the points tracker", () => {
   const csr = card("chase-sapphire-reserve");
   const none = firstYearValue(csr, () => false);
-  assert.equal(none.cents, centsFor("chase-ur"));
-  assert.equal(none.welcome, Math.round(100_000 * (centsFor("chase-ur") as number) / 100));
+  const ur = resolvePointValue("chase-ur")!.cents;
+  assert.equal(none.points?.cents, ur);
+  assert.equal(none.welcome, Math.round(100_000 * ur / 100));
   assert.equal(none.total, none.welcome - csr.annualFee);
   const travel = firstYearValue(csr, (id) => id === "travel-credit");
   assert.equal(travel.credits, 300);
   assert.equal(travel.total, none.total + 300);
   // The user's own value for the program wins.
-  assert.equal(firstYearValue(csr, () => false, (p) => (p === "chase-ur" ? 1 : undefined)).welcome, 1000);
+  assert.equal(firstYearValue(csr, () => false, { own: { "chase-ur": 1 } }).welcome, 1000);
 });
 
 test("a bonus at risk ranks on the value without it, below clean results", () => {
@@ -637,7 +638,7 @@ test("rule data: real card ids, recognizable products, well-formed logic, dates 
   assert.equal(rules.filter((r) => r.certainty === "widely reported").length, 17);
   assert.equal(new Set(rules.map((r) => r.id)).size, rules.length);
   for (const c of cards) assert.ok(applicationRules.cardTypes[c.id], `no card type for ${c.id}`);
-  const product = (r: ApplicationRule, id: string) => id === "$self" || id === "blockersByTarget" || ids.has(id);
+  const product = (_r: ApplicationRule, id: string) => id === "$self" || id === "blockersByTarget" || ids.has(id);
   for (const r of rules) {
     const L = r.logic;
     for (const id of r.appliesTo) {

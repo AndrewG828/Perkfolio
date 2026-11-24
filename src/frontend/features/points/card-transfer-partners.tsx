@@ -137,7 +137,7 @@ export function CardTransferPartners({ card }: { card: Card }) {
             <h3 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">
               {g.title} · {g.rows.length}
             </h3>
-            <ul className="grid gap-2 sm:grid-cols-2">
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {g.rows.map((r) => {
                 const through = bridgeFrom(r.id);
                 const body = (
@@ -161,7 +161,7 @@ export function CardTransferPartners({ card }: { card: Card }) {
                   </>
                 );
                 return (
-                  <li key={r.id}>
+                  <li key={r.id} className="min-w-0">
                     {hasProgramPage(r.id) ? (
                       <Link
                         href={`/points/programs/${r.id}`}

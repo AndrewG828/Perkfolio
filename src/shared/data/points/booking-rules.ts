@@ -14,7 +14,7 @@ export const bookingRules: BookingRules[] = [
     changeCancel: null,
     bookingWindowDays: null,
     phoneOnlyPartners: null,
-    fuelSurcharges: "Moderate: off-peak economy rewards between the US East Coast and Ireland come to roughly $115–140 one-way in taxes, fees and carrier charges. Other routes and cabins weren't checked",
+    fuelSurcharges: "Moderate: off-peak economy rewards between the US East Coast and Ireland come to roughly $115–140 one-way in taxes, fees and carrier charges. Other routes and cabins aren't confirmed",
     asOf: "2026-11",
     sources: [
       "https://www.aerlingus.com/aerclub/spending-avios/buy-reward-flight/",
@@ -93,7 +93,7 @@ export const bookingRules: BookingRules[] = [
       "Air Canada's policy charges the partner booking fee per ticket; each traveller gets a ticket, so it works out per passenger.",
       "Chase's Aeroplan card page also says a partner booking fee applies to rewards that include travel on a partner airline.",
       "Air Canada's own schedule opens about 355 days ahead, and partner availability can differ.",
-      "aircanada.com wasn't checked: these rules follow long-standing Aeroplan rules as reported by major points blogs and the Chase page.",
+      "These rules follow long-standing Aeroplan rules as reported by major points blogs and the Chase page, not aircanada.com's own pages.",
       "The 45-day stopover limit and the ban on stopovers in the US and Canada are confirmed by TPG (Aug 2026, Nov 2026) and NerdWallet (Dec 2025), with UP (Nov 2026) adding that stopovers aren't allowed on trips wholly within North America.",
       "TPG, UP and NerdWallet also confirm that Aeroplan adds no carrier surcharges, and TPG and NerdWallet confirm the CA$39 partner booking fee.",
     ],
@@ -167,7 +167,7 @@ export const bookingRules: BookingRules[] = [
       "Citi, which issues AAdvantage cards, says awards can be booked from 331 days ahead until 2 hours before departure, and that almost all partner awards can be booked on aa.com.",
       "Its December 2025 list of airlines bookable with miles: Air Tahiti Nui, Alaska Airlines, British Airways, Cape Air, Cathay Pacific, China Southern, Etihad, Fiji Airways, Finnair, GOL, Hawaiian Airlines, Iberia, Japan Airlines, Malaysia Airlines, Qantas, Qatar Airways, Royal Air Maroc, Royal Jordanian and SriLankan.",
       "The free hold used to last up to 5 days, so older guides still quote that.",
-      "The hold, booking window and partner details come from Citi's pages; stopovers, fees and surcharges follow American's long-standing rules as reported by major points blogs (aa.com wasn't checked).",
+      "The hold, booking window and partner details come from Citi's pages; stopovers, fees and surcharges follow American's long-standing rules as reported by major points blogs, not aa.com's own pages.",
     ],
   },
   {

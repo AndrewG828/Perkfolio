@@ -1,62 +1,18 @@
 import Link from "next/link";
 import { Logo } from "./logo";
-
-const COLUMNS = [
-  {
-    title: "Lounges & travel",
-    links: [
-      { href: "/lounges", label: "Lounge finder" },
-      { href: "/start", label: "Start here" },
-      { href: "/tools/distance", label: "Flight distance" },
-      { href: "/tools/baggage", label: "Baggage fees" },
-      { href: "/tools/entry-requirements", label: "Entry requirements" },
-      { href: "/tools/hotel-points", label: "Hotel points" },
-    ],
-  },
-  {
-    title: "Points & miles",
-    links: [
-      { href: "/points", label: "Overview" },
-      { href: "/points/sweet-spots", label: "Sweet spots" },
-      { href: "/points/transfers", label: "Transfer partners" },
-      { href: "/points/programs", label: "Programs" },
-      { href: "/points/airlines", label: "Who can book" },
-      { href: "/points/booking-rules", label: "Booking rules" },
-    ],
-  },
-  {
-    title: "Cards",
-    links: [
-      { href: "/cards", label: "Explore cards" },
-      { href: "/compare", label: "Compare cards" },
-      { href: "/best-card", label: "Which card should I use?" },
-      { href: "/next-card", label: "Your next card" },
-      { href: "/calculator", label: "Value calculator" },
-      { href: "/tracker", label: "Benefits tracker" },
-    ],
-  },
-  {
-    title: "Perkfolio",
-    links: [
-      { href: "/about", label: "About our data" },
-      { href: "/about#methodology", label: "Point valuations" },
-      { href: "/about#points-data", label: "Sources & photo credits" },
-      { href: "/about#disclaimer", label: "Disclaimer" },
-    ],
-  },
-];
+import { FOOTER_COLUMNS } from "./site-nav";
 
 export function SiteFooter() {
   return (
     <footer className="mt-auto bg-navy text-white">
-      <div className="container-page grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(4,1fr)]">
-        <div className="space-y-4">
+      <div className="container-page grid grid-cols-2 gap-x-6 gap-y-10 py-14 lg:grid-cols-[1.4fr_repeat(4,1fr)]">
+        <div className="col-span-2 space-y-4 lg:col-span-1">
           <Logo inverted />
           <p className="max-w-xs text-sm leading-relaxed text-white/70">
-            Track every credit, find every lounge, and know exactly which card in your wallet is paying for itself.
+            Find every lounge your cards open, track every credit and point, and know which card in your wallet is paying for itself.
           </p>
         </div>
-        {COLUMNS.map((col) => (
+        {FOOTER_COLUMNS.map((col) => (
           <div key={col.title}>
             <h3 className="mb-4 text-sm font-semibold tracking-wide text-white">{col.title}</h3>
             <ul className="space-y-2.5">

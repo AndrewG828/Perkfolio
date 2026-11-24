@@ -9,7 +9,10 @@ import { CompareToggle } from "./compare-toggle";
 
 export function CardTile({ card }: { card: Card }) {
   const credits = annualizedCreditValue(card);
-  const topRates = card.earnRates.slice(0, 3);
+  // The base rate shows too when it's more than 1x (Double Cash's 2%, Venture X's 2x) or the card has no bonus
+  // categories (Active Cash): for a flat-rate card it's the whole point.
+  const showBase = card.baseRate > 1 || card.earnRates.length === 0;
+  const topRates = card.earnRates.slice(0, showBase ? 2 : 3);
   return (
     <article className="panel group flex flex-col overflow-hidden transition-shadow hover:shadow-[var(--shadow-lift)]">
       <Link href={`/cards/${card.id}`} className="flex justify-center bg-gradient-to-b from-canvas to-white px-8 pt-8 pb-6">
@@ -43,6 +46,12 @@ export function CardTile({ card }: { card: Card }) {
               <span className="line-clamp-1">{r.category}</span>
             </li>
           ))}
+          {showBase && (
+            <li className="flex gap-2">
+              <span className="w-10 shrink-0 font-semibold text-brand">{rateLabel(card, card.baseRate)}</span>
+              <span className="line-clamp-1">{card.earnRates.length ? "Everything else" : "Every purchase"}</span>
+            </li>
+          )}
         </ul>
         <p className="line-clamp-2 text-sm text-ink-2">
           <span className="font-semibold text-ink">Welcome offer: </span>

@@ -8,7 +8,8 @@ import { ProgramSelect } from "@/frontend/components/program-select";
 import { useStrategyPrefs } from "@/frontend/state/strategy-prefs";
 import { walletActions, type Redemption, type WalletState } from "@/frontend/state/wallet-store";
 import { cleanLabel, cleanNotes, WALLET_LIMITS } from "@/shared/lib/wallet-schema";
-import { cashSaved, centsFor, centsPerPoint, redemptionStats } from "@/shared/lib/trackers";
+import { cashSaved, centsPerPoint, redemptionStats } from "@/shared/lib/trackers";
+import { resolvePointValue } from "@/shared/lib/point-value";
 import { formatDate, isoDate } from "@/shared/lib/dates";
 import { cn, num, usd } from "@/shared/lib/format";
 import { EmptyState, Stat, StatRow, TabFrame } from "./tab-parts";
@@ -56,7 +57,8 @@ export function RedemptionsTab({ wallet, now }: { wallet: WalletState; now: Date
   const prefs = useStrategyPrefs();
   const [form, setForm] = useState<{ key: string; draft: Draft } | null>(null);
   const list = [...(wallet.redemptions ?? [])].sort((a, b) => b.date.localeCompare(a.date) || a.label.localeCompare(b.label));
-  const centsOf = (program?: string) => centsFor(program, prefs.cpp);
+  // The one value every page uses (shared/lib/point-value.ts): the user's own, else the published median for their cards.
+  const centsOf = (program?: string) => resolvePointValue(program, { own: prefs.cpp, cards: wallet.cards })?.cents;
   const s = redemptionStats(list, centsOf);
   const blank = (): Draft => ({ date: isoDate(now), label: "", program: "", points: "", taxes: "", cash: "", notes: "" });
   const fromCalculator = (v: PointsVsCashValues) =>

@@ -42,6 +42,9 @@ export function DirectionsPanel({
   route,
   ranked,
   lounges,
+  closed,
+  onlyClosed = false,
+  nearestUnknown,
   checking,
   map,
 }: {
@@ -58,6 +61,12 @@ export function DirectionsPanel({
   route: Route | null;
   ranked: RankedLounge[];
   lounges: Lounge[];
+  /** Lounges closed for now: never picked for you, and marked when chosen. */
+  closed: (l: Lounge) => boolean;
+  /** The cards open lounges here, but only ones that are closed for now. */
+  onlyClosed?: boolean;
+  /** No gate given at an airport whose terminals aren't connected after security: no lounge is "nearest" yet. */
+  nearestUnknown: boolean;
   checking: boolean;
   /** The airport map with the route, shown between the destination and the steps. */
   map?: ReactNode;
@@ -103,7 +112,9 @@ export function DirectionsPanel({
               <p className="text-sm text-warn">
                 {resolved.reason === "ambiguous"
                   ? `Gate ${resolved.gate?.label} is in more than one terminal at ${airport.code}. Which one?`
-                  : `We don't know that gate at ${airport.code}. Pick where you are:`}
+                  : resolved.reason === "terminal"
+                    ? `Which terminal is gate ${resolved.gate?.label} in?`
+                    : `We don't know that gate at ${airport.code}. Pick where you are:`}
               </p>
             )}
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Or pick where you are">
@@ -145,6 +156,7 @@ export function DirectionsPanel({
               <option key={l.id} value={l.id}>
                 {l.name} — {l.terminal}
                 {l.location ? `, ${l.location}` : ""}
+                {closed(l) ? " (closed)" : ""}
               </option>
             ))}
           </select>
@@ -154,14 +166,24 @@ export function DirectionsPanel({
       <div className="p-5">
         {!target ? (
           <p className="text-sm text-ink-2">
-            {checking ? "None of your cards gets you into a lounge here. Pick any lounge to see the way." : "Pick a lounge to see the way."}
+            {onlyClosed
+              ? "The lounge your cards open here is closed for now. Pick any lounge to see where it is."
+              : checking
+                ? "None of your cards gets you into a lounge here. Pick any lounge to see the way."
+                : "Pick a lounge to see the way."}
           </p>
         ) : (
           <>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: loungeNetworks[target.network].color }}>
-                  {autoTarget ? "Nearest lounge for you" : loungeNetworks[target.network].label}
+                  {autoTarget
+                    ? nearestUnknown
+                      ? checking
+                        ? "A lounge you can get into"
+                        : "A lounge here"
+                      : "Nearest lounge for you"
+                    : loungeNetworks[target.network].label}
                 </p>
                 <p className="text-lg font-semibold text-ink">{target.name}</p>
                 <p className="text-sm text-ink-2">
@@ -178,11 +200,27 @@ export function DirectionsPanel({
               )}
             </div>
 
+            {closed(target) && (
+              <p className="mt-3 flex items-start gap-1.5 rounded-md bg-warn/10 p-3 text-sm text-warn">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> This lounge is closed for now. The way is shown so
+                you can see where it is.
+              </p>
+            )}
+
             {map && <div className="mt-4">{map}</div>}
 
             {fromSecurityDefault && (
               <p id="from-hint" className="mt-4 rounded-md bg-sky p-3 text-sm text-navy">
-                Showing the way from security. <strong>Enter your gate above</strong> to start from there instead.
+                {nearestUnknown ? (
+                  <>
+                    {airport.code}&apos;s terminals aren&apos;t connected after security, so the nearest lounge depends on where you
+                    fly from. <strong>Enter your gate or pick your terminal above.</strong>
+                  </>
+                ) : (
+                  <>
+                    Showing the way from security. <strong>Enter your gate above</strong> to start from there instead.
+                  </>
+                )}
               </p>
             )}
 
@@ -239,10 +277,12 @@ export function DirectionsPanel({
 
         {nav && nearby.length > 1 && (
           <div className="mt-5 border-t border-line pt-4">
-            <p className="text-sm font-semibold text-ink">{checking ? "Lounges you can get into, nearest first" : "Nearest lounges"}</p>
-            <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+            <p className="text-sm font-semibold text-ink">
+              {nearestUnknown ? (checking ? "Lounges you can get into" : "Lounges here") : checking ? "Lounges you can get into, nearest first" : "Nearest lounges"}
+            </p>
+            <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {nearby.map(({ lounge, route: r }) => (
-                <li key={lounge.id}>
+                <li key={lounge.id} className="min-w-0">
                   <button
                     type="button"
                     onClick={() => setTarget(lounge.id)}

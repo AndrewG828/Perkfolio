@@ -12,13 +12,16 @@ A web app for getting the most out of rewards credit cards, built around airport
 - **Compare** (`/compare?cards=a,b,c`) — up to four cards side by side with the best value per row highlighted. Shareable URLs.
 - **Benefits tracker** (`/tracker`) — add the cards you hold, log credits as you use them (monthly / quarterly / semi-annual / annual / every-4-years), see what's expiring and whether each annual fee has paid for itself. Export/import a JSON backup.
 - **Value calculator** (`/calculator`) — enter monthly spending and rank cards by net annual value (rewards + realistic credit usage − fee).
+- **Which card?** (`/best-card`) and **Your next card** (`/next-card`) — the best card in your wallet for each purchase, and the cards worth applying for next, with issuer rules like Chase 5/24.
+- **Points & Miles** (`/points`) — transfer partners and bonuses, award sweet spots, program guides, booking rules, who can book each airline, and what a point is worth (one published value, or your own, everywhere).
+- **Start here** (`/start`) and **travel tools** (`/tools`) — a few one-tap questions that lead to the right page, plus flight distance, baggage rules, entry requirements and hotel points.
 
 ## Stack
 
 - [Next.js 16](https://nextjs.org) (App Router, Cache Components) + React 19 + TypeScript
 - Tailwind CSS v4 (design tokens in `src/app/globals.css`)
 - `lucide-react` icons
-- No backend yet: card/lounge data is static TypeScript, user data lives in `localStorage`.
+- Card, lounge and points data is static TypeScript; the wallet lives in `localStorage`, and optional Google sign-in (Auth.js) syncs it through Neon Postgres. Without the sign-in env vars the app runs in local-only mode.
 
 ## Getting started
 

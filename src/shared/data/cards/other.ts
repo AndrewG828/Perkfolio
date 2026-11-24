@@ -46,12 +46,13 @@ export const otherCards: Card[] = [
       {
         id: "anniversary-miles",
         name: "10,000 anniversary bonus miles",
-        annualValue: 160,
+        annualValue: 180,
         frequency: "annual",
-        amountPerPeriod: 160,
+        amountPerPeriod: 180,
         category: "travel",
         description: "10,000 bonus miles posted every account anniversary, starting at the first renewal.",
-        note: "Estimated at 1.6 cents per mile. Worth a flat $100 if used to cover travel purchases.",
+        note: "Miles, not a statement credit: valued at the published median for Capital One miles. Worth a flat $100 if used to cover travel purchases.",
+        points: { amount: 10_000, program: "capital-one" },
       },
       {
         id: "global-entry-tsa-precheck",
@@ -125,12 +126,13 @@ export const otherCards: Card[] = [
       {
         id: "anniversary-miles",
         name: "10,000 anniversary bonus miles",
-        annualValue: 160,
+        annualValue: 180,
         frequency: "annual",
-        amountPerPeriod: 160,
+        amountPerPeriod: 180,
         category: "travel",
         description: "10,000 bonus miles posted every account anniversary.",
-        note: "Estimated at 1.6 cents per mile. Worth a flat $100 if used to cover travel purchases.",
+        note: "Miles, not a statement credit: valued at the published median for Capital One miles. Worth a flat $100 if used to cover travel purchases.",
+        points: { amount: 10_000, program: "capital-one" },
       },
       {
         id: "global-entry-tsa-precheck",
@@ -199,7 +201,7 @@ export const otherCards: Card[] = [
     ],
     loungeAccess: [],
     perks: [
-      "Transfer miles to 15+ airline and hotel partners",
+      "Transfer miles to Capital One's airline and hotel partners (listed below)",
       "Hertz Five Star status",
       "Travel accident insurance and auto rental coverage",
       "No lounge visits: the 2 free Capital One Lounge visits a year ended Jan 1, 2025",
@@ -211,7 +213,7 @@ export const otherCards: Card[] = [
     transferPartners: transferPartnerNames("capital-one", "capital-one-venture"),
     art: { from: "#24456e", to: "#0d1c30", text: "light", finish: "plastic" },
     url: "https://www.capitalone.com/credit-cards/venture/",
-    lastVerified: VERIFIED,
+    lastVerified: "2026-11-24",
   },
   {
     id: "capital-one-savor",
@@ -326,9 +328,10 @@ export const otherCards: Card[] = [
           "Priority Pass Select for the primary cardholder and each authorized user, with 2 free guests per visit. Additional guests cost $35.",
       },
       {
+        // Citi's Strata Elite page (checked 2026-11-24).
         network: "admirals-club",
         terms:
-          "4 Admirals Club passes per calendar year for the primary cardholder only. Each pass lasts 24 hours and covers one adult plus accompanying children. Unused passes expire on Dec 31.",
+          "4 Admirals Club passes per calendar year, issued to the primary cardmember. Every adult who enters uses one, the cardmember included, so all 4 at once admit the cardmember and up to 3 adult guests; each pass lasts 24 hours and also covers up to 3 children under 18. Unused passes expire at the end of the year.",
       },
     ],
     perks: [
@@ -345,7 +348,7 @@ export const otherCards: Card[] = [
     transferPartners: transferPartnerNames("citi-typ", "citi-strata-elite"),
     art: { from: "#2a3352", to: "#0a0e1c", text: "light", finish: "metal" },
     url: "https://www.citi.com/credit-cards/citi-strata-elite-credit-card",
-    lastVerified: VERIFIED,
+    lastVerified: "2026-11-24",
   },
   {
     id: "citi-strata-premier",
@@ -541,9 +544,10 @@ export const otherCards: Card[] = [
     ],
     loungeAccess: [
       {
+        // Citi's AAdvantage Executive page (checked 2026-11-24).
         network: "admirals-club",
         terms:
-          "Full Admirals Club membership for the primary cardholder, plus up to 2 guests or immediate family. Authorized users get their own Admirals Club access without guest privileges.",
+          "Full Admirals Club membership for the primary cardholder, plus up to 2 guests or immediate family. Authorized users get their own Admirals Club access (without the full membership's partner lounges) and can bring up to 2 guests or immediate family too.",
       },
     ],
     perks: [
@@ -560,7 +564,7 @@ export const otherCards: Card[] = [
     authorizedUserFee: "$175 for up to 3 authorized users, then $175 for each additional user",
     art: { from: "#3a3f45", to: "#0c0d0f", text: "light", finish: "metal" },
     url: "https://www.citi.com/credit-cards/citi-aadvantage-executive-world-legend-mastercard",
-    lastVerified: VERIFIED,
+    lastVerified: "2026-11-24",
   },
 
   // ---------------------------------------------------------------- Wells Fargo
@@ -675,7 +679,7 @@ export const otherCards: Card[] = [
       {
         network: "alaska-lounge",
         terms:
-          "8 Alaska Lounge day passes a year, issued as 2 each calendar quarter and expiring at the end of that quarter. Passes can be given to friends or family. Your flight must depart from or arrive at the lounge's airport.",
+          "Alaska Lounge passes are included. Bank of America's card page doesn't say how many, when they're issued or who can use them.",
       },
     ],
     perks: [
@@ -687,13 +691,13 @@ export const otherCards: Card[] = [
       "Foreign and dining 3x rates do not stack",
     ],
     tagline:
-      "Alaska and Hawaiian's premium card: 3x on dining and foreign purchases, a yearly Global Companion Award, and quarterly lounge passes.",
+      "Alaska and Hawaiian's premium card: 3x on dining and foreign purchases, a yearly Global Companion Award, and Alaska Lounge passes.",
     bestFor: "Atmos Rewards members, especially West Coast and Hawaii flyers who also spend abroad.",
     foreignTransactionFee: false,
     authorizedUserFee: "$0",
     art: { from: "#16365c", to: "#050c18", text: "light", finish: "metal" },
     url: "https://www.bankofamerica.com/credit-cards/products/alaska-airlines-infinite-credit-card/",
-    lastVerified: VERIFIED,
+    lastVerified: "2026-11-24",
   },
   {
     id: "atmos-rewards-ascent",

@@ -1,8 +1,9 @@
 /**
- * Shapes of the strategy datasets: issuer application rules, points expiration policies and point valuations.
- * The data files next to this one (application-rules.ts, expiration.ts, valuations.ts) hold verified research in
- * the shape the research JSON uses, with a few additions marked "Added" below. Card ids are keys from
- * src/shared/data/cards; program ids are listed in ./programs.ts.
+ * Shapes of the strategy datasets: issuer application rules and points expiration policies. The data files next to
+ * this one (application-rules.ts, expiration.ts) hold verified research in the shape the research JSON uses, with a
+ * few additions marked "Added" below. Card ids are keys from src/shared/data/cards; program ids are listed in
+ * ./programs.ts. Point values live in one place, the Points & Miles valuations (shared/data/points/valuations.ts),
+ * read through shared/lib/point-value.ts.
  */
 
 // --- Application rules ------------------------------------------------------------------------------------------
@@ -245,74 +246,5 @@ export interface ExpirationData {
   verified: string;
   programs: ExpirationPolicy[];
   /** Programs without a confirmed policy (the UI says so instead of guessing). */
-  missing: { id: string; reason: string }[];
-}
-
-// --- Valuations -------------------------------------------------------------------------------------------------
-
-export interface ValuationVariant {
-  appliesTo: string;
-  cents: number;
-  basis?: string;
-  outletLabel?: string;
-}
-
-/** One outlet's figure for a program. */
-export interface ValuationSource {
-  /** Outlet name, e.g. "The Points Guy". */
-  source: string;
-  /** Cents per point. */
-  cents: number;
-  /** YYYY-MM */
-  asOf: string;
-  url: string;
-  /** Key into `ValuationsData.datasets`. */
-  via?: string;
-  /** The row's name in the outlet's table. */
-  outletLabel?: string;
-  /** The outlet's figure in its previous edition, when it changed. */
-  previousCents?: number;
-  method?: string;
-  basis?: string;
-  /** NerdWallet's travel-portal value for bank currencies. */
-  baselineCents?: number;
-  note?: string;
-  /** Other figures the outlet gives for some cardholders. */
-  variants?: ValuationVariant[];
-}
-
-export interface Valuation {
-  /** Program or bank currency id. */
-  id: string;
-  kind: "bank-currency" | "airline" | "hotel";
-  values: ValuationSource[];
-  /** Smallest, middle (mean of two) and largest outlet figure, in cents per point. `median` is what we use. */
-  low: number;
-  median: number;
-  high: number;
-  outletCount: number;
-  sources: string[];
-  note?: string;
-}
-
-export interface ValuationDataset {
-  outlet: string;
-  url: string;
-  /** YYYY-MM */
-  edition: string;
-  published?: string;
-  modified: string;
-  readOn: string;
-  method: string;
-  methodologyUrl?: string;
-}
-
-export interface ValuationsData {
-  /** YYYY-MM-DD */
-  verified: string;
-  unit: string;
-  datasets: Record<string, ValuationDataset>;
-  valuations: Valuation[];
-  /** Programs no outlet values: the UI asks for the user's own figure. */
   missing: { id: string; reason: string }[];
 }

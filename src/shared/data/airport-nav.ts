@@ -52,6 +52,11 @@ export interface AirportNav {
   links: NavLink[];
   /** How to get between zones that aren't connected after security. */
   landside: { how: string; minutes: number };
+  /**
+   * Departing travelers can only clear security in their own terminal (Heathrow), so a lounge across a landside trip
+   * isn't one they can use: it's left out of the nearest lounges and the automatic destination.
+   */
+  ownTerminalOnly?: boolean;
   note?: string;
 }
 
@@ -312,6 +317,7 @@ export const airportNav: Record<string, AirportNav> = {
     zones: ["2", "3", "4", "5"].map((t) => ({ id: t, name: `Terminal ${t}`, terminals: [`Terminal ${t}`], checkpoint: `Terminal ${t} security` })),
     links: [],
     landside: { how: "Free train between terminals (Elizabeth line or Heathrow Express; Terminals 2 and 3 share a station)", minutes: 15 },
+    ownTerminalOnly: true,
     note: "Heathrow's terminals aren't connected after security for departing passengers: use a lounge in your departure terminal.",
   },
   LGA: {

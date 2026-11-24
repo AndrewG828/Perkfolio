@@ -48,7 +48,7 @@ export function ProgramAirlines({ program }: { program: ProgramRef }) {
                 >
                   {a.name}
                   {a.ownProgram === program.id && <span className="text-[10px] font-semibold text-brand uppercase">own</span>}
-                  {a.endsOn && <span className="text-[11px] font-semibold text-warn">{untilLabel(a.endsOn).toLowerCase()}</span>}
+                  {a.endsOn && <span className="text-[11px] font-semibold text-warn">{untilLabel(a.endsOn)}</span>}
                   {a.restrictions && (
                     <>
                       <TriangleAlert className="h-3.5 w-3.5 text-warn" aria-hidden />

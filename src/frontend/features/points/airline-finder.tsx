@@ -161,7 +161,7 @@ function AirlineDirectory({ onPick, today }: { onPick?: (iata: string) => void; 
                         ) : (
                           <>
                             {bookingPrograms(a).length} program{bookingPrograms(a).length === 1 ? "" : "s"}
-                            {a.endsOn ? ` · ${untilLabel(a.endsOn).toLowerCase()}` : a.restrictions ? " · has restrictions" : ""}
+                            {a.endsOn ? ` · ${untilLabel(a.endsOn)}` : a.restrictions ? " · has restrictions" : ""}
                           </>
                         )}
                       </span>
@@ -261,7 +261,7 @@ function AirlineResult({
         <p className="mb-4 text-sm text-ink-2">
           {personal
             ? reachable.length
-              ? `Your cards reach ${reachable.length} of them; those come first, best transfer ratio first.`
+              ? `Your cards reach ${reachable.length} of them; those come first, the airline's own program leading.`
               : "None of your cards' points reach these programs yet; the transfer chips show which bank points would."
             : "Add your cards to see which of these your points reach. Each chip is a bank currency and its best ratio."}
         </p>

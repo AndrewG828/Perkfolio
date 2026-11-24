@@ -51,6 +51,35 @@ export function PhotoCredit({ photo, tone = "overlay", className }: { photo: Pho
 }
 
 /**
+ * The full credit for a photo shown on its own: Photo: “Title” by Author · License, the title linked to the page the
+ * photo came from and the license to its terms. `tone="inverse"` is for dark backgrounds.
+ */
+export function PhotoAttribution({ photo, tone = "plain", className }: { photo: Photo; tone?: "plain" | "inverse"; className?: string }) {
+  const link = cn(
+    "underline underline-offset-2 rounded-sm focus-visible:outline-2",
+    tone === "inverse"
+      ? "text-white/85 decoration-white/35 hover:text-white hover:decoration-white focus-visible:outline-white"
+      : "text-ink-2 decoration-ink-3/50 hover:text-ink hover:decoration-ink focus-visible:outline-brand",
+  );
+  return (
+    <p className={cn("text-xs leading-snug", tone === "inverse" ? "text-white/60" : "text-ink-3", className)}>
+      Photo:{" "}
+      <a href={photo.sourcePage} target="_blank" rel="noopener noreferrer" className={link}>
+        &ldquo;{photo.title}&rdquo;
+      </a>{" "}
+      by {photo.author} ·{" "}
+      {photo.licenseUrl ? (
+        <a href={photo.licenseUrl} target="_blank" rel="noopener noreferrer license" className={link}>
+          {photo.license}
+        </a>
+      ) : (
+        photo.license
+      )}
+    </p>
+  );
+}
+
+/**
  * A credited photo, or (when there isn't one yet) a gradient with a flight-path pattern and a label. Give it a size
  * with `className` (e.g. "aspect-[16/9]"). The credit sits on the image, bottom right.
  */

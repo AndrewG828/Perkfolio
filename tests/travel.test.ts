@@ -32,15 +32,18 @@ import {
 import { buildAirports, parseCsv } from "../scripts/build-airports";
 import {
   chainCards,
-  currencyIdForCard,
   currencyName,
   hotelRateAt,
+  pointsIdOf,
   programId,
   programName,
+  stayCardValue,
   stayPoints,
   taxesEarnPoints,
   walletCard,
 } from "../src/shared/lib/hotel-points";
+import { resolvePointValue } from "../src/shared/lib/point-value";
+import { REGIONS, pointValues, unvaluedIds, valuationEditions } from "../src/shared/data/points";
 import {
   cardsWithRules,
   compareOptions,
@@ -63,15 +66,13 @@ import { PLACE_NOTES, searchDestinations, usPlaceFor } from "../src/shared/lib/e
 import { namesAirline } from "../src/shared/lib/airline-search";
 import { checkTerms } from "../src/shared/lib/card-terms";
 import { CARD_TERM_CHECKS } from "../src/shared/data/travel/card-term-checks";
-import { regionFor, SWEET_SPOT_REGIONS, sweetSpotsHref } from "../src/shared/data/travel/regions";
-import { activeQuestions, answersFrom, feeCheck, flowById, LIVE_FLOWS, nextQuestion, resultsFor, START_FLOWS, suggestCards } from "../src/shared/lib/start-flows";
-import { PENDING_ROUTES, routeLive } from "../src/shared/lib/site-routes";
+import { regionFor, sweetSpotsHref } from "../src/shared/data/travel/regions";
+import { activeQuestions, answersFrom, feeCheck, flowById, nextQuestion, START_FLOWS, suggestCards } from "../src/shared/lib/start-flows";
 import { TOOLS } from "../src/frontend/features/tools/catalog";
 import { formatIsoDate, feeText, linkLabel, possessive, readableDates, sourceLabels, splitUrls, visitorSources } from "../src/shared/lib/travel-format";
 import { baggage } from "../src/shared/data/travel/baggage";
 import { entryRequirements } from "../src/shared/data/travel/entry-requirements";
 import { hotelEarning } from "../src/shared/data/travel/hotel-earning";
-import { valuations } from "../src/shared/data/travel/valuations";
 import { loungeGuestRules } from "../src/shared/data/travel/lounge-guest-rules";
 import { datasetNotice, datasetStatus } from "../src/shared/data/travel/seed-status";
 import { ENTRY_REQUIREMENTS, type HotelChain, type LoungeGuestRulesData } from "../src/shared/data/travel/types";
@@ -241,7 +242,7 @@ test("destinations map to sweet-spot regions", () => {
   // Every country in the airport list has a region, except Central Asia (no sweet-spot region covers it).
   const unmapped = new Set(world.filter((a) => !regionFor(a.country, a.lat, a.lon)).map((a) => a.country));
   assert.deepEqual([...unmapped].sort(), ["KG", "KZ", "TJ", "TM", "UZ"].filter((c) => unmapped.has(c)));
-  assert.equal(SWEET_SPOT_REGIONS.length, 16);
+  assert.equal(REGIONS.length, 16, "the Points & Miles regions");
 });
 
 // --- Hotel points --------------------------------------------------------------------------------------------------
@@ -251,13 +252,13 @@ const marriott = chainFor("marriott-bonvoy");
 const hilton = chainFor("hilton-honors");
 const hyatt = chainFor("world-of-hyatt");
 const ihg = chainFor("ihg-one-rewards");
-const V = valuations.valuations;
-const median = (id: string) => V.find((v) => v.id === id)!.median;
+/** The published median every page uses for these points (shared/lib/point-value.ts). */
+const median = (id: string) => resolvePointValue(id)!.cents;
 
 test("hotel points: base rate on the room rate, elite bonus on base, card points on the total", () => {
   assert.equal(median("marriott-bonvoy"), 0.73, "Marriott at the November 2026 median");
   const brilliant = chainCards(marriott, getCard).find((c) => c.cardId === "amex-marriott-brilliant")!;
-  const r = stayPoints({ chain: marriott, nightlyRate: 250, nights: 3, taxPercent: 15, tier: "Gold Elite", card: brilliant, valuations: V });
+  const r = stayPoints({ chain: marriott, nightlyRate: 250, nights: 3, taxPercent: 15, tier: "Gold Elite", card: brilliant });
   assert.equal(r.room, 750);
   assert.equal(r.taxes, 112.5);
   assert.equal(r.total, 862.5);
@@ -274,58 +275,68 @@ test("hotel points: base rate on the room rate, elite bonus on base, card points
 });
 
 test("hotel points: lower-earning brands and elite tiers", () => {
-  const residence = stayPoints({ chain: marriott, brand: "Residence Inn", nightlyRate: 200, nights: 2, taxPercent: 10, tier: "Platinum Elite", valuations: V });
+  const residence = stayPoints({ chain: marriott, brand: "Residence Inn", nightlyRate: 200, nights: 2, taxPercent: 10, tier: "Platinum Elite" });
   assert.equal(residence.perDollar, 5);
   assert.equal(residence.basePoints, 2000);
   assert.equal(residence.eliteBonus, 1000, "Platinum +50% of the brand's base");
-  const unknownBrand = stayPoints({ chain: marriott, brand: "JW Marriott", nightlyRate: 200, nights: 2, taxPercent: 10, valuations: V });
+  const unknownBrand = stayPoints({ chain: marriott, brand: "JW Marriott", nightlyRate: 200, nights: 2, taxPercent: 10 });
   assert.equal(unknownBrand.perDollar, 10, "brands that aren't exceptions earn the base rate");
   // StudioRes: 4 per $1, and elites earn no bonus there.
-  const studio = stayPoints({ chain: marriott, brand: "StudioRes (no elite bonus points)", nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Titanium Elite", valuations: V });
+  const studio = stayPoints({ chain: marriott, brand: "StudioRes (no elite bonus points)", nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Titanium Elite" });
   assert.equal(studio.perDollar, 4);
   assert.equal(studio.noEliteAtBrand, true);
   assert.equal(studio.eliteBonus, 0);
   assert.equal(studio.hotelPoints, 400);
-  const diamond = stayPoints({ chain: hilton, nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Diamond", valuations: V });
+  const diamond = stayPoints({ chain: hilton, nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Diamond" });
   assert.equal(diamond.hotelPoints, 2000, "Diamond doubles base points");
-  const reserve = stayPoints({ chain: hilton, nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Diamond Reserve", valuations: V });
+  const reserve = stayPoints({ chain: hilton, nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Diamond Reserve" });
   assert.equal(reserve.hotelPoints, 2200, "Diamond Reserve +120%: 22 per $1");
-  const tru = stayPoints({ chain: hilton, brand: "Tru by Hilton", nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Diamond", valuations: V });
+  const tru = stayPoints({ chain: hilton, brand: "Tru by Hilton", nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Diamond" });
   assert.equal(tru.hotelPoints, 1000);
-  const studios = stayPoints({ chain: hyatt, brand: "Hyatt Studios", nightlyRate: 100, nights: 2, taxPercent: 0, tier: "Globalist", valuations: V });
+  const studios = stayPoints({ chain: hyatt, brand: "Hyatt Studios", nightlyRate: 100, nights: 2, taxPercent: 0, tier: "Globalist" });
   assert.equal(studios.basePoints, 500, "Hyatt Studios at 2.5 per $1");
   assert.equal(studios.eliteBonus, 150, "Globalist +30%");
-  const none = stayPoints({ chain: hilton, nightlyRate: -5, nights: 0, taxPercent: 10, valuations: V });
+  const none = stayPoints({ chain: hilton, nightlyRate: -5, nights: 0, taxPercent: 10 });
   assert.equal(none.totalPoints, 0, "bad input earns nothing rather than negative points");
 });
 
 test("hotel points: a general card earns its own currency, valued separately", () => {
   const csr = walletCard(getCard("chase-sapphire-reserve")!, 4);
   assert.equal(csr.currencyId, "chase-ur");
-  const r = stayPoints({ chain: hilton, nightlyRate: 300, nights: 2, taxPercent: 10, card: csr, valuations: V });
+  const r = stayPoints({ chain: hilton, nightlyRate: 300, nights: 2, taxPercent: 10, card: csr });
   assert.equal(r.sameCurrency, false);
   assert.equal(r.totalPoints, r.hotelPoints, "different currencies aren't added together");
   assert.equal(r.cardPoints, 2640);
   near(r.cardValue!, 2640 * (median("chase-ur") / 100), 1e-9, "Ultimate Rewards at their median");
   const cash = walletCard(getCard("citi-double-cash")!, 2);
-  const c = stayPoints({ chain: hilton, nightlyRate: 100, nights: 1, taxPercent: 0, card: cash, valuations: V });
+  const c = stayPoints({ chain: hilton, nightlyRate: 100, nights: 1, taxPercent: 0, card: cash });
   near(c.cardValue!, 2, 1e-9, "2% cash back on $100");
   // Bilt Points "(plus Bilt Cash)" are points, valued at the Bilt median, not cash back.
   const bilt = walletCard(getCard("bilt-palladium")!, 2);
-  assert.equal(bilt.cashBack, false);
   assert.equal(bilt.currencyId, "bilt");
-  const b = stayPoints({ chain: hyatt, nightlyRate: 300, nights: 1, taxPercent: 0, card: bilt, valuations: V });
+  const b = stayPoints({ chain: hyatt, nightlyRate: 300, nights: 1, taxPercent: 0, card: bilt });
+  assert.equal(b.cardCash, false);
   near(b.cardValue!, 600 * (median("bilt") / 100), 1e-9, "600 Bilt Points at the Bilt median");
   for (const id of ["bilt-blue", "bilt-obsidian"]) assert.equal(walletCard(getCard(id)!, 1).currencyId, "bilt", id);
   // Airline-mile cards use their program's published median, not the card's own estimate.
-  assert.equal(currencyIdForCard(getCard("amex-delta-reserve")!), "delta-skymiles");
-  assert.equal(currencyIdForCard(getCard("citi-aadvantage-executive")!), "american-aadvantage");
-  assert.equal(currencyIdForCard(getCard("atmos-rewards-summit")!), "atmos-rewards");
-  assert.equal(currencyIdForCard(getCard("united-club-infinite")!), "united-mileageplus");
+  assert.equal(pointsIdOf(getCard("amex-delta-reserve")!), "delta-skymiles");
+  assert.equal(pointsIdOf(getCard("citi-aadvantage-executive")!), "american-aadvantage");
+  assert.equal(pointsIdOf(getCard("atmos-rewards-summit")!), "atmos-rewards");
+  assert.equal(pointsIdOf(getCard("united-club-infinite")!), "united-mileageplus");
+  // Every card's points have a published median here, or count as cash back.
   for (const card of cards) {
-    const w = walletCard(card, 1);
-    if (!w.cashBack) assert.ok(w.currencyId && V.some((v) => v.id === w.currencyId), `${card.id} (${card.rewardsCurrency}) has a valuation`);
+    const v = stayCardValue(walletCard(card, 1));
+    assert.ok(v && (v.basis === "cash" || (v.basis === "median" && pointValues.some((p) => p.id === v.id))), `${card.id} (${card.rewardsCurrency}) has a value`);
   }
+  // A Freedom card's points are cash back on their own, and Ultimate Rewards once a Sapphire Preferred is in the wallet.
+  const freedom = walletCard(getCard("chase-freedom-unlimited")!, 1.5);
+  const alone = stayPoints({ chain: hilton, nightlyRate: 100, nights: 1, taxPercent: 0, card: freedom });
+  assert.equal(alone.cardCash, true);
+  near(alone.cardValue!, 1.5, 1e-9, "1.5% cash back on $100");
+  const paired = stayPoints({ chain: hilton, nightlyRate: 100, nights: 1, taxPercent: 0, card: freedom, values: { cards: ["chase-freedom-unlimited", "chase-sapphire-preferred"] } });
+  assert.equal(paired.cardCash, false);
+  assert.equal(paired.cardLabel, "Chase Ultimate Rewards points");
+  near(paired.cardValue!, 150 * (median("chase-ur") / 100), 1e-9, "150 Ultimate Rewards points at the median");
 });
 
 test("hotel points: another chain's co-branded card earns its base rate there, and Bilt Points read as Bilt Points", () => {
@@ -339,7 +350,7 @@ test("hotel points: another chain's co-branded card earns its base rate there, a
   assert.equal(hotelRateAt(card("bilt-palladium"), marriott, 2), 2);
   const hyattCard = walletCard(card("world-of-hyatt"), 4, marriott);
   assert.equal(hyattCard.perDollar, 1);
-  const stay = (c: ReturnType<typeof walletCard>) => stayPoints({ chain: marriott, nightlyRate: 250, nights: 3, taxPercent: 15, card: c, valuations: V });
+  const stay = (c: ReturnType<typeof walletCard>) => stayPoints({ chain: marriott, nightlyRate: 250, nights: 3, taxPercent: 15, card: c });
   assert.equal(stay(hyattCard).cardPoints, 863, "$862.50 × 1");
   // A Marriott card now beats the Hyatt card at a Marriott, and the Aspire no longer earns 14x there.
   const brilliant = chainCards(marriott, getCard).find((c) => c.cardId === "amex-marriott-brilliant")!;
@@ -364,7 +375,7 @@ test("hotel helpers: program ids, taxable spend, and what the calculator won't a
   // A program whose base rate isn't confirmed: card points only, still comparable across cards.
   const unconfirmed = { ...hilton, basePerDollar: null };
   const brilliant = chainCards(marriott, getCard)[0];
-  const r = stayPoints({ chain: unconfirmed, nightlyRate: 100, nights: 2, taxPercent: 10, card: walletCard(getCard("chase-sapphire-reserve")!, 4), valuations: V });
+  const r = stayPoints({ chain: unconfirmed, nightlyRate: 100, nights: 2, taxPercent: 10, card: walletCard(getCard("chase-sapphire-reserve")!, 4) });
   assert.equal(r.partial, true);
   assert.equal(r.hotelPoints, null);
   assert.equal(r.cardPoints, 880);
@@ -372,7 +383,7 @@ test("hotel helpers: program ids, taxable spend, and what the calculator won't a
   assert.ok(brilliant.currencyLabel.startsWith("Marriott Bonvoy"));
   // A tier whose bonus isn't confirmed: base points only, flagged.
   const noBonus = { ...hilton, eliteBonuses: [{ tier: "Honors Society", percent: null }] };
-  const t = stayPoints({ chain: noBonus, nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Honors Society", valuations: V });
+  const t = stayPoints({ chain: noBonus, nightlyRate: 100, nights: 1, taxPercent: 0, tier: "Honors Society" });
   assert.equal(t.eliteUnknown, true);
   assert.equal(t.eliteBonus, null);
   assert.equal(t.hotelPoints, 1000);
@@ -381,7 +392,7 @@ test("hotel helpers: program ids, taxable spend, and what the calculator won't a
   assert.equal(taxesEarnPoints(hilton), false);
   assert.equal(taxesEarnPoints(hyatt), null);
   assert.equal(taxesEarnPoints(ihg), null);
-  const ihgStay = stayPoints({ chain: ihg, nightlyRate: 100, nights: 1, taxPercent: 20, valuations: V });
+  const ihgStay = stayPoints({ chain: ihg, nightlyRate: 100, nights: 1, taxPercent: 20 });
   assert.equal(ihgStay.taxesEarn, null);
   assert.equal(ihgStay.eligible, 100, "unconfirmed: the room rate only");
   assert.equal(ihgStay.basePoints, 1000);
@@ -389,7 +400,7 @@ test("hotel helpers: program ids, taxable spend, and what the calculator won't a
   assert.equal(taxesEarnPoints(chain("Room rate and incidentals, before taxes and fees")), false);
   assert.equal(taxesEarnPoints(chain("Room rate excluding taxes")), false);
   assert.equal(taxesEarnPoints(chain("Total charges including taxes")), true);
-  const withTaxes = stayPoints({ chain: chain("Total charges including taxes"), nightlyRate: 100, nights: 1, taxPercent: 20, valuations: V });
+  const withTaxes = stayPoints({ chain: chain("Total charges including taxes"), nightlyRate: 100, nights: 1, taxPercent: 20 });
   assert.equal(withTaxes.basePoints, 1200);
 });
 
@@ -432,6 +443,33 @@ test("guest cost: per-guest fees, free guests and the cheapest card", () => {
   // Cards that cost the same are all best: both free with 2 guests.
   const tie = best(["amex-platinum", "chase-sapphire-reserve", "capital-one-venture-x"], ["priority-pass"], 2);
   assert.deepEqual(tie.tied.map((o) => o.cardId).sort(), ["amex-platinum", "chase-sapphire-reserve"]);
+});
+
+test("guest cost: no best card when one with an unpublished fee leaves fewer guests to pay for", () => {
+  // 3 guests through Priority Pass: Venture X is 3 × $35; Platinum covers 2 free and Amex publishes no fee for the 3rd.
+  const pp = best(["capital-one-venture-x", "amex-platinum"], ["priority-pass"], 3);
+  assert.equal(pp.best, null);
+  assert.deepEqual(pp.tied, []);
+  assert.equal(pp.unclear?.cardId, "amex-platinum");
+  assert.equal(pp.cheapestPriced?.cardId, "capital-one-venture-x");
+  assert.equal(pp.cheapestPriced?.costUsd, 105);
+  assert.deepEqual(pp.options.map((o) => o.cardId), ["amex-platinum", "capital-one-venture-x"], "fewer guests to pay for first");
+  // With as many guests to pay for, the priced card stays best.
+  const two = best(["capital-one-venture-x", "chase-sapphire-reserve"], ["priority-pass"], 3);
+  assert.equal(two.best?.cardId, "chase-sapphire-reserve", "2 free + 1 × $27 beats 3 × $35");
+  assert.equal(two.unclear, null);
+});
+
+test("guest cost: Centurion Lounges abroad with their own prices don't carry the U.S. child rate", () => {
+  for (const id of ["centurion-del-t1", "centurion-eze-a", "centurion-mex-t2"]) {
+    const o = atLounge(id, ["amex-platinum"], 1).options[0];
+    assert.equal(o.childFee, null, id);
+  }
+  // Where Amex publishes a local child rate, it's kept: £24 in London.
+  assert.deepEqual(atLounge("centurion-lhr-t3", ["amex-platinum"], 1).options[0].childFee, { amount: 24, currency: "GBP" });
+  // A Capital One Landing only changes the unlock, so Capital One's own child rate still applies there.
+  const landing = atLounge("capital-one-landing-dca-t2", ["capital-one-venture-x"], 1).options[0];
+  assert.equal(landing.childFee?.currency, "USD");
 });
 
 test("guest cost: a null fee isn't priced at the network's usual fee", () => {
@@ -670,16 +708,6 @@ test("guest cost: effects in words or structure, and no network fallback fees", 
 
 // --- Data integrity ------------------------------------------------------------------------------------------------
 
-/**
- * Access the issuers' pages list (verified November 2026) that shared/data/cards doesn't have yet. Remove an entry
- * once the card data adds it; any other gap fails.
- */
-const NOT_IN_CARD_DATA_YET = [
-  "amex-delta-reserve:escape",
-  "chase-sapphire-reserve-business:air-canada-maple-leaf",
-  "chase-sapphire-reserve:air-canada-maple-leaf",
-  "united-club-infinite:star-alliance-lounges",
-];
 
 test("guest rules reference real cards and networks, with sources and dates", () => {
   assert.equal(R.cards.length, 13);
@@ -697,7 +725,10 @@ test("guest rules reference real cards and networks, with sources and dates", ()
       for (const fee of [a.guestFeeUsd, a.childGuestFeeUsd ?? null]) assert.ok(fee === null || fee > 0, `${c.cardId} ${a.network} fee`);
     }
   }
-  assert.deepEqual(gaps.sort(), NOT_IN_CARD_DATA_YET);
+  // Every network the issuers' pages list for a card (verified November 2026) is in the card's lounge access: Delta
+  // Reserve's Escape Lounges, the Sapphire Reserves' Maple Leaf Lounges and United Club Infinite's Star Alliance lounges
+  // were added from it.
+  assert.deepEqual(gaps, []);
   // Every card with lounge access in the card data has guest rules.
   assert.deepEqual(
     cards.filter((c) => c.loungeAccess.length > 0).map((c) => c.id).sort(),
@@ -729,25 +760,15 @@ test("hotel data: real card ids, lower-earning exceptions, valuations for every 
     const base = chain.basePerDollar;
     if (base !== null) for (const e of chain.brandExceptions) assert.ok(e.perDollar < base, `${chain.program} exception earns less`);
     for (const e of chain.eliteBonuses) assert.ok(e.percent === null || (e.percent > 0 && e.percent <= 200), `${chain.program} ${e.tier}`);
-    assert.ok(V.some((v) => v.id === programId(chain.program)), `valuation for ${chain.program}`);
+    assert.ok(pointValues.some((v) => v.id === programId(chain.program)), `valuation for ${chain.program}`);
     assert.ok(chain.sources.length > 0 && /^\d{4}-\d{2}/.test(chain.asOf), chain.program);
   }
-  assert.equal(V.length, 38);
-  for (const v of V) {
-    assert.ok(v.values.length > 0, v.id);
-    assert.ok(v.low <= v.median && v.median <= v.high, v.id);
-    const cents = v.values.map((x) => x.cents).sort((a, b) => a - b);
-    const mid = cents.length % 2 ? cents[(cents.length - 1) / 2] : (cents[cents.length / 2 - 1] + cents[cents.length / 2]) / 2;
-    near(v.median, mid, 1e-9, `${v.id} median`);
-    assert.deepEqual([v.low, v.high], [cents[0], cents[cents.length - 1]], `${v.id} range`);
-    for (const x of v.values) {
-      assert.ok(x.via && valuations.editions[x.via], `${v.id}: ${x.source} edition`);
-      assert.equal(x.url, valuations.editions[x.via!].url, `${v.id}: ${x.source} url`);
-    }
-  }
-  // Programs no outlet values have no value at all, rather than an estimate.
-  assert.deepEqual(valuations.missing.map((m) => m.id), ["eva-air-infinity-mileagelands", "tap-miles-and-go", "thai-royal-orchid-plus", "virgin-red"]);
-  for (const m of valuations.missing) assert.ok(!V.some((v) => v.id === m.id), m.id);
+  // Hotel stays value points with the one published value (shared/data/points/valuations.ts): 38 ids, every outlet
+  // figure from an edition the data lists, nothing for the ids no outlet values.
+  assert.equal(pointValues.length, 38);
+  for (const v of pointValues) for (const x of v.values) assert.ok(valuationEditions.some((e) => e.outlet === x.outlet && e.url === x.url), `${v.id}: ${x.outlet}`);
+  assert.deepEqual([...unvaluedIds], ["eva-air-infinity-mileagelands", "tap-miles-and-go", "thai-royal-orchid-plus", "virgin-red"]);
+  for (const id of unvaluedIds) assert.equal(resolvePointValue(id), undefined, id);
 });
 
 test("baggage data: verified links, labelled candidates, and fees with sources", () => {
@@ -814,7 +835,6 @@ const DATA_FILES = {
   baggage: "baggage.ts",
   entryRequirements: "entry-requirements.ts",
   hotelEarning: "hotel-earning.ts",
-  valuations: "valuations.ts",
   loungeGuestRules: "lounge-guest-rules.ts",
 } as const;
 const dataText = (file: string) => readFileSync(join(process.cwd(), "src/shared/data/travel", file), "utf8");
@@ -832,7 +852,7 @@ test("dataset status: SEED DATA headers match seed flags, and partial datasets s
   assert.equal(typeof datasetStatus.baggage, "object");
   assert.deepEqual(
     (Object.keys(DATA_FILES) as (keyof typeof DATA_FILES)[]).filter((k) => datasetStatus[k] === "verified"),
-    ["entryRequirements", "hotelEarning", "valuations", "loungeGuestRules"],
+    ["entryRequirements", "hotelEarning", "loungeGuestRules"],
   );
   assert.deepEqual(datasetNotice(["entryRequirements", "hotelEarning"]), { seed: false, partial: [] });
 });
@@ -903,22 +923,17 @@ function pageExists(href: string): boolean {
   return walk(join(process.cwd(), "src/app"), 0);
 }
 
-test("links go only to pages that exist; pending sections are hidden until their routes land", () => {
+test("tool tiles link only to pages that exist", () => {
   assert.ok(pageExists("/lounges/JFK") && pageExists("/cards/amex-platinum") && pageExists("/tools/baggage"));
   assert.ok(!pageExists("/nope") && !pageExists("/tools/nope"));
-  // Once a pending route exists, take it off PENDING_ROUTES so its links (tiles, flows, sweet-spots buttons) show.
-  for (const r of PENDING_ROUTES) assert.ok(!pageExists(r), `${r} exists now: remove it from PENDING_ROUTES in shared/lib/site-routes.ts`);
   for (const t of TOOLS) assert.ok(pageExists(t.href), `tool tile ${t.href}`);
-  // Every section has landed: links to Points & Miles and the next-card page are live.
-  assert.equal(routeLive("/points/sweet-spots?region=Japan"), true);
-  assert.ok(pageExists("/points/sweet-spots") && pageExists("/next-card"));
+  assert.ok(pageExists(sweetSpotsHref("Japan")), "the distance tool's sweet-spots button");
 });
 
 test("start flows: 2–5 one-tap questions, each ending on pages that exist", () => {
   assert.deepEqual(START_FLOWS.map((f) => f.id), ["points", "card", "fee", "trip", "airport"]);
-  // The points flow needs the Points & Miles pages.
-  assert.deepEqual(LIVE_FLOWS.map((f) => f.id), START_FLOWS.filter((f) => !f.requires || pageExists(f.requires)).map((f) => f.id));
-  assert.equal(flowById("points"), routeLive("/points") ? START_FLOWS[0] : null);
+  assert.equal(flowById("points"), START_FLOWS[0]);
+  assert.equal(flowById("nope"), null);
   const ctx = { wallet: [] };
   for (const flow of START_FLOWS) {
     assert.ok(flow.questions.length >= 2 && flow.questions.length <= 5, `${flow.id} question count`);
@@ -932,12 +947,51 @@ test("start flows: 2–5 one-tap questions, each ending on pages that exist", ()
     }
     const n = activeQuestions(flow, first).length;
     assert.ok(n >= 2 && n <= 5, `${flow.id}: ${n} questions asked`);
-    if (!LIVE_FLOWS.includes(flow)) continue;
     for (const q of flow.questions) {
       for (const o of q.options(ctx)) {
-        const results = resultsFor(flow, { ...first, [q.id]: o.value }, ctx);
+        const results = flow.results({ ...first, [q.id]: o.value }, ctx);
         assert.ok(results.length >= 1, `${flow.id} results with ${q.id}=${o.value}`);
         for (const r of results) assert.ok(pageExists(r.href), `${flow.id}: ${r.href} has no page`);
+      }
+    }
+  }
+});
+
+/**
+ * Start here's links carry only parameters their pages read: every query key in a result's link appears as
+ * `.get("key")` (or `.getAll`) in the views behind that route.
+ */
+test("start flows: every link parameter is one its page reads", () => {
+  const VIEWS: [RegExp, string[]][] = [
+    [/^\/points\/sweet-spots$/, ["src/frontend/features/points/sweet-spot-explorer.tsx"]],
+    [/^\/points\/transfers$/, ["src/frontend/features/points/transfer-chart.tsx", "src/frontend/features/points/transfers-view.tsx", "src/frontend/features/points/transfer-explorer.tsx"]],
+    [/^\/best-card$/, ["src/frontend/features/best-card/best-card-picker.tsx"]],
+    [/^\/calculator$/, ["src/frontend/features/calculator/calculator.tsx"]],
+    [/^\/next-card$/, ["src/frontend/features/next-card/next-card-view.tsx"]],
+    [/^\/compare$/, ["src/frontend/features/compare/compare-view.tsx"]],
+    [/^\/lounges\/[A-Z]{3}$/, ["src/frontend/features/lounges/airport-view.tsx", "src/frontend/features/lounges/lounge-row.tsx", "src/frontend/features/lounges/access-picker.tsx"]],
+    [/^\/tools\/entry-requirements$/, ["src/frontend/features/tools/entry-requirements.tsx"]],
+    [/^\/tools\/distance$/, ["src/frontend/features/tools/distance-calculator.tsx"]],
+    [/^\/tools\/baggage$/, ["src/frontend/features/tools/baggage-lookup.tsx"]],
+  ];
+  const reads = (files: string[]) =>
+    new Set(files.flatMap((f) => Array.from(readFileSync(f, "utf8").matchAll(/\.get(?:All)?\("([a-z]+)"\)/g), (m) => m[1])));
+  const ctx = { wallet: [] };
+  for (const flow of START_FLOWS) {
+    for (const q of flow.questions) {
+      for (const o of q.options(ctx)) {
+        const answers: Record<string, string> = {};
+        for (const qq of flow.questions) answers[qq.id] = qq.options(ctx)[0]?.value ?? "";
+        answers[q.id] = o.value;
+        for (const r of flow.results(answers, ctx)) {
+          const [path, query = ""] = r.href.split("#")[0].split("?");
+          const keys = Array.from(new URLSearchParams(query).keys());
+          if (keys.length === 0) continue;
+          const views = VIEWS.find(([re]) => re.test(path));
+          assert.ok(views, `${flow.id}: no view list for ${path}`);
+          const known = reads(views[1]);
+          for (const k of keys) assert.ok(known.has(k), `${flow.id}: ${r.href} sets "${k}", which ${path} doesn't read`);
+        }
       }
     }
   }
@@ -958,12 +1012,10 @@ test("start flows: answers come from the URL, and conditional questions are skip
   const hrefs = trip.results({ from: "JFK", to: "HND", cabin: "business" }, { wallet: [] }).map((r) => r.href);
   assert.ok(hrefs.includes("/tools/distance?route=JFK-HND"));
   assert.ok(hrefs.includes("/tools/entry-requirements?q=Japan"));
-  assert.ok(hrefs.includes("/points/sweet-spots?region=Japan&cabin=business&from=JFK"), "built, for when the page lands");
-  const shown = resultsFor(trip, { from: "JFK", to: "HND", cabin: "business" }, { wallet: [] }).map((r) => r.href);
-  assert.equal(shown.some((h) => h.startsWith("/points")), routeLive("/points/sweet-spots"));
+  assert.ok(hrefs.includes("/points/sweet-spots?region=Japan&cabin=business"));
   const card = START_FLOWS.find((f) => f.id === "card")!;
-  const cardResults = resultsFor(card, { spend: "dining", fee: "400", travel: "often" }, { wallet: [] }).map((r) => r.href.split("?")[0]);
-  assert.equal(cardResults.includes("/next-card"), routeLive("/next-card"));
+  const cardResults = card.results({ spend: "dining", fee: "400", travel: "often" }, { wallet: [] }).map((r) => r.href.split("?")[0]);
+  assert.ok(cardResults.includes("/next-card"));
 });
 
 test("start flows: card suggestions respect the fee limit", () => {
@@ -1034,7 +1086,7 @@ test("source links and prose: readable dates, page names, linked addresses", () 
     "https://raw.githubusercontent.com/imorte/passport-index-data/main/passport-index.json",
     "https://travel.state.gov/en/international-travel/travel-advisories.html",
   ]);
-  assert.deepEqual(labels, ["Chase · Boundless", "Chase · Bold", "Passport Index data (Feb 2026)", "travel.state.gov"]);
+  assert.deepEqual(labels, ["Chase · Boundless", "Chase · Bold", "Passport Index dataset, Feb 2026 (third-party)", "travel.state.gov"]);
   const urls = Array.from(new Set(hotelEarning.chains.flatMap((c) => c.sources)));
   assert.equal(new Set(sourceLabels(urls)).size, urls.length, "labels tell links apart");
   // Pages whose address names them badly get explicit names; dates, running numbers and casing are fixed.
@@ -1141,48 +1193,54 @@ test("card terms the research flags are tracked until the card data is fixed, an
     assert.ok(c.why.trim() && c.sources.length > 0 && c.sources.every((u) => u.startsWith("https://")), `${c.cardId}: why and sources`);
     if (c.hide) assert.ok(c.note, `${c.cardId}: a hidden clause says what the issuer's terms say instead`);
   }
-  // Every clause the review found is tracked, including the ones only listed for the card data's owner.
-  const tracked = (id: string, where: string, text: RegExp) => CARD_TERM_CHECKS.some((c) => c.cardId === id && c.where === where && text.test(c.clause.source));
-  for (const [id, where, text] of [
-    ["chase-sapphire-reserve", "chase-sapphire", /\$27/],
-    ["chase-sapphire-reserve-business", "chase-sapphire", /\$27/],
-    ["chase-sapphire-reserve", "chase-sapphire", /children under 2/],
-    ["chase-sapphire-reserve", "chase-sapphire", /5 hours early/],
-    ["chase-sapphire-reserve", "chase-sapphire", /lost access/],
-    ["amex-platinum", "escape", /guest fees apply/],
-    ["amex-platinum", "airspace", /guest fees apply/],
-    ["amex-platinum", "plaza-premium", /guest policy varies/],
-    ["amex-platinum", "amex-international", /Sydney/],
-    ["amex-platinum", "perks", /Lufthansa/],
-    ["amex-business-platinum", "perks", /Lufthansa/],
-    ["citi-aadvantage-executive", "admirals-club", /without guest privileges/],
-    ["citi-strata-elite", "admirals-club", /primary cardholder only/],
-    ["atmos-rewards-summit", "alaska-lounge", /day passes/],
-    ["amex-delta-reserve", "perks", /First checked bag/],
-    ["amex-delta-platinum", "perks", /First checked bag/],
-  ] as [string, string, RegExp][]) assert.ok(tracked(id, where, text), `${id} ${where} ${text}`);
+  // Clauses the research rejected never ship: they're gone from the card data, so every page shows the same terms.
+  const termsFor = (id: string, network: LoungeNetwork) => getCard(id)!.loungeAccess.find((a) => a.network === network)?.terms ?? "";
+  for (const id of ["chase-sapphire-reserve", "chase-sapphire-reserve-business"]) {
+    assert.doesNotMatch(termsFor(id, "chase-sapphire"), /\$27|children under 2|hours early|lost access|LoungeKey/, id);
+    assert.match(termsFor(id, "chase-sapphire"), /2 complimentary guests\.$/, id);
+  }
+  for (const id of ["amex-platinum", "amex-business-platinum"]) assert.ok(!getCard(id)!.perks.some((p) => /Lufthansa/.test(p)), id);
+  assert.doesNotMatch(termsFor("atmos-rewards-summit", "alaska-lounge"), /8 Alaska Lounge day passes|each calendar quarter/);
+  // No editor's to-dos in what visitors read.
+  for (const c of cards) for (const t of [...c.perks, ...c.loungeAccess.map((a) => a.terms)]) assert.doesNotMatch(t, /verify terms|\bper CNBC\b/, c.id);
+  assert.deepEqual([...new Set(CARD_TERM_CHECKS.map((c) => c.status))].filter((x) => x !== "unconfirmed"), []);
 
-  // Contradicted clauses are left out where the tools show the card's terms, with the issuer's terms underneath.
-  const sapphire = getCard("chase-sapphire-reserve")!.loungeAccess.find((a) => a.network === "chase-sapphire")!;
-  const shown = checkTerms("chase-sapphire-reserve", "chase-sapphire", sapphire.terms);
-  assert.doesNotMatch(shown.text, /\$27/);
-  assert.match(shown.text, /^Unlimited Chase Sapphire Lounge by The Club access; 2 complimentary guests \(children under 2 free\)\. Up to 5 hours/);
-  assert.equal(shown.notes.length, 2);
-  assert.match(shown.notes[0], /publishes no fee/);
-  const escape = getCard("amex-platinum")!.loungeAccess.find((a) => a.network === "escape")!;
-  assert.deepEqual(checkTerms("amex-platinum", "escape", escape.terms), {
-    text: "Cardmember access to Escape Lounges – The Centurion Studio Partner (US).",
-    notes: ["Amex's terms give 2 complimentary guests per visit."],
-    checks: CARD_TERM_CHECKS.filter((c) => c.cardId === "amex-platinum" && c.where === "escape"),
-  });
-  const exec = getCard("citi-aadvantage-executive")!.loungeAccess[0];
-  assert.match(checkTerms("citi-aadvantage-executive", "admirals-club", exec.terms).text, /Authorized users get their own Admirals Club access\.$/);
-  // Terms with nothing flagged pass through untouched.
-  assert.deepEqual(checkTerms("amex-platinum", "centurion", "Unlimited visits."), { text: "Unlimited visits.", notes: [], checks: [] });
-  // The Delta cards' bag perk gets the second free bag from the verified fee data.
-  const deltaPerk = getCard("amex-delta-reserve")!.perks.find((p) => /checked bag/i.test(p))!;
-  assert.match(checkTerms("amex-delta-reserve", "perks", deltaPerk).notes[0], /second bag free/);
+  // The fixed clauses stay fixed: the issuer's current terms, not the old wording (verified Nov 24, 2026).
+  const termsOf = (id: string, network: LoungeNetwork) => getCard(id)!.loungeAccess.find((a) => a.network === network)?.terms ?? "";
+  for (const id of ["amex-platinum", "amex-business-platinum"]) {
+    assert.match(termsOf(id, "escape"), /2 complimentary guests per visit/, `${id} escape`);
+    assert.match(termsOf(id, "airspace"), /up to 2 complimentary guests per visit/, `${id} airspace`);
+    assert.match(termsOf(id, "plaza-premium"), /any Plaza Premium Lounge, plus 2 complimentary guests per visit/, `${id} plaza premium`);
+    for (const n of ["escape", "airspace", "plaza-premium", "amex-international"] as LoungeNetwork[]) {
+      assert.doesNotMatch(termsOf(id, n), /guest fees apply|guest policy varies by location|Sydney|Mexico City/, `${id} ${n}`);
+    }
+    assert.equal(getCard(id)!.lastVerified, "2026-11-24", id);
+  }
+  assert.match(termsOf("amex-platinum", "amex-international"), /Stockholm Arlanda/);
+  assert.match(termsOf("amex-business-platinum", "amex-international"), /Arlanda lounge admits only the consumer Platinum Card/);
+  assert.doesNotMatch(termsOf("citi-aadvantage-executive", "admirals-club"), /without guest privileges/);
+  assert.match(termsOf("citi-aadvantage-executive", "admirals-club"), /Authorized users .* can bring up to 2 guests or immediate family/);
+  assert.doesNotMatch(termsOf("citi-strata-elite", "admirals-club"), /primary cardholder only/);
+  assert.match(termsOf("citi-strata-elite", "admirals-club"), /all 4 at once admit the cardmember and up to 3 adult guests/);
+  assert.doesNotMatch(termsOf("united-club-infinite", "united-club"), /reportedly|set to change in 2027/);
+  for (const id of ["amex-delta-reserve", "amex-delta-platinum"]) {
+    const bag = getCard(id)!.perks.find((p) => /checked bag/i.test(p))!;
+    assert.match(bag, /since June 4, 2026, the Basic Card Member also checks a second bag free on domestic Delta-operated flights/, id);
+    assert.deepEqual(checkTerms(id, "perks", bag).notes, [], `${id}: nothing left to note`);
+  }
   assert.match(noteText(baggage.usDomestic.find((r) => r.iata === "DL")!.exemptions), /Since June 4, 2026, the Basic Card Member on those cards also checks a second bag free/);
+
+  // A clause marked hide is left out where the tools show the card's terms, with its note underneath.
+  const fixture = [
+    { cardId: "x", where: "chase-sapphire" as const, clause: /,\s*additional guests \$27 each/, status: "unconfirmed" as const, hide: true, note: "No fee is published.", why: "test", sources: ["https://example.com/"] },
+  ];
+  const shown = checkTerms("x", "chase-sapphire", "Unlimited access; 2 complimentary guests, additional guests $27 each. More.", fixture);
+  assert.equal(shown.text, "Unlimited access; 2 complimentary guests. More.");
+  assert.deepEqual(shown.notes, ["No fee is published."]);
+  // Terms with nothing flagged pass through untouched.
+  const escape = getCard("amex-platinum")!.loungeAccess.find((a) => a.network === "escape")!;
+  assert.deepEqual(checkTerms("amex-platinum", "escape", escape.terms), { text: escape.terms, notes: [], checks: [] });
+  assert.deepEqual(checkTerms("amex-platinum", "centurion", "Unlimited visits."), { text: "Unlimited visits.", notes: [], checks: [] });
 });
 
 test("baggage search: a stopped airline is found by its code or name, never by 'air' or letters inside a word", () => {

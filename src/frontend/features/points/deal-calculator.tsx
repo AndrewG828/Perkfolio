@@ -1,37 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useState } from "react";
 import { Calculator, Info, RotateCcw } from "lucide-react";
-import type { Card } from "@/shared/data/types";
 import { valuationEditions } from "@/shared/data/points";
-import {
-  cardPageValue,
-  currencyOfCard,
-  judgeRedemption,
-  trimCents,
-  valueForWallet,
-  valueRangeLabel,
-  valueRelation,
-  valueSources,
-  type DealVerdict,
-} from "@/shared/lib/points";
-import { shortCardName } from "@/shared/lib/card-name";
+import { judgeRedemption, trimCents, valueRangeLabel, type DealVerdict } from "@/shared/lib/points";
+import { MEDIAN_SOURCE, resolvePointValue, valueSources } from "@/shared/lib/point-value";
 import { Meter, type MeterTone } from "@/frontend/components/meter";
+import { useValueContext } from "@/frontend/state/point-values";
 import { cn, usd } from "@/shared/lib/format";
-import { cardPagePhrase, centsLabel } from "./point-value";
-import { formatAsOf, listJoin } from "./ui";
+import { formatAsOf } from "./ui";
 import { useWalletReach } from "./use-wallet-reach";
-
-/** True when the card's rewards are these points (a bank currency, even one it can't transfer alone, or a program). */
-const cardEarns = (card: Card, id: string) => {
-  const p = currencyOfCard(card);
-  return p?.kind === "currency" ? p.currency === id : p?.kind === "program" && p.program === id;
-};
 
 const SOURCES = valueSources();
 /** Picking this means "my own value": no published median to start from. */
 const OTHER = "other";
-const OUTLETS = Array.from(new Set(valuationEditions.map((e) => e.outlet)));
 const EDITION = valuationEditions[0] ? formatAsOf(valuationEditions[0].edition) : "";
 
 const VERDICT: Record<DealVerdict, { label: string; tone: MeterTone; badge: string }> = {
@@ -44,12 +27,14 @@ const VERDICT: Record<DealVerdict, { label: string; tone: MeterTone; badge: stri
 const toNumber = (v: string) => (v.trim() === "" ? Number.NaN : Number(v));
 
 /**
- * "Is this a good redemption?": cents per point against what the points are worth. The value starts at the median of
- * the outlets' published valuations for the points you pick; you can type your own.
+ * "Is this a good redemption?": cents per point against what the points are worth. The value starts at the one value
+ * every page uses for the points you pick (shared/lib/point-value: your own value from the tracker, else the published
+ * median for your cards); you can type another here.
  */
 export function DealCalculator() {
   const id = useId();
   const wallet = useWalletReach();
+  const values = useValueContext();
   const [cash, setCash] = useState("1200");
   const [taxes, setTaxes] = useState("85");
   const [points, setPoints] = useState("60000");
@@ -62,33 +47,25 @@ export function DealCalculator() {
   const walletDefault = earned.map((id) => SOURCES.find((s) => s.id === id)).find(Boolean)?.id;
   const sourceId = picked ?? walletDefault ?? SOURCES[0]?.id ?? OTHER;
   const source = SOURCES.find((s) => s.id === sourceId);
-  // An outlet's lower figure for the wallet's cards (NerdWallet's 1.3¢ for Citi cards without a Strata Premier or Elite).
-  const forWallet = source && wallet.hydrated ? valueForWallet(source.value, wallet.cardIds) : null;
-  const median = forWallet?.median ?? source?.cents;
+  // What the points are worth everywhere on the site: the user's own value, else the median for the wallet's cards
+  // (NerdWallet's 1.3¢ for Citi cards without a Strata Premier or Elite).
+  const resolved = source ? resolvePointValue(source.id, values) : undefined;
+  const forCards = resolved?.forCards;
+  const median = resolved?.cents;
   const typed = override[sourceId];
   const valueText = typed ?? (median !== undefined ? trimCents(median) : "");
   const value = toNumber(valueText);
   const custom = typed !== undefined && (median === undefined || toNumber(typed) !== median);
+  const own = !custom && resolved?.basis === "own";
   const label = source?.label ?? "these points";
   const cashPrice = toNumber(cash);
   const taxesPaid = toNumber(taxes);
   const feesOverCash = Number.isFinite(cashPrice) && Number.isFinite(taxesPaid) && cashPrice >= 0 && taxesPaid >= cashPrice && taxesPaid > 0;
   const result = feesOverCash ? null : judgeRedemption({ cashPrice, taxes: taxesPaid, points: toNumber(points), baselineCents: value });
   const v = result ? VERDICT[result.verdict] : null;
-  const ours = custom ? "your value" : forWallet?.variant ? "the median for your cards" : "the median value";
-  // The value Perkfolio's card pages use for these points, worded by how it compares with the median shown (it can be
-  // lower, the same or higher), so the two numbers are never unexplained.
-  const cardPage = source ? cardPageValue(source.id) : null;
-  const phrase = source && cardPage && median !== undefined ? cardPagePhrase(source.id, median) : null;
-  const relation = cardPage && median !== undefined && source ? valueRelation(cardPage, { ...source.value, median }).relation : null;
-  // Name the cards behind that figure when none of the wallet's cards for these points is one of them (a Double Cash
-  // wallet: the 1.6¢ is the Strata cards' figure, while its own card page values its cash back at 1¢).
-  const walletCards = source ? wallet.points.cards.filter((c) => cardEarns(c, source.id)) : [];
-  const figureNames =
-    cardPage && walletCards.length > 0 && !walletCards.some((c) => cardPage.cards.includes(c)) ? listJoin(cardPage.cards.map((c) => shortCardName(c.name))) : "";
-  // Option labels use the median for the wallet's cards once it's known (NerdWallet's 1.3¢ for Citi cards without a
-  // Strata Premier or Elite), so the list and the value field agree.
-  const optionCents = (s: (typeof SOURCES)[number]) => (wallet.hydrated ? valueForWallet(s.value, wallet.cardIds).median : s.cents);
+  const ours = custom || own ? "your value" : resolved?.locked ? "their cash-back value" : forCards?.variant ? "the median for your cards" : "the median value";
+  // Option labels show the same value as the field (your own, or the median for your cards, once they're known).
+  const optionCents = (s: (typeof SOURCES)[number]) => resolvePointValue(s.id, values)?.cents ?? s.value.median;
 
   const field = (key: string, text: string, val: string, set: (v: string) => void, opts: { prefix?: string; suffix?: string; hint?: string; step?: number }) => (
     <div className="space-y-1.5">
@@ -156,24 +133,31 @@ export function DealCalculator() {
           })}
         </div>
         <p className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-3">
-          {source ? (
+          {source && resolved?.locked ? (
             <span>
-              {forWallet?.variant ? (
+              Your cards earn {source.label} but can&apos;t transfer them yet, so they&apos;re worth 1¢ each as cash back.{" "}
+              {resolved.locked.note}
+              {forCards ? ` Transferable, they're valued at ${trimCents(forCards.median)}¢ (${EDITION} median).` : ""}
+            </span>
+          ) : source && forCards ? (
+            <span>
+              {resolved?.basis === "own" ? (
                 <>
-                  Median for your cards: {trimCents(forWallet.median)}¢, using {forWallet.variant.outlet}&apos;s {trimCents(forWallet.variant.cents)}¢ for{" "}
-                  {forWallet.variant.appliesTo} (range {valueRangeLabel(forWallet)}, {EDITION}).
+                  Your value for {source.label}, from the tracker&apos;s{" "}
+                  <Link href="/tracker?tab=points" className="link">
+                    Points tab
+                  </Link>
+                  . The published median is {trimCents(forCards.median)}¢ (range {valueRangeLabel(forCards)}, {EDITION}).
+                </>
+              ) : forCards.variant ? (
+                <>
+                  Median for your cards: {trimCents(forCards.median)}¢, using {forCards.variant.outlet}&apos;s {trimCents(forCards.variant.cents)}¢ for{" "}
+                  {forCards.variant.appliesTo} (range {valueRangeLabel(forCards)}, {EDITION}).
                 </>
               ) : (
                 <>
                   Median of {source.value.values.length} published value{source.value.values.length === 1 ? "" : "s"} for {source.label}: range{" "}
                   {valueRangeLabel(source.value)} ({EDITION}).
-                </>
-              )}
-              {phrase && (
-                <>
-                  {" "}
-                  Our card pages use {phrase}
-                  {figureNames ? ` for ${figureNames} points` : ""}.
                 </>
               )}
             </span>
@@ -192,7 +176,7 @@ export function DealCalculator() {
                 })
               }
             >
-              <RotateCcw className="h-3 w-3" aria-hidden /> Use the median
+              <RotateCcw className="h-3 w-3" aria-hidden /> {resolved?.basis === "own" ? "Use your value" : "Use the median"}
             </button>
           )}
         </p>
@@ -220,7 +204,7 @@ export function DealCalculator() {
             <div className="flex justify-between text-xs text-ink-3">
               <span>0¢</span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-3 w-[2px] rounded-full bg-navy" /> {custom ? "Your value" : "Median value"} for {label}:{" "}
+                <span className="inline-block h-3 w-[2px] rounded-full bg-navy" /> {custom || own ? "Your value" : "Median value"} for {label}:{" "}
                 {trimCents(result.baselineCents)}¢
               </span>
             </div>
@@ -241,20 +225,6 @@ export function DealCalculator() {
                 </>
               )}
             </p>
-            {cardPage && result.cents > 0 && (
-              <p className="text-xs leading-relaxed text-ink-3">
-                Perkfolio&apos;s card pages value {label}
-                {figureNames ? ` from ${figureNames}` : ""} at {centsLabel(cardPage)}
-                {relation === "below"
-                  ? ", a conservative figure for comparing cards"
-                  : relation === "same"
-                    ? ", the same as the median"
-                    : relation === "above"
-                      ? ", above the median"
-                      : ""}
-                : this redemption is {result.cents >= cardPage.high ? "above" : result.cents < cardPage.low ? "below" : "within"} that.
-              </p>
-            )}
           </>
         ) : feesOverCash ? (
           <div className="space-y-1.5 text-sm text-ink-2">
@@ -274,8 +244,8 @@ export function DealCalculator() {
         )}
         <p className="flex gap-2 border-t border-line pt-3 text-xs leading-relaxed text-ink-3">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-          Value per point = (cash price − taxes and fees) ÷ points × 100. Default values are the median of {listJoin(OUTLETS)} ({EDITION});
-          points no outlet values have no default.
+          Value per point = (cash price − taxes and fees) ÷ points × 100. Default values are {MEDIAN_SOURCE}, or your own value
+          from the tracker&apos;s Points tab, the same values every page uses; points no outlet values have no default.
         </p>
       </div>
     </div>

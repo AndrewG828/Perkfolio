@@ -2,7 +2,7 @@ import type { Card } from "@/shared/data/types";
 import { cards as allCards } from "@/shared/data/cards";
 import type { ApplicationRule } from "@/shared/data/strategy/types";
 import { NEEDS_HISTORY, evaluateCard, historyContext, type CardEligibility, type RuleResult, type UserFacts } from "./eligibility";
-import { centsFor } from "./trackers";
+import type { CardPointValue, ValueContext } from "./point-value";
 import { welcomeValue, type WelcomeOffer } from "./welcome-offer";
 import type { WalletState } from "./wallet";
 
@@ -25,28 +25,23 @@ export interface FirstYearValue {
   /** welcomeAll + credits - fee */
   totalAll: number;
   offer: WelcomeOffer;
-  /** The program the welcome points are in, and the cents per point they're valued at. */
-  program?: string;
-  cents?: number;
+  /** What the welcome offer's points are worth each, when it has points. */
+  points?: CardPointValue;
 }
 
 /** Key for a credit the user would use on a card they don't have yet: `${cardId}:${creditId}`. */
 export const usableKey = (cardId: string, creditId: string) => `${cardId}:${creditId}`;
 
-/** Cents per point for a program: the outlets' median (shared/data/strategy/valuations) unless the caller passes the user's own. */
-export type CentsFor = (program: string) => number | undefined;
-const medianCents: CentsFor = (program) => centsFor(program);
-
 /**
  * What the first year of a card is worth: welcome offer + the credits the user says they'd use - the annual fee.
- * Welcome points are valued like the points tracker values balances (`cents`: the user's own figure or the
- * outlets' November 2026 median). Credits count at face value for one year. One that renews every four years,
- * or only once, counts in full, since it can be used in year one.
+ * Welcome points are worth what every other page says they are (shared/lib/point-value.ts: the user's own value, else
+ * the published median, with `values.cards` the cards they hold). Credits count at face value for one year. One that
+ * renews every four years, or only once, counts in full, since it can be used in year one.
  */
-export function firstYearValue(card: Card, usable: (creditId: string) => boolean, cents: CentsFor = medianCents): FirstYearValue {
+export function firstYearValue(card: Card, usable: (creditId: string) => boolean, values: ValueContext = {}): FirstYearValue {
   const creditsAvailable = card.credits.reduce((s, c) => s + c.annualValue, 0);
   const credits = card.credits.filter((c) => usable(c.id)).reduce((s, c) => s + c.annualValue, 0);
-  const w = welcomeValue(card, cents);
+  const w = welcomeValue(card, values);
   const fee = card.annualFee;
   return {
     welcome: w.usd,
@@ -57,8 +52,7 @@ export function firstYearValue(card: Card, usable: (creditId: string) => boolean
     total: w.usd + credits - fee,
     totalAll: w.usdAll + credits - fee,
     offer: w.offer,
-    ...(w.program ? { program: w.program } : {}),
-    ...(w.cents !== undefined ? { cents: w.cents } : {}),
+    ...(w.points ? { points: w.points } : {}),
   };
 }
 
@@ -132,10 +126,11 @@ export function rankNextCards(opts: {
   rules?: ApplicationRule[];
   /** The user's answers to rule questions (e.g. a Bank of America deposit account). */
   facts?: UserFacts;
-  /** Cents per point for welcome offers (pass the user's own values); defaults to the outlets' median. */
-  cents?: CentsFor;
+  /** The user's own point values (`own`); `cards` defaults to the wallet's. */
+  values?: ValueContext;
 }): NextCardRanking {
-  const { wallet, today, usable = {}, scope = "personal", cards = allCards, rules, facts, cents } = opts;
+  const { wallet, today, usable = {}, scope = "personal", cards = allCards, rules, facts } = opts;
+  const values: ValueContext = { ...opts.values, cards: opts.values?.cards ?? wallet.cards };
   const ctx = historyContext(wallet, today, facts);
   const out: NextCardRanking = { eligible: [], warning: [], unknown: [], blocked: [], held: [], closed: [] };
   for (const card of cards) {
@@ -149,7 +144,7 @@ export function rankNextCards(opts: {
       out.closed.push(card);
       continue;
     }
-    const value = firstYearValue(card, (creditId) => Boolean(usable[usableKey(card.id, creditId)]), cents);
+    const value = firstYearValue(card, (creditId) => Boolean(usable[usableKey(card.id, creditId)]), values);
     const { bonus, rule } = bonusBasis(eligibility, value);
     out[eligibility.status].push({
       card,

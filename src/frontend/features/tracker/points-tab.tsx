@@ -8,22 +8,19 @@ import { programForCard, programInfo, programKindLabels, programName, programUni
 import { ProgramSelect } from "@/frontend/components/program-select";
 import { strategyPrefs, useStrategyPrefs } from "@/frontend/state/strategy-prefs";
 import { walletActions, type PointsBalance, type WalletState } from "@/frontend/state/wallet-store";
-import { valuations } from "@/shared/data/strategy/valuations";
 import { expirationPolicies } from "@/shared/data/strategy/expiration";
 import type { ExpirationPolicy } from "@/shared/data/strategy/types";
 import {
   EXPIRY_AMBER_DAYS,
   STALE_BALANCE_DAYS,
   balanceStatus,
-  centsFor,
   expirationPolicy,
   missingPolicy,
-  missingValuation,
   ownCardPrograms,
   pointsValueUsd,
-  valuationOf,
   type BalanceStatus,
 } from "@/shared/lib/trackers";
+import { MEDIAN_SOURCE, VALUE_EDITION, VALUE_OUTLETS, formatCents, noValueReason, resolvePointValue, type ValueContext } from "@/shared/lib/point-value";
 import { daysSince, daysUntil, formatDate, formatMonth, isoDate } from "@/shared/lib/dates";
 import { cn, num, usd } from "@/shared/lib/format";
 import { SourceLinks } from "@/frontend/features/next-card/rule-results";
@@ -47,13 +44,10 @@ export function balanceStatuses(wallet: WalletState, now: Date): Map<string, Bal
   );
 }
 
-const cents = (c: number) => `${Number(c.toFixed(3))}¢`;
-const OUTLETS = Object.values(valuations.datasets);
+const cents = formatCents;
 /** "The Points Guy, Upgraded Points and NerdWallet" */
-const OUTLET_NAMES = OUTLETS.map((d) => d.outlet).join(", ").replace(/, ([^,]*)$/, " and $1");
-const EDITION = OUTLETS[0] ? formatMonth(OUTLETS[0].edition) : "";
-/** "the November 2026 figures from The Points Guy, Upgraded Points and NerdWallet" */
-const FIGURES = `the ${EDITION} figures from ${OUTLET_NAMES}`;
+const OUTLET_NAMES = VALUE_OUTLETS.join(", ").replace(/, ([^,]*)$/, " and $1");
+const EDITION = VALUE_EDITION ? formatMonth(VALUE_EDITION) : "";
 
 /** A dated change worth flagging next to a balance, within a year either side of today. */
 function changeChip(policy: ExpirationPolicy | undefined, now: Date): { text: string; title: string } | null {
@@ -71,9 +65,11 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
   const balances = wallet.balances ?? {};
   const earning = earningPrograms(wallet);
   const statuses = balanceStatuses(wallet, now);
+  // The one value every page uses (shared/lib/point-value.ts): the user's own, else the published median for their cards.
+  const values: ValueContext = { own: prefs.cpp, cards: wallet.cards };
   const rows = Object.entries(balances)
     .map(([id, b]) => {
-      const c = centsFor(id, prefs.cpp);
+      const c = resolvePointValue(id, values)?.cents;
       return { id, b, cents: c, value: c === undefined ? 0 : pointsValueUsd(b.points, c), status: statuses.get(id)! };
     })
     .sort((a, b) => b.value - a.value || programName(a.id).localeCompare(programName(b.id)));
@@ -142,7 +138,7 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
           <div>
             <h2 className="text-lg font-semibold text-navy">Balances</h2>
             <p className="text-sm text-ink-2">
-              Valued at the median of {FIGURES}, unless you set your own.
+              Valued at {MEDIAN_SOURCE}, unless you set your own. Every page on Perkfolio uses the same value.
             </p>
           </div>
           {adding === null && rows.length > 0 && (
@@ -175,7 +171,7 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
         ) : (
           <ul className="divide-y divide-line">
             {rows.map((r) => (
-              <BalanceRow key={r.id} id={r.id} balance={r.b} cents={r.cents} value={r.value} status={r.status} own={prefs.cpp[r.id]} now={now} />
+              <BalanceRow key={r.id} id={r.id} balance={r.b} cents={r.cents} value={r.value} status={r.status} own={prefs.cpp[r.id]} cards={wallet.cards} now={now} />
             ))}
           </ul>
         )}
@@ -191,7 +187,7 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
         )}
       </section>
 
-      {rows.length > 0 && <AboutValues ids={rows.map((r) => r.id)} />}
+      {rows.length > 0 && <AboutValues ids={rows.map((r) => r.id)} cards={wallet.cards} />}
     </TabFrame>
   );
 }
@@ -330,6 +326,7 @@ function BalanceRow({
   value,
   status,
   own,
+  cards,
   now,
 }: {
   id: string;
@@ -338,6 +335,8 @@ function BalanceRow({
   value: number;
   status: BalanceStatus;
   own?: number;
+  /** The wallet's cards, for the published median that applies to them. */
+  cards: string[];
   now: Date;
 }) {
   const [editing, setEditing] = useState(false);
@@ -370,7 +369,7 @@ function BalanceRow({
         </p>
         <div className="text-sm">
           {valuing ? (
-            <ValueEditor id={id} current={c} own={own} onDone={() => setValuing(false)} />
+            <ValueEditor id={id} current={c} own={own} cards={cards} onDone={() => setValuing(false)} />
           ) : (
             <p className="text-ink-2">
               {c === undefined ? (
@@ -486,8 +485,9 @@ function EditBalance({ id, balance, todayIso, onDone }: { id: string; balance: P
   );
 }
 
-function ValueEditor({ id, current, own, onDone }: { id: string; current?: number; own?: number; onDone: () => void }) {
-  const median = valuationOf(id)?.median;
+function ValueEditor({ id, current, own, cards, onDone }: { id: string; current?: number; own?: number; cards: string[]; onDone: () => void }) {
+  // What the balance falls back to without the user's own value: the published median for their cards.
+  const median = resolvePointValue(id, { cards })?.cents;
   const [draft, setDraft] = useState(current !== undefined ? String(current) : "");
   const none = median === undefined;
   return (
@@ -534,7 +534,7 @@ function ValueEditor({ id, current, own, onDone }: { id: string; current?: numbe
 }
 
 /** Where the numbers come from: each outlet's valuation and the expiration policy for the programs shown. */
-function AboutValues({ ids }: { ids: string[] }) {
+function AboutValues({ ids, cards }: { ids: string[]; cards: string[] }) {
   return (
     <details className="panel group p-5 text-sm">
       <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 font-semibold text-navy sm:min-h-0">
@@ -543,34 +543,38 @@ function AboutValues({ ids }: { ids: string[] }) {
         <span className="ml-auto hidden text-xs font-medium text-brand group-open:inline">Hide</span>
       </summary>
       <p className="mt-3 text-xs leading-relaxed text-ink-3">
-        Values are cents per point from the {EDITION} tables of {OUTLET_NAMES}; we use the middle figure. Expiration policies
-        come from the programs&apos; and card issuers&apos; own pages, or from two or more outlets that agree. Both were checked{" "}
-        {formatDate(valuations.verified)}.
+        Values are cents per point from the {EDITION} tables of {OUTLET_NAMES}; we use the middle figure, the same one every
+        page on Perkfolio uses unless you set your own. Expiration policies come from the programs&apos; and card issuers&apos;
+        own pages, or from two or more outlets that agree, checked {formatDate(expirationPolicies.verified)}.
       </p>
       <ul className="mt-2 divide-y divide-line">
         {ids.map((id) => {
-          const v = valuationOf(id);
+          // The published median for the user's cards (an outlet's figure for cards like theirs can replace its headline one).
+          const r = resolvePointValue(id, { cards });
+          const v = r?.published;
+          const f = r?.forCards;
           const p = expirationPolicy(id);
           return (
             <li key={id} className="grid gap-2 py-3 md:grid-cols-[minmax(0,200px)_1fr_1fr] md:gap-6">
               <p className="font-medium text-ink">{programName(id)}</p>
               <div className="min-w-0 text-ink-2">
-                {v ? (
+                {v && f ? (
                   <>
                     <p>
-                      Median {cents(v.median)}
-                      {v.low !== v.high && ` (range ${cents(v.low)}–${cents(v.high)})`}
+                      Median {cents(f.median)}
+                      {f.low !== f.high && ` (range ${cents(f.low)}–${cents(f.high)})`}
+                      {f.variant && `, with ${f.variant.outlet}'s ${cents(f.variant.cents)} for ${f.variant.appliesTo}`}
                     </p>
                     <ul className="mt-1 space-y-0.5 text-xs">
                       {v.values.map((x) => (
-                        <li key={x.source}>
+                        <li key={x.outlet}>
                           <a
                             href={x.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex min-h-8 items-center font-medium text-brand hover:underline sm:inline sm:min-h-0"
                           >
-                            {x.source}
+                            {x.outlet}
                           </a>
                           : {cents(x.cents)}
                           {x.previousCents !== undefined && <span className="text-ink-3"> (was {cents(x.previousCents)})</span>}
@@ -585,8 +589,10 @@ function AboutValues({ ids }: { ids: string[] }) {
                     </ul>
                     {v.note && <p className="mt-1 text-xs text-ink-3">{v.note}</p>}
                   </>
+                ) : r?.basis === "estimate" ? (
+                  <p>No outlet we follow publishes a value, so balances use the card data&apos;s estimate of {cents(r.cents)}. Use &ldquo;Set your own&rdquo; next to the balance to change it.</p>
                 ) : (
-                  <p>No published value. {missingValuation(id) ?? ""} Use &ldquo;Set your own&rdquo; next to the balance.</p>
+                  <p>No published value. {noValueReason(id) ?? ""} Use &ldquo;Set your own&rdquo; next to the balance.</p>
                 )}
               </div>
               <div className="min-w-0 text-ink-2">

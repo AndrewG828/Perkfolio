@@ -38,7 +38,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps<"/points/programs/[id]">): Promise<Metadata> {
   const { id } = await params;
-  if (!hasProgramPage(id)) return {};
+  if (!hasProgramPage(id)) return { title: "Page not found" };
   const ref = programRef(id);
   return {
     title: ref.name,
@@ -72,7 +72,7 @@ export default async function ProgramPage({ params }: PageProps<"/points/program
         eyebrow={airline ? "Airline program" : "Hotel program"}
         title={ref.name}
         mark={<ProgramMark program={ref} size="lg" onDark />}
-        subtitle={program ? `Run by ${program.owner}. Earns ${program.currency}.` : "We haven't written a full guide for this program yet: here's what we've verified."}
+        subtitle={program ? `Run by ${program.owner}. Earns ${program.currency}.` : "The transfers, airlines and values we've verified for this program."}
       >
         <div className="flex flex-wrap gap-2">
           {airline && <AllianceBadge alliance={ref.alliance} onDark />}
@@ -149,7 +149,7 @@ export default async function ProgramPage({ params }: PageProps<"/points/program
                 <BookingRulesPanel rules={rules} programName={ref.name} />
               ) : (
                 <p className="panel p-5 text-sm text-ink-2">
-                  We haven&apos;t confirmed {ref.name}&apos;s booking rules yet.{" "}
+                  We haven&apos;t confirmed the booking rules for {ref.name} yet.{" "}
                   <Link href="/points/booking-rules" className="link">
                     Compare the programs we have
                   </Link>

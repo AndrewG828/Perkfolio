@@ -2,7 +2,7 @@
  * Turns the verified Points & Miles research into the data modules in src/shared/data/points/.
  *
  *   npm run points:import -- --a <research dir A> --b <research dir B>            # write the modules
- *   npm run points:import -- --a <dir> --b <dir> --dry-run                        # report only
+ *   npm run points:import -- --a <dir> --b <dir> --dry-run                        # report only (and which modules would change)
  *   npm run points:import -- --a <dir> --b <dir> --no-change-log                  # partner list exactly as researched
  *
  * (or set POINTS_RESEARCH_A / POINTS_RESEARCH_B). For every track it reads `<track>.final.json` when it exists, else
@@ -267,11 +267,11 @@ const REWRITES: [RegExp, string][] = [
   // How the research checked a program, as a caveat readers can use.
   [
     /^Checked \d{4}-\d{2}-\d{2} against long-standing (\w+) rules as reported by major points blogs and (.+?), because (\S+) can't be reached from this environment\.$/,
-    "$3 wasn't checked: these rules follow long-standing $1 rules as reported by major points blogs and $2.",
+    "These rules follow long-standing $1 rules as reported by major points blogs and $2, not $3's own pages.",
   ],
   [
     /^Checked \d{4}-\d{2}-\d{2}: the (.+?) against (\w+)'s live pages; (.+?) against (\w+)'s long-standing rules as reported by major points blogs, because (\S+) can't be reached from this environment\.$/,
-    "The $1 come from $2's pages; $3 follow $4's long-standing rules as reported by major points blogs ($5 wasn't checked).",
+    "The $1 come from $2's pages; $3 follow $4's long-standing rules as reported by major points blogs, not $5's own pages.",
   ],
   // A scheduled change's status is its own field (and a badge that flips on its date), not part of its detail.
   [/^Scheduled, not yet in effect: from\b/, "From"],
@@ -330,8 +330,27 @@ const fmtNum = (n: number) => new Intl.NumberFormat("en-US").format(n);
  * largest term: 20 as on the pills, 200 for hotel conversions, where every rate is reduced as the hotel tables write
  * it ("25:6.5" → "50:13"). Anything else, and clock times ("11:59 p.m."), stay as written.
  */
+/**
+ * Wording for visitors, wherever research text lands (prose() runs on all of it): what the research didn't confirm is
+ * said as a caveat ("isn't confirmed"), not as how it was checked, and figures from one outlet that the value panels
+ * show (from valuations.ts) aren't repeated in prose, where they'd drift from the site's own numbers.
+ */
+const VISITOR_WORDING: [RegExp, string][] = [
+  [/\bcoverage wasn't checked one by one\b/g, "coverage isn't confirmed program by program"],
+  [/\bcoverage wasn't checked\b/g, "coverage isn't confirmed"],
+  [/\b(booking channels|Non-Star partners|Partner redemptions through AerClub|Other routes and cabins) weren't checked\b/g, "$1 aren't confirmed"],
+  [/\bweren't checked program by program\b/g, "aren't confirmed program by program"],
+  // Pages show one row per pair, so a note can't point at "the separate row".
+  [/ \(see the separate row\)/g, ""],
+  [/ \(The Points Guy values them at about [\d.]+ cents, against [\d.]+ for Marriott and [\d.]+ for Hyatt\)/g, ""],
+  [
+    /; Upgraded Points values points at [\d.]+ to [\d.]+ cents when used for nights, so a bank point moved at 1:2 is worth roughly [\d.]+ to [\d.]+ cents/g,
+    "; points go further on free nights",
+  ],
+];
+
 function prose(text: string, max = 20): string {
-  const dated = text
+  const dated = VISITOR_WORDING.reduce((t, [re, to]) => t.replace(re, to), text)
     .replace(
       new RegExp(String.raw`\b(on|since|from|until|after|before|updated|published|first published) ${ISO_IN_TEXT.source}`, "g"),
       (_, w: string, y: string, m: string, d: string) => `${w} ${isoWords(y, m, d, "day")}`,
@@ -1590,8 +1609,17 @@ async function main() {
   if (skipped.length) console.log(`\nSkipped:\n${skipped.map((s) => `  – ${s}`).join("\n")}`);
   if (lapsed.length) console.log(`\nLapsed curation (delete these rules):\n${lapsed.map((s) => `  ? ${s}`).join("\n")}`);
 
+  // What a real run would change in the shipped modules.
+  const changed = outputs.filter((o) => {
+    const path = join(OUT, o.file);
+    return !existsSync(path) || readFileSync(path, "utf8") !== o.body;
+  });
   if (DRY) {
-    console.log("\n--dry-run: nothing written.");
+    console.log(
+      changed.length
+        ? `\n--dry-run: nothing written. A real run would change ${changed.map((o) => o.file).join(", ")}.`
+        : "\n--dry-run: nothing written. No changes: the shipped modules match the research.",
+    );
     return;
   }
   for (const o of outputs) writeFileSync(join(OUT, o.file), o.body);

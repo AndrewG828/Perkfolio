@@ -167,7 +167,13 @@ export const chaseBiltCards: Card[] = [
       {
         network: "chase-sapphire",
         terms:
-          "Unlimited Chase Sapphire Lounge by The Club access; 2 complimentary guests (children under 2 free), additional guests $27 each. Up to 5 hours early on connections. Priority Pass/LoungeKey members lost access 8/15/2026.",
+          "Unlimited Chase Sapphire Lounge by The Club access; 2 complimentary guests.",
+      },
+      {
+        // Chase's Sapphire Reserve page (checked 2026-11-24).
+        network: "air-canada-maple-leaf",
+        terms:
+          "Maple Leaf Lounges and Air Canada Cafés in Canada, the U.S. and Europe for the cardmember and each authorized user, with a same-day departing or connecting flight operated by a Star Alliance airline (not at your final destination; Signature Suites and Montréal lounges excluded). 1 complimentary guest, then US$59 per guest at U.S. lounges (CA$59 in Canada, £59 in the UK, €59 elsewhere in Europe).",
       },
     ],
     perks: [
@@ -188,7 +194,7 @@ export const chaseBiltCards: Card[] = [
     transferPartners: transferPartnerNames("chase-ur", "chase-sapphire-reserve"),
     art: { from: "#13233f", to: "#05070c", text: "light", finish: "metal" },
     url: "https://creditcards.chase.com/rewards-credit-cards/sapphire/reserve",
-    lastVerified: LAST_VERIFIED,
+    lastVerified: "2026-11-24",
   },
 
   // ───────────────────────────── Chase Sapphire Reserve for Business ─────────────────────────────
@@ -285,7 +291,7 @@ export const chaseBiltCards: Card[] = [
         category: "dining",
         description: "Up to $300 per year in DoorDash promos plus complimentary DashPass.",
         enrollmentRequired: true,
-        note: "Chase lists $300/year in promos; shown here as ~$25/month. Not confirmed whether the 10/2026 personal-card DoorDash increase applies. Activate DashPass by 12/31/2027.",
+        note: "Chase lists up to $300 a year in promos (about $25 a month). It isn't confirmed whether the October 2026 increase on the personal card applies. Activate DashPass by 12/31/2027.",
       },
       {
         id: "global-entry",
@@ -304,7 +310,13 @@ export const chaseBiltCards: Card[] = [
       },
       {
         network: "chase-sapphire",
-        terms: "Unlimited Chase Sapphire Lounge access; 2 complimentary guests, additional guests $27 each.",
+        terms: "Unlimited Chase Sapphire Lounge access; 2 complimentary guests.",
+      },
+      {
+        // Chase's Sapphire Reserve for Business page (checked 2026-11-24).
+        network: "air-canada-maple-leaf",
+        terms:
+          "Maple Leaf Lounges and Air Canada Cafés in Canada, the U.S. and Europe for authorizing officers (not employee cards), with a same-day departing or connecting flight operated by a Star Alliance airline (not at your final destination; Signature Suites and Montréal lounges excluded). 1 complimentary guest, then US$59 per guest at U.S. lounges (CA$59 in Canada, £59 in the UK, €59 elsewhere in Europe).",
       },
     ],
     perks: [
@@ -322,7 +334,7 @@ export const chaseBiltCards: Card[] = [
     transferPartners: transferPartnerNames("chase-ur", "chase-sapphire-reserve-business"),
     art: { from: "#1a2338", to: "#0a0c12", text: "light", finish: "metal" },
     url: "https://creditcards.chase.com/business-credit-cards/sapphire/reserve",
-    lastVerified: LAST_VERIFIED,
+    lastVerified: "2026-11-24",
   },
 
   // ───────────────────────────── Chase Sapphire Preferred ─────────────────────────────
@@ -595,10 +607,16 @@ export const chaseBiltCards: Card[] = [
       },
     ],
     loungeAccess: [
+      // Chase's United Club Card page (checked 2026-11-24).
       {
         network: "united-club",
         terms:
-          "United Club membership for the primary cardmember. Card-based membership allows 1 adult guest or immediate family; Star Alliance lounge access and 2 adult guests reportedly require $50,000 in annual card spend. Guest rules are set to change in 2027 — verify with United.",
+          "United Club membership for the primary cardmember: 1 adult guest plus dependent children under 18 on each visit. More than $50,000 in net purchases on the card in a calendar year (or MileagePlus Premier Gold or higher) unlocks All Access for the rest of that year and the next: 2 adult guests (or 1 adult plus dependent children under 18) and Star Alliance lounges. Authorized users can enter only as the primary's guests.",
+      },
+      {
+        network: "star-alliance-lounges",
+        terms:
+          "Star Alliance member and affiliated lounges with United Club All Access (more than $50,000 in net card purchases in a calendar year, or Premier Gold or higher). Each lounge's own access policy applies.",
       },
     ],
     perks: [
@@ -614,8 +632,8 @@ export const chaseBiltCards: Card[] = [
     bestFor: "United loyalists who would otherwise buy a United Club membership",
     foreignTransactionFee: false,
     art: { from: "#1d2a4a", to: "#05080f", text: "light", finish: "metal" },
-    url: "https://creditcards.chase.com/travel-credit-cards/united/united-club",
-    lastVerified: LAST_VERIFIED,
+    url: "https://creditcards.chase.com/travel-credit-cards/united/club-infinite",
+    lastVerified: "2026-11-24",
   },
 
   // ───────────────────────────── United Quest ─────────────────────────────
@@ -708,7 +726,6 @@ export const chaseBiltCards: Card[] = [
     ],
     loungeAccess: [],
     perks: [
-      "10,000-mile award flight discount after $20,000 in calendar-year spend (per CNBC; verify terms)",
       "Free first and second checked bags for cardmember and a companion",
       "Priority boarding",
       "Earn Premier qualifying points (PQP) on card spend",
@@ -720,7 +737,7 @@ export const chaseBiltCards: Card[] = [
     foreignTransactionFee: false,
     art: { from: "#2d5a9a", to: "#0f1f3d", text: "light", finish: "metal" },
     url: "https://creditcards.chase.com/travel-credit-cards/united/united-quest",
-    lastVerified: LAST_VERIFIED,
+    lastVerified: "2026-11-24",
   },
 
   // ───────────────────────────── World of Hyatt ─────────────────────────────
@@ -805,12 +822,13 @@ export const chaseBiltCards: Card[] = [
       {
         id: "anniversary-points",
         name: "7,500 anniversary bonus points",
-        annualValue: 97,
+        annualValue: 98,
         frequency: "annual",
-        amountPerPeriod: 97,
+        amountPerPeriod: 98,
         category: "airline",
         description: "7,500 Rapid Rewards points each account anniversary.",
-        note: "Points, not a statement credit; dollar value is an estimate at ~1.3¢/point.",
+        note: "Points, not a statement credit: valued at the published median for Southwest points.",
+        points: { amount: 7_500, program: "southwest-rapid-rewards" },
       },
     ],
     loungeAccess: [],
@@ -927,7 +945,6 @@ export const chaseBiltCards: Card[] = [
       "50,000 points + Bilt Gold status after $4,000 in non-housing purchases in the first 3 months, plus $300 in Bilt Cash upon approval",
     welcomeOfferValue: 1150,
     earnRates: [
-      { category: "Everyday purchases", multiplier: 2 },
       { category: "Rent and mortgage payments", multiplier: 1.25, cap: BILT_HOUSING_EARN },
     ],
     baseRate: 2,
@@ -957,7 +974,7 @@ export const chaseBiltCards: Card[] = [
       {
         network: "priority-pass",
         terms:
-          "Priority Pass Select for cardholder and each authorized user; unlimited visits plus 2 guests per visit. Non-lounge experiences (restaurants, spas) added in 2026 per Frequent Miler.",
+          "Priority Pass Select for cardholder and each authorized user; unlimited visits plus 2 guests per visit. Bilt says the membership also includes offers and discounts at airport restaurants, shops and spas.",
       },
     ],
     perks: [
@@ -976,6 +993,6 @@ export const chaseBiltCards: Card[] = [
     transferPartners: transferPartnerNames("bilt", "bilt-palladium"),
     art: { from: "#e2e3e7", to: "#8e9098", text: "dark", finish: "metal" },
     url: "https://www.bilt.com/card/palladium",
-    lastVerified: LAST_VERIFIED,
+    lastVerified: "2026-11-24",
   },
 ];

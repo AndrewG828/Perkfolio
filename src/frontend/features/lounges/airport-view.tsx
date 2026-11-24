@@ -11,11 +11,24 @@ import {
   accessFor,
   airportByCode,
   bigAirports,
+  isClosed,
   networksFor,
+  refusedAt,
   terminalsAt,
   type LoungeAccessGrant,
 } from "@/shared/lib/lounge-access";
-import { isConnected, linkKey, navFor, rankByDistance, resolveOrigin, routeTo, zoneForLounge, type Origin } from "@/shared/lib/wayfinding";
+import {
+  isConnected,
+  linkKey,
+  navFor,
+  rankByDistance,
+  resolveOrigin,
+  routeTo,
+  terminalsSeparate,
+  zoneForLounge,
+  type Origin,
+} from "@/shared/lib/wayfinding";
+import { isoDate } from "@/shared/lib/dates";
 import { useHydrated } from "@/frontend/state/wallet-store";
 import { cn } from "@/shared/lib/format";
 import { AccessPicker, useAccessSelection } from "./access-picker";
@@ -31,7 +44,13 @@ export function AirportView({ code }: { code: string }) {
   const hydrated = useHydrated();
   const [onlyMine, setOnlyMine] = useState(false);
   const [network, setNetwork] = useState<LoungeNetwork | "all">("all");
-  const checking = access.mode !== "all";
+  // With no cards to check (an empty wallet, or none chosen yet), show every lounge and every card's rules, as the
+  // finder does, rather than "no access" everywhere.
+  const checking = access.mode !== "all" && access.selected.length > 0;
+  const noCards = access.mode !== "all" && hydrated && access.selected.length === 0;
+  // Closures have dates: before hydration (no visitor date yet) a listed closure counts as in effect.
+  const today = hydrated ? isoDate(new Date()) : null;
+  const closed = (l: Lounge) => isClosed(l, today);
 
   const groups = useMemo(() => terminalsAt(code), [code]);
   const all = groups.flatMap((g) => g.lounges);
@@ -42,11 +61,19 @@ export function AirportView({ code }: { code: string }) {
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, selectedKey]);
-  const open = all.filter((l) => (grants.get(l.id)?.length ?? 0) > 0);
+  const open = all.filter((l) => !closed(l) && (grants.get(l.id)?.length ?? 0) > 0);
+  const closedHere = all.filter(closed);
+  // The map pins: a closed lounge gets you nowhere today.
+  const openGrants = useMemo(() => {
+    const m = new Map<string, LoungeAccessGrant[]>();
+    for (const l of all) m.set(l.id, closed(l) ? [] : (grants.get(l.id) ?? []));
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grants, today]);
   const networksHere = Array.from(new Set(all.flatMap(networksFor)));
   const visible = (l: Lounge) =>
     (network === "all" || networksFor(l).includes(network)) &&
-    (!onlyMine || !checking || (grants.get(l.id)?.length ?? 0) > 0);
+    (!onlyMine || !checking || (!closed(l) && (grants.get(l.id)?.length ?? 0) > 0));
   const embed = osmEmbedUrl(code);
   const others = bigAirports.filter((a) => a.code !== code).slice(0, 12);
 
@@ -71,13 +98,25 @@ export function AirportView({ code }: { code: string }) {
   // Until the traveler gives a gate, show the route from security so directions are always visible.
   const origin = useMemo<Origin | null>(() => (nav ? (resolved?.ok ? resolved.origin : { kind: "landside" }) : null), [nav, resolved]);
   const fromSecurityDefault = Boolean(nav) && !resolved?.ok;
-  const isOpen = (l: Lounge) => (grants.get(l.id)?.length ?? 0) > 0;
-  const ranked = nav && origin ? rankByDistance(nav, origin, all).map((r) => ({ ...r, open: isOpen(r.lounge) })) : [];
+  // Before you say where you are, at an airport whose terminals aren't connected after security, every terminal's
+  // lounges tie: the first one isn't "nearest".
+  const nearestUnknown = Boolean(nav && origin?.kind === "landside" && terminalsSeparate(nav));
+  const isOpen = (l: Lounge) => !closed(l) && (grants.get(l.id)?.length ?? 0) > 0;
+  // Closed lounges are never ranked or picked for you (you can still choose one to see where it is).
+  const ranked =
+    nav && origin
+      ? rankByDistance(
+          nav,
+          origin,
+          all.filter((l) => !closed(l)),
+        ).map((r) => ({ ...r, open: isOpen(r.lounge) }))
+      : [];
   const preferOpen = checking && hydrated && open.length > 0;
   const explicit = all.find((l) => l.id === toId) ?? null;
+  const firstOpenToAll = all.find((l) => !closed(l)) ?? null;
   const target =
     explicit ??
-    (ranked.find((r) => !preferOpen || r.open)?.lounge ?? (preferOpen ? open[0] : checking && hydrated ? null : (all[0] ?? null)));
+    (ranked.find((r) => !preferOpen || r.open)?.lounge ?? (preferOpen ? open[0] : checking && hydrated ? null : firstOpenToAll));
   const route = nav && origin && target ? routeTo(nav, origin, target) : null;
 
   const pick = (l: Lounge) => {
@@ -116,17 +155,25 @@ export function AirportView({ code }: { code: string }) {
     <div className="bg-canvas">
       <div className="container-page grid gap-8 py-10 lg:grid-cols-[320px_1fr]">
         <aside className="order-2 min-w-0 space-y-5 lg:order-1 lg:sticky lg:top-28 lg:self-start">
-          <AccessPicker access={access} />
+          <div id="check-access" className="scroll-mt-28">
+            <AccessPicker access={access} />
+          </div>
           {checking && hydrated && (
             <div className="panel p-5">
               <p className="text-sm font-semibold text-ink">Your access at {code}</p>
               <p className="mt-2 text-3xl font-semibold text-navy">
-                {open.length} <span className="text-base font-normal text-ink-2">of {all.length} lounges</span>
+                {open.length}{" "}
+                <span className="text-base font-normal text-ink-2">
+                  of {all.length - closedHere.length} {closedHere.length ? "open lounges" : "lounges"}
+                </span>
               </p>
-              {access.selected.length === 0 ? (
-                <p className="mt-2 text-sm text-ink-2">Pick cards to see which lounges they open.</p>
-              ) : open.length === 0 ? (
-                <p className="mt-2 text-sm text-ink-2">None of these cards gets you into a lounge here.</p>
+              {closedHere.length > 0 && (
+                <p className="mt-1 text-xs text-ink-3">
+                  {closedHere.length === 1 ? "1 more is" : `${closedHere.length} more are`} closed for now and not counted.
+                </p>
+              )}
+              {open.length === 0 ? (
+                <p className="mt-2 text-sm text-ink-2">None of these cards gets you into an open lounge here.</p>
               ) : (
                 <ul className="mt-3 space-y-1.5 text-sm">
                   {open.map((l) => (
@@ -145,6 +192,19 @@ export function AirportView({ code }: { code: string }) {
         </aside>
 
         <div className="order-1 min-w-0 space-y-6 lg:order-2">
+          {noCards && (
+            <p className="rounded-md border border-line bg-white p-3 text-sm text-ink-2">
+              {access.mode === "wallet" ? "Your wallet is empty, so every lounge is shown with every card's rules. " : "No cards chosen yet, so every lounge is shown. "}
+              <Link href="/tracker" className="link">
+                Add your cards
+              </Link>{" "}
+              or{" "}
+              <a href="#check-access" className="link">
+                choose cards
+              </a>{" "}
+              to see which ones you can get into.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => setNetwork("all")} className={cn("chip cursor-pointer", network === "all" && "border-brand bg-sky text-brand")}>
               All networks
@@ -185,14 +245,18 @@ export function AirportView({ code }: { code: string }) {
             route={route}
             ranked={ranked}
             lounges={all}
-            checking={checking && hydrated && access.selected.length > 0}
+            closed={closed}
+            onlyClosed={checking && hydrated && open.length === 0 && closedHere.some((l) => (grants.get(l.id)?.length ?? 0) > 0)}
+            nearestUnknown={nearestUnknown}
+            checking={checking && hydrated}
             map={
               nav ? (
                 <AirportMap
                   code={code}
                   nav={nav}
                   lounges={all.filter(visible)}
-                  grants={grants}
+                  grants={openGrants}
+                  closed={closed}
                   checking={checking && hydrated}
                   origin={origin}
                   route={route}
@@ -205,7 +269,8 @@ export function AirportView({ code }: { code: string }) {
 
           <TerminalMap
             rows={rows}
-            grants={grants}
+            grants={openGrants}
+            closed={closed}
             checking={checking && hydrated}
             visible={visible}
             route={mapRoute}
@@ -230,6 +295,8 @@ export function AirportView({ code }: { code: string }) {
                         lounge={l}
                         airport={airport}
                         access={grants.get(l.id) ?? []}
+                        refused={checking && hydrated ? refusedAt(l, access.selected) : []}
+                        closed={closed(l)}
                         checking={checking && hydrated}
                         onDirections={() => pick(l)}
                       />

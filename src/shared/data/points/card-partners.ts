@@ -15,3 +15,8 @@ export function transferPartnerNames(currency: BankCurrencyId, cardId: string): 
   const hotel = (id: (typeof ids)[number]) => Number(programNames[id].kind === "hotel");
   return ids.sort((a, b) => hotel(a) - hotel(b) || programNames[a].name.localeCompare(programNames[b].name)).map((id) => programNames[id].name);
 }
+
+/** How many programs a bank currency transfers to with any card (what a card page lists for a card with limited transfers). */
+export function currencyPartnerCount(currency: BankCurrencyId): number {
+  return new Set(transferPartners.filter((p) => p.currency === currency).map((p) => p.program)).size;
+}

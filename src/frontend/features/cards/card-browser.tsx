@@ -6,6 +6,8 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import type { CardCategory, Issuer } from "@/shared/data/types";
 import { annualizedCreditValue, cards, categoryLabels, issuers } from "@/shared/data/cards";
 import { CardTile } from "@/frontend/components/card-tile";
+import { useValueContext } from "@/frontend/state/point-values";
+import { welcomeValue } from "@/shared/lib/welcome-offer";
 import { cn } from "@/shared/lib/format";
 
 type Sort = "popular" | "fee-asc" | "fee-desc" | "credits" | "bonus";
@@ -28,6 +30,7 @@ export function CardBrowser() {
   const [fee, setFee] = useState<(typeof FEE_BANDS)[number]["id"]>("any");
   const [lounge, setLounge] = useState(false);
   const [sort, setSort] = useState<Sort>("popular");
+  const values = useValueContext();
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -45,10 +48,11 @@ export function CardBrowser() {
       "fee-asc": (a, b) => a.annualFee - b.annualFee,
       "fee-desc": (a, b) => b.annualFee - a.annualFee,
       credits: (a, b) => annualizedCreditValue(b) - annualizedCreditValue(a),
-      bonus: (a, b) => b.welcomeOfferValue - a.welcomeOfferValue,
+      // Welcome offers valued like every page values them (shared/lib/point-value.ts).
+      bonus: (a, b) => welcomeValue(b, values).usd - welcomeValue(a, values).usd,
     };
     return [...list].sort(sorters[sort]);
-  }, [query, category, issuer, fee, lounge, sort]);
+  }, [query, category, issuer, fee, lounge, sort, values]);
 
   const categories: Array<CardCategory | "all"> = ["all", "premium-travel", "travel", "airline", "cash-back", "business"];
 

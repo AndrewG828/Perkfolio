@@ -9,8 +9,6 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 /** Local calendar date of `d` as YYYY-MM-DD. */
 export const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-/** Local calendar month of `d` as YYYY-MM. */
-export const monthKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 
 /** Local midnight of a YYYY-MM-DD (or YYYY-MM, taken as the 1st) date. */
 export function parseDate(iso: string): Date {
@@ -65,11 +63,5 @@ export function formatDate(iso: string): string {
 
 /** "Nov 5, 2026" for a YYYY-MM-DD, "Nov 2026" for a YYYY-MM. */
 export const formatDateOrMonth = (s: string) => (s.length >= 10 ? formatDate(s) : formatMonth(s));
-
-/** "Dec 1" this year, "Dec 1, 2027" otherwise. */
-export function formatShortDate(iso: string, today: Date): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return y === today.getFullYear() ? `${MONTHS[m - 1]} ${d}` : `${MONTHS[m - 1]} ${d}, ${y}`;
-}
 
 export const MONTH_NAMES = MONTHS;

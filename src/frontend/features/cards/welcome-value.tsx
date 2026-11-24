@@ -2,42 +2,35 @@
 
 import Link from "next/link";
 import { getCard } from "@/shared/data/cards";
-import { programForCard, programName, programUnit } from "@/shared/data/strategy/programs";
-import { valuations } from "@/shared/data/strategy/valuations";
-import { useStrategyPrefs } from "@/frontend/state/strategy-prefs";
-import { formatMonth } from "@/shared/lib/dates";
+import { programName, programUnit } from "@/shared/data/strategy/programs";
+import { useValueContext } from "@/frontend/state/point-values";
+import { shortCardName } from "@/shared/lib/card-name";
 import { num, usd } from "@/shared/lib/format";
-import { centsFor, valuationOf } from "@/shared/lib/trackers";
+import { VALUE_EDITION_LABEL, basisSentence, cardPointValue, formatCents, resolvePointValue } from "@/shared/lib/point-value";
 import { welcomeValue } from "@/shared/lib/welcome-offer";
 
-const OUTLETS = Object.values(valuations.datasets).map((d) => d.outlet);
-const OUTLET_LIST = `${OUTLETS.slice(0, -1).join(", ")} and ${OUTLETS[OUTLETS.length - 1]}`;
-const EDITION = formatMonth(Object.values(valuations.datasets)[0]?.edition ?? valuations.verified.slice(0, 7));
-const centsText = (c: number) => `${Number(c.toFixed(3))}¢`;
 const thousands = (n: number) => `$${num(Math.round(n / 1000))}k`;
-/** "Chase Ultimate Rewards points", but "Delta SkyMiles" and "Citi ThankYou Points" (no "points" twice). */
+/** "Chase Ultimate Rewards points", but "Delta SkyMiles" and "Capital One Miles" (no "points" or "miles" twice). */
 const currencyName = (program: string) => {
   const name = programName(program);
   return /(points|miles|avios)$/i.test(name) ? name : `${name} ${programUnit(program)}`;
 };
 
 /**
- * What the welcome offer is worth, valued like the points tracker and the next-card ranking: points at the
- * outlets' median, or at the user's own value once the page has loaded their preferences.
+ * What the welcome offer is worth, with its points valued like every other page values them (shared/lib/point-value:
+ * the published median, or the user's own value once the page has loaded their preferences).
  */
 export function WelcomeValue({ cardId }: { cardId: string }) {
-  const { cpp } = useStrategyPrefs();
+  const values = useValueContext();
   const card = getCard(cardId);
   if (!card) return null;
-  const v = welcomeValue(card, (p) => centsFor(p, cpp));
+  const v = welcomeValue(card, values);
   if (v.usd <= 0) return null;
   const o = v.offer;
-  const own = v.program !== undefined && cpp[v.program] !== undefined;
   let how = "";
   if (o.estimate) how = " by our estimate";
-  else if (o.points > 0 && v.cents !== undefined) {
-    const source = own ? "your own value" : `the median of the ${EDITION} figures from ${OUTLET_LIST}`;
-    how = `: ${num(o.points)} ${programUnit(v.program)} at ${centsText(v.cents)} each (${source})${o.cash ? `, plus ${usd(o.cash)}` : ""}`;
+  else if (o.points > 0 && v.points) {
+    how = `: ${num(o.points)} ${programUnit(v.points.id)} at ${formatCents(v.points.cents)} each (${basisSentence(v.points)})${o.cash ? `, plus ${usd(o.cash)}` : ""}`;
   }
   const how2 = o.spendAll ? `the full ${thousands(o.spendAll)} spend` : o.authorizedUserPoints ? "an authorized user added" : "every part of the offer";
   const more = v.usdAll > v.usd ? ` ${usd(v.usdAll)} with ${how2}.` : "";
@@ -53,43 +46,54 @@ export function WelcomeValue({ cardId }: { cardId: string }) {
 }
 
 /**
- * The card page's note on point values, under "Earning rewards": the one value this page and the trackers use for
- * the card's currency (the user's own, or the outlets' median), what it applies to (a cash welcome offer counts at
- * face value), and where the methodology lives. Renders with the median on the server and the user's own value
- * once their preferences load.
+ * The card page's note on point values, under "Earning rewards": the one value every page uses for this card's points
+ * (cardPointValue: the user's own value, else the published median; cash back at face value), and for a card whose
+ * points transfer only with another card, what changes once they're combined. Renders with the median on the server
+ * and the user's own values and cards once they load.
  */
 export function PointValueNote({ cardId }: { cardId: string }) {
-  const { cpp } = useStrategyPrefs();
+  const values = useValueContext();
   const card = getCard(cardId);
   if (!card) return null;
-  const program = programForCard(card);
-  const cents = program ? centsFor(program, cpp) : undefined;
+  const v = cardPointValue(card, values);
   const link = (
     <Link href="/about#methodology" className="link inline-flex min-h-8 items-center sm:inline sm:min-h-0">
       How we value points
     </Link>
   );
-  if (!program || cents === undefined) {
+  if (v.basis === "cash") {
+    // A card that needs another card to transfer: what its points become once combined.
+    const combined = v.limited && v.id ? resolvePointValue(v.id, { own: values.own }) : undefined;
     return (
       <p className="mt-3 text-sm text-ink-3">
-        {/cash/i.test(card.rewardsCurrency) ? "Cash back counts at face value. " : ""}
+        {v.limited && v.id && combined ? (
+          <>
+            This card&apos;s rewards count as cash back, at face value. {v.limited.note} Combined, they&apos;re{" "}
+            {currencyName(v.id)}, worth {formatCents(combined.cents)} each ({basisSentence(combined)}).{" "}
+          </>
+        ) : (
+          "Cash back counts at face value. "
+        )}
         {link}
       </p>
     );
   }
-  const own = cpp[program] !== undefined;
-  const median = valuationOf(program)?.median;
-  const offer = welcomeValue(card, (p) => centsFor(p, cpp)).offer;
-  const uses = offer.points > 0 ? "the welcome offer above and your points balances" : "your points balances";
+  const offer = welcomeValue(card, values).offer;
+  const median = v.basis === "own" ? v.forCards?.median : undefined;
+  const unlockedBy = v.limited?.unlockedWith ? getCard(v.limited.unlockedWith) : undefined;
+  const uses =
+    offer.points > 0
+      ? "The welcome offer above, your points balances and the calculators all use this value."
+      : offer.cash > 0
+        ? "Your points balances and the calculators use this value; the welcome offer is a dollar amount, so it counts at face value."
+        : "Your points balances and the calculators use this value.";
   return (
     <p className="mt-3 text-sm text-ink-3">
-      We value {currencyName(program)} at {centsText(cents)} each:{" "}
-      {own
-        ? `your own value from the Points tab${median !== undefined ? ` (the ${EDITION} median is ${centsText(median)})` : ""}`
-        : `the median of the ${EDITION} figures from ${OUTLET_LIST}`}
-      . That&apos;s the value behind {uses}
-      {offer.points === 0 && offer.cash > 0 ? ", while the welcome offer is a dollar amount and counts at face value" : ""}.{" "}
-      {link}
+      {unlockedBy
+        ? `Your ${shortCardName(unlockedBy.name)} unlocks transfers for these points, so they count in full: each percent above is a point per dollar (5% is 5x, worth ${(5 * v.cents).toLocaleString("en-US", { maximumFractionDigits: 2 })}% at this value). `
+        : ""}
+      We value {v.id ? currencyName(v.id) : card.rewardsCurrency} at {formatCents(v.cents)} each: {basisSentence(v)}
+      {median !== undefined ? ` (the ${VALUE_EDITION_LABEL} median is ${formatCents(median)})` : ""}. {uses} {link}
     </p>
   );
 }

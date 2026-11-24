@@ -199,12 +199,14 @@ export function optionFor(
     if (u.effect.visits !== undefined) visits = u.effect.visits;
   }
   const fee: Money | null = here?.fee ? { amount: here.fee.adult, currency: here.fee.currency } : usdMoney(feeUsd);
-  // The card's child rate doesn't carry over to a lounge whose own rules aren't stated for this card.
+  // The card's child rate doesn't carry over to a lounge with its own prices (Delhi, Buenos Aires and Mexico City let
+  // children in free up to an age, then charge the adult rate), nor to one whose own rules aren't stated for this card.
+  const ownPrices = Boolean(here && (here.fee !== undefined || here.guestFeeUsd !== undefined || here.freeGuests !== undefined));
   const childFee: Money | null = here?.fee
     ? here.fee.child !== undefined
       ? { amount: here.fee.child, currency: here.fee.currency }
       : null
-    : location && !covered
+    : ownPrices || (location && !covered)
       ? null
       : usdMoney(toNumber(rule.childGuestFeeUsd));
 
@@ -293,10 +295,17 @@ export function compareOptions(a: GuestCostOption, b: GuestCostOption): number {
 export interface GuestCostResult {
   /** One option per card (its cheapest way in through any of the networks), best first. */
   options: GuestCostOption[];
-  /** The card to use, if any option can be priced. */
+  /** The card to use, if any option can be priced and none could cost less. */
   best: GuestCostOption | null;
   /** Every option that costs the same as `best` (they're all as good). */
   tied: GuestCostOption[];
+  /**
+   * The cheapest priced option, when a card whose extra-guest fee isn't published leaves fewer guests to pay for
+   * (`unclear`): that card may well cost less, so neither is `best`.
+   */
+  cheapestPriced: GuestCostOption | null;
+  /** That card: fewer guests to pay for than `cheapestPriced`, at a fee nobody publishes. */
+  unclear: GuestCostOption | null;
   /** Cards asked about that have no guest rules for these networks. */
   missing: string[];
 }
@@ -328,9 +337,18 @@ export function guestCosts(
     else missing.push(id);
   }
   options.sort(compareOptions);
-  const best = options[0] && options[0].cost !== null ? options[0] : null;
+  const cheapest = options[0] && options[0].cost !== null ? options[0] : null;
+  // A card that covers more guests free but doesn't publish the fee for the rest (Platinum's 2 free Priority Pass
+  // guests against 3 × $35) can't be ranked below a priced one: unless its fee is high, it's the cheaper card. Then no
+  // card is best, and those cards are listed first.
+  const fewerToPay = cheapest
+    ? options.filter((o) => o.unpriced === "unpublished" && o.paidGuests < cheapest.paidGuests).sort((a, b) => a.paidGuests - b.paidGuests)
+    : [];
+  const unclear = fewerToPay[0] ?? null;
+  const best = unclear ? null : cheapest;
   const tied = best ? options.filter((o) => sameCost(o, best)) : [];
-  return { options, best, tied, missing };
+  const ordered = unclear ? [...fewerToPay, ...options.filter((o) => !fewerToPay.includes(o))] : options;
+  return { options: ordered, best, tied, cheapestPriced: unclear ? cheapest : null, unclear, missing };
 }
 
 /** Every card with guest rules for any of these networks (for when no wallet or selection narrows it). */

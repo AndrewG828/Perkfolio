@@ -1,13 +1,22 @@
 import type { Card } from "@/shared/data/types";
-import type { BrandException, HotelChain, Valuation } from "@/shared/data/travel/types";
+import type { BrandException, HotelChain } from "@/shared/data/travel/types";
+import { getCard } from "@/shared/data/cards";
+import { PROGRAM_IDS, type ProgramId } from "@/shared/data/points/types";
+import { bankCurrencies } from "@/shared/data/points/currencies";
+import { programNames } from "@/shared/data/points/program-names";
+import { currencyOfCard } from "./card-currency";
+
+const getCurrency = (id: string) => bankCurrencies.find((c) => c.id === id);
+const isProgramId = (id: string | null | undefined): id is ProgramId => Boolean(id && (PROGRAM_IDS as readonly string[]).includes(id));
+import { cardPointValue, resolvePointValue, type CardPointValue, type PointValueResult, type ValueContext } from "./point-value";
 
 /** Points and value for a paid hotel stay: hotel points (base rate, brand exceptions, elite bonus) plus card points. */
 
-/** "Marriott Bonvoy" → "marriott-bonvoy": the program's id in valuations and the Points & Miles section. */
+/** "Marriott Bonvoy" → "marriott-bonvoy": the program's id in the Points & Miles section (and its point value). */
 export function programId(program: string): string {
   const slug = program
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, "-")
@@ -16,27 +25,12 @@ export function programId(program: string): string {
   return slug;
 }
 
-const PROGRAM_NAMES: Record<string, string> = {
-  "marriott-bonvoy": "Marriott Bonvoy",
-  "hilton-honors": "Hilton Honors",
-  "world-of-hyatt": "World of Hyatt",
-  "ihg-one-rewards": "IHG One Rewards",
-  "choice-privileges": "Choice Privileges",
-  "wyndham-rewards": "Wyndham Rewards",
-  "accor-live-limitless": "Accor Live Limitless",
-};
-
 /** Display name for a program given either as a name ("World of Hyatt") or an id ("world-of-hyatt"). */
 export function programName(program: string): string {
   if (/[\sA-Z]/.test(program)) return program;
-  return PROGRAM_NAMES[program] ?? program.replace(/(^|-)([a-z])/g, (_, dash: string, c: string) => `${dash ? " " : ""}${c.toUpperCase()}`);
+  if (isProgramId(program)) return programNames[program].name;
+  return program.replace(/(^|-)([a-z])/g, (_, dash: string, c: string) => `${dash ? " " : ""}${c.toUpperCase()}`);
 }
-
-/**
- * Whether a card earns cash back: its currency starts with "Cash" ("Cash back (Reward Dollars)", "Cash rewards").
- * Bilt Points "(plus Bilt Cash)" are points, valued as Bilt Points.
- */
-export const earnsCashBack = (card: Pick<Card, "rewardsCurrency">) => /^\s*cash\b/i.test(card.rewardsCurrency);
 
 /**
  * What a stay earns on the card, by name: the currency without the card data's aside ("Bilt Points (plus Bilt Cash)"
@@ -44,34 +38,11 @@ export const earnsCashBack = (card: Pick<Card, "rewardsCurrency">) => /^\s*cash\
  */
 export const currencyName = (card: Pick<Card, "rewardsCurrency">) => card.rewardsCurrency.replace(/\s*\([^)]*\)\s*$/, "").trim();
 
-/** Valuation id for what a card earns, or null when it's cash back or a currency we don't value separately. */
-export function currencyIdForCard(card: Pick<Card, "rewardsCurrency">): string | null {
-  const c = card.rewardsCurrency;
-  if (earnsCashBack(card)) return null;
-  const ids: [RegExp, string][] = [
-    [/membership rewards/i, "amex-mr"],
-    [/ultimate rewards/i, "chase-ur"],
-    [/capital one/i, "capital-one"],
-    [/thankyou/i, "citi-typ"],
-    [/bilt/i, "bilt"],
-    [/wells fargo/i, "wells-fargo"],
-    [/marriott/i, "marriott-bonvoy"],
-    [/hilton/i, "hilton-honors"],
-    [/hyatt/i, "world-of-hyatt"],
-    [/\bihg\b/i, "ihg-one-rewards"],
-    [/skymiles/i, "delta-skymiles"],
-    [/aadvantage/i, "american-aadvantage"],
-    [/mileageplus/i, "united-mileageplus"],
-    [/rapid rewards/i, "southwest-rapid-rewards"],
-    [/atmos/i, "atmos-rewards"],
-    [/trueblue/i, "jetblue-trueblue"],
-    [/aeroplan/i, "air-canada-aeroplan"],
-  ];
-  return ids.find(([re]) => re.test(c))?.[1] ?? null;
+/** The currency or program a card's points are in (currencyOfCard), or null for plain cash back. */
+export function pointsIdOf(card: Pick<Card, "id" | "rewardsCurrency">): string | null {
+  const p = currencyOfCard(card);
+  return p ? (p.kind === "currency" ? p.currency : p.program) : null;
 }
-
-export const medianCents = (valuations: Valuation[], id: string | null) =>
-  id ? (valuations.find((v) => v.id === id)?.median ?? null) : null;
 
 /** The lower-earning brand group a brand belongs to, if any. */
 export function brandExceptionFor(chain: HotelChain, brand: string | null | undefined): BrandException | undefined {
@@ -110,11 +81,8 @@ export interface StayCard {
   cardId: string | null;
   /** Points (or cash-back percent) per dollar charged at this hotel. */
   perDollar: number;
-  /** Valuation id of the points it earns; the chain's program id for co-branded cards. */
+  /** The currency or program its points are in (the chain's program for its co-branded cards); null for cash back. */
   currencyId: string | null;
-  /** Used when there's no valuation for the currency (e.g. cash back = 1¢). */
-  fallbackCents: number | null;
-  cashBack: boolean;
   /** What the card earns, e.g. "Marriott Bonvoy points". */
   currencyLabel: string;
   group: "chain" | "wallet";
@@ -127,32 +95,28 @@ export function chainCards(chain: HotelChain, lookup: (id: string) => Card | und
   const pid = programId(chain.program);
   return chain.cards.map((c) => {
     const card = c.cardId ? lookup(c.cardId) : undefined;
-    const currencyId = card ? (currencyIdForCard(card) ?? pid) : pid;
+    const currencyId = card ? (pointsIdOf(card) ?? pid) : pid;
     return {
       key: c.cardId ?? slug(c.name),
       name: c.name,
       cardId: card ? card.id : null,
       perDollar: c.perDollar,
       currencyId,
-      fallbackCents: card?.pointValueCents ?? null,
-      cashBack: false,
       currencyLabel: currencyId === pid ? `${programName(chain.program)} points` : card ? currencyName(card) : "points",
       group: "chain" as const,
     };
   });
 }
 
-/** Hotel programs' ids ("marriott-bonvoy"), to tell a hotel chain's co-branded card from a general card. */
-const HOTEL_PROGRAMS = new Set(Object.keys(PROGRAM_NAMES));
-
 /**
  * What a card earns per dollar at a chain, given its hotel rate (calculator-rates.ts). A co-branded card of another
  * hotel chain earns its bonus only at its own chain, so elsewhere it earns its base rate: a World of Hyatt card earns
  * 4x at Hyatt but 1x at a Marriott, and the Hilton Aspire's 14x is for Hilton stays only.
  */
-export function hotelRateAt(card: Pick<Card, "rewardsCurrency" | "baseRate">, chain: HotelChain, hotelRate: number): number {
-  const own = currencyIdForCard(card);
-  return own !== null && HOTEL_PROGRAMS.has(own) && own !== programId(chain.program) ? card.baseRate : hotelRate;
+export function hotelRateAt(card: Pick<Card, "id" | "rewardsCurrency" | "baseRate">, chain: HotelChain, hotelRate: number): number {
+  const p = currencyOfCard(card);
+  const hotel = p?.kind === "program" && programNames[p.program].kind === "hotel" ? p.program : null;
+  return hotel !== null && hotel !== programId(chain.program) ? card.baseRate : hotelRate;
 }
 
 /**
@@ -160,18 +124,36 @@ export function hotelRateAt(card: Pick<Card, "rewardsCurrency" | "baseRate">, ch
  * earns at that chain (see hotelRateAt).
  */
 export function walletCard(card: Card, hotelRate: number, chain?: HotelChain): StayCard {
-  const cashBack = earnsCashBack(card);
   return {
     key: card.id,
     name: card.name,
     cardId: card.id,
     perDollar: chain ? hotelRateAt(card, chain, hotelRate) : hotelRate,
-    currencyId: currencyIdForCard(card),
-    fallbackCents: card.pointValueCents,
-    cashBack,
-    currencyLabel: cashBack ? "cash back" : currencyName(card),
+    currencyId: pointsIdOf(card),
+    currencyLabel: currencyName(card),
     group: "wallet",
   };
+}
+
+/**
+ * What a point a card earns on the stay is worth: a card we list is valued like everywhere else (cardPointValue:
+ * cash back at face value, the user's own value, the published median); a chain's card we don't list, at its points'
+ * value (resolvePointValue).
+ */
+export function stayCardValue(card: StayCard, values: ValueContext = {}): CardPointValue | PointValueResult | undefined {
+  const listed = card.cardId ? getCard(card.cardId) : undefined;
+  return listed ? cardPointValue(listed, values) : resolvePointValue(card.currencyId, values);
+}
+
+/** "cash back", or what the card's points are: a card whose transfers another card unlocks earns the bank's points. */
+function earnsLabel(card: StayCard, v: CardPointValue | PointValueResult | undefined): string {
+  if (v?.basis === "cash") return "cash back";
+  if (v && "limited" in v && v.limited && v.id) {
+    // "Chase Ultimate Rewards points", but "Capital One Miles" and "Citi ThankYou Points" (no unit twice).
+    const name = getCurrency(v.id)?.name ?? card.currencyLabel;
+    return /\b(points|miles)$/i.test(name) ? name : `${name} points`;
+  }
+  return card.currencyLabel;
 }
 
 export interface StayInput {
@@ -183,7 +165,8 @@ export interface StayInput {
   taxPercent: number;
   tier?: string | null;
   card?: StayCard | null;
-  valuations: Valuation[];
+  /** The user's own point values and cards (shared/lib/point-value.ts), once known. */
+  values?: ValueContext;
 }
 
 export interface StayResult {
@@ -209,6 +192,10 @@ export interface StayResult {
   /** True when hotel points are unknown, so values cover card points only (still fine for ranking cards). */
   partial: boolean;
   cardPoints: number;
+  /** The card's rewards count as cash back (its "points" are cents). */
+  cardCash: boolean;
+  /** What the card earns, e.g. "Marriott Bonvoy points" or "cash back". */
+  cardLabel: string;
   /** True when the card earns the hotel's own points (so they add up). */
   sameCurrency: boolean;
   /** Hotel + card points when they're one currency, otherwise just the hotel points (0 if unknown). */
@@ -225,7 +212,7 @@ export interface StayResult {
 const clean = (n: number) => (Number.isFinite(n) && n > 0 ? n : 0);
 
 export function stayPoints(input: StayInput): StayResult {
-  const { chain, card, valuations } = input;
+  const { chain, card, values = {} } = input;
   const nights = Math.floor(clean(input.nights));
   const room = clean(input.nightlyRate) * nights;
   const taxes = (room * clean(input.taxPercent)) / 100;
@@ -244,10 +231,12 @@ export function stayPoints(input: StayInput): StayResult {
   const hotelPoints = basePoints === null ? null : basePoints + (eliteBonus ?? 0);
 
   const pid = programId(chain.program);
-  const hotelCents = medianCents(valuations, pid);
+  const hotelCents = resolvePointValue(pid, values)?.cents ?? null;
   const cardPoints = card ? Math.round(total * card.perDollar) : 0;
-  const sameCurrency = Boolean(card && card.currencyId === pid);
-  const cardCents = card ? (card.cashBack ? 1 : (medianCents(valuations, sameCurrency ? pid : card.currencyId) ?? card.fallbackCents)) : null;
+  const cardValueOf = card ? stayCardValue(card, values) : undefined;
+  const cardCash = cardValueOf?.basis === "cash";
+  const sameCurrency = Boolean(card && !cardCash && (cardValueOf?.id ?? card.currencyId) === pid);
+  const cardCents = card ? (sameCurrency ? hotelCents : (cardValueOf?.cents ?? null)) : null;
 
   const hotelValue = hotelPoints === null || hotelCents === null ? null : (hotelPoints * hotelCents) / 100;
   const cardValue = !card ? 0 : cardCents === null ? null : (cardPoints * cardCents) / 100;
@@ -267,6 +256,8 @@ export function stayPoints(input: StayInput): StayResult {
     hotelPoints,
     partial,
     cardPoints,
+    cardCash,
+    cardLabel: card ? earnsLabel(card, cardValueOf) : "",
     sameCurrency,
     totalPoints: (hotelPoints ?? 0) + (sameCurrency ? cardPoints : 0),
     hotelCents,

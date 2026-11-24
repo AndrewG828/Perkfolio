@@ -498,7 +498,7 @@ export const transferPartners: TransferPartner[] = [
     to: 1,
     minimum: 1000,
     increment: 1000,
-    note: "1:1 for Sapphire Reserve for Business (its Chase page advertises 1:1 transfers to hotel and airline partners) and, per coverage, Sapphire Reserve. Ink Business Preferred points (and, per coverage, Sapphire Preferred points) transfer to Hyatt at 4:3 instead (see the separate row).",
+    note: "1:1 for Sapphire Reserve for Business (its Chase page advertises 1:1 transfers to hotel and airline partners) and, per coverage, Sapphire Reserve. Ink Business Preferred points (and, per coverage, Sapphire Preferred points) transfer to Hyatt at 4:3 instead.",
     sources: [
       "https://creditcards.chase.com/business-credit-cards/sapphire/reserve",
       "https://creditcards.chase.com/rewards-credit-cards/sapphire/reserve",

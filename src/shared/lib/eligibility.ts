@@ -960,11 +960,6 @@ export function evaluateCard(card: Card, ctx: HistoryContext, rules: Application
   };
 }
 
-export function evaluateCards(cards: Card[], wallet: WalletState, today: Date, rules?: ApplicationRule[], facts?: UserFacts): CardEligibility[] {
-  const ctx = historyContext(wallet, today, facts);
-  return cards.map((c) => evaluateCard(c, ctx, rules));
-}
-
 // --- Chase 5/24 -------------------------------------------------------------------------------------------------
 
 export interface NewCardCount {

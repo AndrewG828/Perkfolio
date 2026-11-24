@@ -1,6 +1,6 @@
 import type { Lounge } from "@/shared/data/types";
 import type { AirportNav, NavZone } from "@/shared/data/airport-nav";
-import { gateOf, loungesAt } from "./lounge-access";
+import { gateOf, loungesAt } from "./lounge-directory";
 import { linkKey, navFor, parseGate, routeTo, zoneForLounge, type Origin, type Route } from "./wayfinding";
 import {
   cellAt,

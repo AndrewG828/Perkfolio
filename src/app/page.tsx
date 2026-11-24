@@ -1,46 +1,61 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, CalendarClock, Map, Scale } from "lucide-react";
+import { ArrowRight, CalendarClock, Luggage, Plane, type LucideIcon } from "lucide-react";
 import { cards, featuredCards, annualizedCreditValue } from "@/shared/data/cards";
 import { lounges } from "@/shared/data/lounges";
+import { sweetSpots } from "@/shared/data/points";
 import { CardArt } from "@/frontend/components/card-art";
 import { CardTile } from "@/frontend/components/card-tile";
 import { CompareTray } from "@/frontend/components/compare-toggle";
-import { usd } from "@/shared/lib/format";
-import { bigAirports, loungeCountByAirport, loungesAt } from "@/shared/lib/lounge-access";
+import { cn, usd } from "@/shared/lib/format";
+import { bigAirports, loungeCountByAirport, loungesAt } from "@/shared/lib/lounge-directory";
 import { loungeNetworks } from "@/shared/data/networks";
 import { AirportSearch } from "@/frontend/features/lounges/airport-search";
 import { WalletLoungeSummary } from "@/frontend/features/lounges/wallet-lounge-summary";
-import { PointsTeaser } from "@/frontend/features/points/points-teaser";
 
-const FEATURES = [
+type Section = { href: string; icon: LucideIcon; title: string; body: string; links: { href: string; label: string }[] };
+
+/** After the lounges: one compact row into the site's other sections. */
+const SECTIONS: Section[] = [
   {
-    href: "/lounges",
-    icon: Map,
-    title: "Lounge maps",
-    body: "Terminal maps of every lounge at the big airports, marked with the ones your cards get you into.",
-    cta: "Find a lounge",
+    href: "/points",
+    icon: Plane,
+    title: "Points & Miles",
+    body: `Where your card points transfer, and ${sweetSpots.length} award sweet spots worth spending them on.`,
+    links: [
+      { href: "/points/sweet-spots", label: "Sweet spots" },
+      { href: "/points/transfers", label: "Transfers" },
+      { href: "/points/airlines", label: "Who can book" },
+    ],
   },
   {
     href: "/tracker",
     icon: CalendarClock,
-    title: "Never miss a credit",
-    body: "Monthly, quarterly and semi-annual credits in one dashboard, with reminders of what expires next.",
-    cta: "Open Benefits Tracker",
+    title: "Benefits tracker",
+    body: "Statement credits, points balances and certificates, with a reminder before each one lapses.",
+    links: [
+      { href: "/tracker?tab=points", label: "Points balances" },
+      { href: "/tracker?tab=certificates", label: "Certificates" },
+      { href: "/tracker?tab=applications", label: "Card history" },
+    ],
   },
   {
-    href: "/compare",
-    icon: Scale,
-    title: "Compare side by side",
-    body: "Fees, multipliers, credits, lounge access and protections — up to four cards at once.",
-    cta: "Compare cards",
+    href: "/tools",
+    icon: Luggage,
+    title: "Travel tools",
+    body: "Flight distances, bag fees, entry rules for U.S. passports and what a hotel stay earns.",
+    links: [
+      { href: "/tools/distance", label: "Flight distance" },
+      { href: "/tools/baggage", label: "Bag fees" },
+      { href: "/tools/entry-requirements", label: "Entry rules" },
+    ],
   },
-  {
-    href: "/calculator",
-    icon: BarChart3,
-    title: "Know your net value",
-    body: "Enter your spending and see which card actually earns the most after its annual fee.",
-    cta: "Run the numbers",
-  },
+];
+
+const CARD_TOOLS = [
+  { href: "/compare", label: "Compare cards" },
+  { href: "/best-card", label: "Which card to use" },
+  { href: "/next-card", label: "Your next card" },
+  { href: "/calculator", label: "Value calculator" },
 ];
 
 export default function Home() {
@@ -151,29 +166,40 @@ export default function Home() {
         </div>
       </section>
 
-      <PointsTeaser />
-
-      {/* Features */}
-      <section className="bg-canvas py-16 md:py-20">
+      {/* The other sections, in one row */}
+      <section aria-labelledby="more-sections" className="border-y border-line bg-canvas py-12 md:py-14">
         <div className="container-page">
-          <div className="mb-10 max-w-2xl">
-            <p className="eyebrow">Tools</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-navy">Everything your wallet needs</h2>
-          </div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {FEATURES.map((f) => (
-              <Link key={f.href} href={f.href} className="panel group flex flex-col gap-4 p-6 transition-shadow hover:shadow-[var(--shadow-lift)]">
-                <span className="grid h-11 w-11 place-items-center rounded-full bg-sky text-brand">
-                  <f.icon className="h-5 w-5" />
-                </span>
-                <h3 className="text-lg font-semibold text-navy">{f.title}</h3>
-                <p className="text-sm leading-relaxed text-ink-2">{f.body}</p>
-                <span className="mt-auto inline-flex items-center gap-1 text-sm font-semibold text-brand">
-                  {f.cta} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </span>
-              </Link>
+          <p className="eyebrow">Beyond the lounge</p>
+          <h2 id="more-sections" className="mt-2 text-2xl font-semibold tracking-tight text-navy">
+            Points, credits and trip planning
+          </h2>
+          <ul className="mt-6 grid gap-4 lg:grid-cols-3">
+            {SECTIONS.map((s) => (
+              <li key={s.href} className="panel group relative flex flex-col gap-3 p-4 transition-shadow hover:shadow-[var(--shadow-lift)] sm:p-5">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sky text-brand">
+                    <s.icon className="h-5 w-5" aria-hidden />
+                  </span>
+                  <h3 className="text-lg font-semibold text-navy">
+                    <Link href={s.href} className="after:absolute after:inset-0 after:rounded-lg group-hover:text-brand focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-brand">
+                      {s.title}
+                    </Link>
+                  </h3>
+                  <ArrowRight className="ml-auto h-4 w-4 text-brand transition-transform group-hover:translate-x-1" aria-hidden />
+                </div>
+                <p className="text-sm leading-relaxed text-ink-2">{s.body}</p>
+                <ul className="relative z-10 mt-auto flex flex-wrap gap-1.5" aria-label={`In ${s.title}`}>
+                  {s.links.map((l) => (
+                    <li key={l.href}>
+                      <Link href={l.href} className="chip px-2.5 hover:border-brand hover:text-brand">
+                        {l.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </section>
 
@@ -185,14 +211,26 @@ export default function Home() {
               <p className="eyebrow">Most popular</p>
               <h2 className="mt-2 text-3xl font-semibold tracking-tight text-navy">The cards everyone is talking about</h2>
               <p className="mt-3 text-ink-2">Premium travel cards with the richest credits and lounge access.</p>
+              <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm" aria-label="Card tools">
+                {CARD_TOOLS.map((t) => (
+                  <li key={t.href}>
+                    <Link href={t.href} className="link inline-flex items-center gap-1">
+                      {t.label} <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </div>
             <Link href="/cards" className="btn-secondary">
               View all {cards.length} cards <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {featuredCards.map((card) => (
-              <CardTile key={card.id} card={card} />
+            {featuredCards.map((card, i) => (
+              // Three on phones, where each tile fills the screen.
+              <div key={card.id} className={cn("grid", i >= 3 && "max-sm:hidden")}>
+                <CardTile card={card} />
+              </div>
             ))}
           </div>
         </div>

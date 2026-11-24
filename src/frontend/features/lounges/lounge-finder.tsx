@@ -14,6 +14,7 @@ import {
   loungesAt,
   networksFor,
 } from "@/shared/lib/lounge-access";
+import { isoDate } from "@/shared/lib/dates";
 import { useHydrated } from "@/frontend/state/wallet-store";
 import { AccessPicker, useAccessSelection } from "./access-picker";
 import { AirportSearch } from "./airport-search";
@@ -27,8 +28,10 @@ export function LoungeFinder() {
   const hydrated = useHydrated();
   const checking = access.mode !== "all" && access.selected.length > 0 && hydrated;
   const selectedKey = access.selected.map((c) => c.id).join(",");
+  // Closed lounges aren't counted (dated closures only once the visitor's date is known).
+  const today = hydrated ? isoDate(new Date()) : null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const openAt = useMemo(() => accessibleCountByAirport(access.selected), [selectedKey]);
+  const openAt = useMemo(() => accessibleCountByAirport(access.selected, today), [selectedKey, today]);
   const totalOpen = Object.values(openAt).reduce((s, n) => s + n, 0);
   const airportsOpen = Object.keys(openAt).length;
 

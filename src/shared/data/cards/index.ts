@@ -38,13 +38,6 @@ export const categoryLabels: Record<CardCategory, string> = {
   business: "Business",
 };
 
-/** Face value of all recurring credits per year (excludes every-4-years and one-time). */
-export function totalCreditValue(card: Card): number {
-  return card.credits
-    .filter((c) => c.frequency !== "every-4-years" && c.frequency !== "one-time")
-    .reduce((sum, c) => sum + c.annualValue, 0);
-}
-
 /** Annualized value incl. every-4-years credits spread over 4 years. */
 export function annualizedCreditValue(card: Card): number {
   return card.credits.reduce((sum, c) => {
@@ -52,10 +45,6 @@ export function annualizedCreditValue(card: Card): number {
     if (c.frequency === "one-time") return sum;
     return sum + c.annualValue;
   }, 0);
-}
-
-export function topEarnRate(card: Card): number {
-  return Math.max(card.baseRate, ...card.earnRates.map((r) => r.multiplier));
 }
 
 /** True for cards that earn cash back (rates shown as %). "Bilt Points (plus Bilt Cash)" earns points, so only a

@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Info } from "lucide-react";
 import type { Card } from "@/shared/data/types";
-import { annualizedCreditValue, cards, categoryLabels } from "@/shared/data/cards";
+import { cards, categoryLabels } from "@/shared/data/cards";
 import { SPEND_CATEGORIES, estimateRewards, type SpendCategory } from "@/shared/data/calculator-rates";
 import { CardArt } from "@/frontend/components/card-art";
 import { useWallet } from "@/frontend/state/wallet-store";
+import { useValueContext } from "@/frontend/state/point-values";
+import { MEDIAN_SOURCE, annualizedCredits } from "@/shared/lib/point-value";
+import { welcomeValue } from "@/shared/lib/welcome-offer";
+import { USAGE } from "@/shared/lib/credit-usage";
 import { cn, usd } from "@/shared/lib/format";
 
 const DEFAULT_SPEND: Record<SpendCategory, number> = {
@@ -24,9 +29,15 @@ const DEFAULT_SPEND: Record<SpendCategory, number> = {
 
 export function Calculator() {
   const wallet = useWallet();
+  const values = useValueContext();
   const [spend, setSpend] = useState(DEFAULT_SPEND);
   const [portal, setPortal] = useState(false);
-  const [utilization, setUtilization] = useState(60);
+  // ?credits=all|half|little (from Start here's "Is my card worth its fee?") sets how much of the credits count.
+  const params = useSearchParams();
+  const [utilization, setUtilization] = useState(() => {
+    const share = USAGE[params.get("credits") ?? ""]?.share;
+    return share === undefined ? 60 : Math.round(share * 100);
+  });
   const [includeBonus, setIncludeBonus] = useState(false);
   const [scope, setScope] = useState<"all" | "wallet" | "premium-travel" | "travel" | "cash-back">("all");
 
@@ -35,13 +46,13 @@ export function Calculator() {
     return cards
       .filter((c) => (scope === "all" ? c.category !== "business" : scope === "wallet" ? wallet.cards.includes(c.id) : c.category === scope))
       .map((card) => {
-        const { points, value, breakdown } = estimateRewards(card, annualSpend, portal);
-        const credits = annualizedCreditValue(card) * (utilization / 100);
-        const bonus = includeBonus ? card.welcomeOfferValue : 0;
+        const { points, value, breakdown } = estimateRewards(card, annualSpend, portal, values);
+        const credits = annualizedCredits(card, values) * (utilization / 100);
+        const bonus = includeBonus ? welcomeValue(card, values).usd : 0;
         return { card, points, rewards: value, credits, bonus, breakdown, net: value + credits + bonus - card.annualFee };
       })
       .sort((a, b) => b.net - a.net);
-  }, [spend, portal, utilization, includeBonus, scope, wallet.cards]);
+  }, [spend, portal, utilization, includeBonus, scope, wallet.cards, values]);
 
   const totalMonthly = Object.values(spend).reduce((a, b) => a + b, 0);
   const max = Math.max(1, ...results.map((r) => r.net));
@@ -157,8 +168,9 @@ export function Calculator() {
           </ol>
           <p className="flex gap-2 text-xs leading-relaxed text-ink-3">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Estimates use our point valuations and ignore spending caps beyond those noted on each card. Credits are counted at
-            face value × your utilization. Real results depend on how you redeem.
+            Points are valued at {MEDIAN_SOURCE}, or at your own value from the tracker&apos;s Points tab; cash back counts at face
+            value. Estimates ignore spending caps beyond those noted on each card. Credits are counted at face value × your
+            utilization. Real results depend on how you redeem.
           </p>
         </div>
       </div>

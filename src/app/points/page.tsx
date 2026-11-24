@@ -129,8 +129,8 @@ export default function PointsPage() {
       <section className="bg-canvas py-14 md:py-16" aria-labelledby="deal-title">
         <div className="container-page">
           <SectionHeading id="deal-title" eyebrow="Calculator" title="Is this a good deal?">
-            Compare an award with the cash price to see what each point is worth, against the median of published valuations (or
-            your own number).
+            Compare an award with the cash price to see what each point is worth, against the value every page uses: the median
+            of published valuations, or your own.
           </SectionHeading>
           <DealCalculator />
         </div>

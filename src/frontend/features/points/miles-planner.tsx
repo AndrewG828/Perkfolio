@@ -7,6 +7,7 @@ import { getCard } from "@/shared/data/cards";
 import { getCurrency, programName, programNames, programRef, type ProgramId } from "@/shared/data/points";
 import {
   bridgeFrom,
+  effectiveRatio,
   hotelLimits,
   hotelMilesFor,
   liveBonuses,
@@ -19,7 +20,7 @@ import {
 } from "@/shared/lib/points";
 import { shortCardName } from "@/shared/lib/card-name";
 import { cn, num } from "@/shared/lib/format";
-import { CURRENCY_COLOR, Dot, RatioPill, SourceList, currencyProse, formatDate, hotelRatio, listJoin, rulesLine, timeLabel } from "./ui";
+import { CURRENCY_COLOR, Dot, RatioPill, SourceList, currencyProse, formatDate, hotelRatio, listJoin, rulesLine, scheduledLabel, timeLabel } from "./ui";
 import type { WalletReach } from "./use-wallet-reach";
 
 export const DEFAULT_TARGET: ProgramId = "united-mileageplus";
@@ -98,8 +99,9 @@ export function MilesPlanner({
             id="miles-needed"
             type="number"
             inputMode="numeric"
-            min={1000}
-            step={1000}
+            min={1}
+            max={MAX_MILES}
+            step="any"
             className="input h-11 text-base tabular-nums"
             value={text}
             onChange={(e) => setMiles(e.target.value)}
@@ -137,7 +139,7 @@ export function MilesPlanner({
       <section aria-live="polite" aria-labelledby="plan-title" className="space-y-6">
         <div>
           <h3 id="plan-title" className="text-xl font-semibold text-navy">
-            To get {num(plan.miles)} {ref.name} {unit}
+            To get {num(plan.miles)} {unit} in {ref.name}
           </h3>
           <p className="mt-1 text-sm text-ink-2">
             {personal ? "Routes your cards can take come first in each list." : "Add your cards to see which routes your points can take."}{" "}
@@ -287,6 +289,11 @@ function RouteRow({ route: r, need, unit, target }: { route: MilesRoute; need: n
             </>
           )}
         </p>
+        {r.partner.scheduled && (
+          <p className="mt-1 text-xs font-semibold text-warn">
+            Changes to {scheduledLabel(r.partner)}: plan for the new ratio if you&apos;ll move points then.
+          </p>
+        )}
         {r.bonus && (
           <p className="mt-1.5 flex w-fit max-w-full items-start gap-1.5 rounded-md bg-gold/12 px-2 py-1 text-xs text-ink">
             <Gift className="mt-px h-3.5 w-3.5 shrink-0 text-[#7a5a12]" aria-hidden />
@@ -307,7 +314,7 @@ function RouteRow({ route: r, need, unit, target }: { route: MilesRoute; need: n
       </div>
       {hotel ? (
         <span className="mt-0.5 flex flex-col items-end gap-0.5" title={`${num(received)} ${unit} for ${num(r.bankPoints)} bank points`}>
-          <RatioPill partner={{ from: r.bankPoints, to: received }} mine={yours} />
+          <RatioPill partner={effectiveRatio(r.bankPoints, received)} mine={yours} />
           <span className="text-[10px] text-ink-3">overall</span>
         </span>
       ) : (

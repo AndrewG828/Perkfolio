@@ -1,7 +1,7 @@
 import { CalendarSearch, Repeat, Undo2 } from "lucide-react";
 import { currencies, partnerChanges, partnersOfCurrency, programName } from "@/shared/data/points";
 import { cardsEarning, ratioLabel } from "@/shared/lib/points";
-import { CardPageNote, ValueInline } from "./point-value";
+import { ValueInline } from "./point-value";
 import { CURRENCY_COLOR, Dot, SectionHeading, SourceList, formatDate } from "./ui";
 
 const TIPS = [
@@ -72,7 +72,7 @@ export function CurrencyNotes() {
                 <span className="font-medium text-ink">Earned with:</span> {c.earnedWith}
               </p>
               <p className="text-sm text-ink-2">
-                <span className="font-medium text-ink">Worth per point:</span> <ValueInline id={c.id} />. <CardPageNote id={c.id} />
+                <span className="font-medium text-ink">Worth per point:</span> <ValueInline id={c.id} />.
               </p>
               {c.restrictions && <p className="text-sm text-ink-2">{c.restrictions}</p>}
               {added.length > 0 && (

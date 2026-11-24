@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { FlaskConical } from "lucide-react";
 import { datasetNotice, type TravelDataset } from "@/shared/data/travel/seed-status";
 import { cn } from "@/shared/lib/format";
@@ -34,19 +33,6 @@ export function DataNotice({ datasets, className }: { datasets: TravelDataset[];
           </span>
         ))}
       </span>
-    </div>
-  );
-}
-
-/** Section heading used across the tools pages. */
-export function SectionTitle({ id, eyebrow, title, children }: { id?: string; eyebrow?: string; title: string; children?: ReactNode }) {
-  return (
-    <div className="mb-4">
-      {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
-      <h2 id={id} className="text-lg font-semibold text-navy">
-        {title}
-      </h2>
-      {children && <p className="mt-1 text-sm text-ink-2">{children}</p>}
     </div>
   );
 }

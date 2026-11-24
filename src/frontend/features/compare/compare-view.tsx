@@ -5,12 +5,18 @@ import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Minus, Plus, X } from "lucide-react";
 import type { Card, LoungeNetwork } from "@/shared/data/types";
-import { annualizedCreditValue, cards, featuredIds, getCard, issuers, rateLabel } from "@/shared/data/cards";
+import { cards, featuredIds, getCard, issuers, rateLabel } from "@/shared/data/cards";
 import { loungeNetworks } from "@/shared/data/networks";
 import { CardArt } from "@/frontend/components/card-art";
 import { WalletButton } from "@/frontend/components/wallet-button";
 import { compareActions, MAX_COMPARE } from "@/frontend/state/compare-store";
+import { useValueContext } from "@/frontend/state/point-values";
 import { frequencyShort } from "@/shared/lib/periods";
+import { annualizedCredits, basisLabel, cardPointValue, creditValue, formatCents } from "@/shared/lib/point-value";
+import { welcomeValue } from "@/shared/lib/welcome-offer";
+import { checkTerms } from "@/shared/lib/card-terms";
+import { currencyOfCard } from "@/shared/lib/card-currency";
+import { currencyPartnerCount } from "@/shared/data/points/card-partners";
 import { cn, usd } from "@/shared/lib/format";
 
 const DEFAULT = ["amex-platinum", "chase-sapphire-reserve", "capital-one-venture-x"];
@@ -21,6 +27,7 @@ export function CompareView() {
   const fromUrl = (params.get("cards") ?? "").split(",").filter((id) => getCard(id));
   const ids = (fromUrl.length ? fromUrl : DEFAULT.filter((id) => getCard(id)).length ? DEFAULT : featuredIds).slice(0, MAX_COMPARE);
   const selected = ids.map(getCard).filter((c): c is Card => Boolean(c));
+  const values = useValueContext();
 
   useEffect(() => {
     compareActions.setAll(ids);
@@ -36,11 +43,23 @@ export function CompareView() {
   const remove = (i: number) => update(ids.filter((_, j) => j !== i));
 
   const networks = Array.from(new Set(selected.flatMap((c) => c.loungeAccess.map((l) => l.network)))) as LoungeNetwork[];
-  const credits = selected.map(annualizedCreditValue);
+  // Points benefits (Venture X's anniversary miles) at what the visitor's points are worth, like every other value.
+  const credits = selected.map((c) => annualizedCredits(c, values));
   const bestFee = Math.min(...selected.map((c) => c.annualFee));
   const bestCredits = Math.max(...credits);
   const bestNet = Math.max(...selected.map((c, i) => credits[i] - c.annualFee));
-  const bestBonus = Math.max(...selected.map((c) => c.welcomeOfferValue));
+  // Welcome offers and point values the way every page values them (shared/lib/point-value.ts). An "as high as" offer
+  // is the most anyone gets, so it reads "up to" and never wins Best (as on card pages and Next card).
+  const offers = selected.map((c) => welcomeValue(c, values));
+  const welcome = offers.map((w) => w.usd);
+  const points = selected.map((c) => cardPointValue(c, values));
+  const bestBonus = Math.max(0, ...offers.filter((w) => !w.offer.upTo).map((w) => w.usd));
+  // Partners as card pages list them: a card whose transfers need another card still lists its bank's partners.
+  const partners = selected.map((c) => {
+    const p = currencyOfCard(c);
+    if (p?.kind === "currency" && p.limited) return { count: currencyPartnerCount(p.currency), limited: p.limited.note };
+    return { count: c.transferPartners?.length ?? 0, limited: null };
+  });
   const cols = selected.length + (selected.length < MAX_COMPARE ? 1 : 0);
 
   return (
@@ -100,7 +119,7 @@ export function CompareView() {
           <tbody>
             <Group label="Cost & value" cols={cols} />
             <Row label="Annual fee" cards={selected} cols={cols} render={(c) => <Val best={c.annualFee === bestFee && selected.length > 1}>{c.annualFee ? usd(c.annualFee) : "$0"}</Val>} />
-            <Row label="Credits per year" hint="Face value, annualized" cards={selected} cols={cols} render={(c, i) => <Val best={credits[i] === bestCredits && credits[i] > 0 && selected.length > 1}>{credits[i] ? usd(credits[i]) : "—"}</Val>} />
+            <Row label="Credits per year" hint="Face value, annualized" cards={selected} cols={cols} render={(_c, i) => <Val best={credits[i] === bestCredits && credits[i] > 0 && selected.length > 1}>{credits[i] ? usd(credits[i]) : "—"}</Val>} />
             <Row
               label="Net if fully used"
               cards={selected}
@@ -115,10 +134,19 @@ export function CompareView() {
               label="Welcome offer"
               cards={selected}
               cols={cols}
-              render={(c) => (
+              render={(c, i) => (
                 <div>
                   <p className="text-ink">{c.welcomeOffer}</p>
-                  {c.welcomeOfferValue > 0 && <p className={cn("mt-1 text-xs", c.welcomeOfferValue === bestBonus && selected.length > 1 ? "font-semibold text-success" : "text-ink-3")}>≈ {usd(c.welcomeOfferValue)}</p>}
+                  {welcome[i] > 0 && (
+                    <p
+                      className={cn(
+                        "mt-1 text-xs",
+                        !offers[i].offer.upTo && welcome[i] === bestBonus && selected.length > 1 ? "font-semibold text-success" : "text-ink-3",
+                      )}
+                    >
+                      {offers[i].offer.upTo ? `Worth up to ${usd(welcome[i])} (offers vary)` : `≈ ${usd(welcome[i])}`}
+                    </p>
+                  )}
                 </div>
               )}
             />
@@ -126,7 +154,19 @@ export function CompareView() {
             <Row label="Authorized users" cards={selected} cols={cols} render={(c) => <span className="text-ink-2">{c.authorizedUserFee ?? "—"}</span>} />
 
             <Group label="Earning" cols={cols} />
-            <Row label="Rewards currency" cards={selected} cols={cols} render={(c) => <span className="text-ink">{c.rewardsCurrency} <span className="text-ink-3">· {c.pointValueCents}¢</span></span>} />
+            <Row
+              label="Rewards currency"
+              cards={selected}
+              cols={cols}
+              render={(c, i) => (
+                <span className="text-ink">
+                  {c.rewardsCurrency}{" "}
+                  <span className="text-ink-3" title={basisLabel(points[i])}>
+                    · {points[i].basis === "cash" ? "face value" : `${formatCents(points[i].cents)}${points[i].basis === "own" ? " (your value)" : ""}`}
+                  </span>
+                </span>
+              )}
+            />
             <Row
               label="Bonus categories"
               cards={selected}
@@ -143,7 +183,21 @@ export function CompareView() {
               )}
             />
             <Row label="Everything else" cards={selected} cols={cols} render={(c) => <span className="font-semibold text-ink">{rateLabel(c, c.baseRate)}</span>} />
-            <Row label="Transfer partners" cards={selected} cols={cols} render={(c) => <span className="text-ink-2">{c.transferPartners?.length ? `${c.transferPartners.length} partners` : "—"}</span>} />
+            <Row
+              label="Transfer partners"
+              cards={selected}
+              cols={cols}
+              render={(_c, i) =>
+                partners[i].count ? (
+                  <span className="text-ink-2">
+                    {partners[i].count} partners
+                    {partners[i].limited && <span className="block text-xs text-ink-3">Limited: {partners[i].limited}</span>}
+                  </span>
+                ) : (
+                  <span className="text-ink-2">—</span>
+                )
+              }
+            />
 
             <Group label="Statement credits" cols={cols} />
             <Row
@@ -152,12 +206,13 @@ export function CompareView() {
               cols={cols}
               render={(c) =>
                 c.credits.length ? (
-                  <ul className="space-y-1.5">
+                  // A narrow column (phones) puts each amount under its credit; a wider one beside it.
+                  <ul className="@container space-y-1.5">
                     {c.credits.map((cr) => (
-                      <li key={cr.id} className="flex justify-between gap-3">
-                        <span className="text-ink-2">{cr.name}</span>
+                      <li key={cr.id} className="flex flex-col @min-[12rem]:flex-row @min-[12rem]:justify-between @min-[12rem]:gap-3">
+                        <span className="min-w-0 text-ink-2">{cr.name}</span>
                         <span className="shrink-0 font-medium whitespace-nowrap text-ink">
-                          {cr.frequency === "annual" || cr.frequency === "one-time" ? usd(cr.annualValue) : `${usd(cr.amountPerPeriod)}${frequencyShort[cr.frequency]}`}
+                          {cr.frequency === "annual" || cr.frequency === "one-time" ? usd(creditValue(cr, values)) : `${usd(cr.amountPerPeriod)}${frequencyShort[cr.frequency]}`}
                         </span>
                       </li>
                     ))}
@@ -178,10 +233,15 @@ export function CompareView() {
                 cols={cols}
                 render={(c) => {
                   const a = c.loungeAccess.find((l) => l.network === n);
-                  return a ? (
+                  // The terms as the lounge pages show them: flagged clauses left out or noted (shared/lib/card-terms).
+                  const checked = a ? checkTerms(c.id, n, a.terms) : null;
+                  return a && checked ? (
                     <div className="flex gap-2">
                       <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                      <span className="text-ink-2">{a.terms}</span>
+                      <span className="text-ink-2">
+                        {checked.text}
+                        {checked.notes.length > 0 && <span className="mt-1 block text-xs text-ink-3">{checked.notes.join(" ")}</span>}
+                      </span>
                     </div>
                   ) : (
                     <Minus className="h-4 w-4 text-ink-3" />
@@ -197,12 +257,18 @@ export function CompareView() {
               cols={cols}
               render={(c) => (
                 <ul className="space-y-1.5">
-                  {c.perks.slice(0, 8).map((p) => (
-                    <li key={p} className="flex gap-2 text-ink-2">
-                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-                      {p}
-                    </li>
-                  ))}
+                  {c.perks.slice(0, 8).map((p) => {
+                    const checked = checkTerms(c.id, "perks", p);
+                    return (
+                      <li key={p} className="flex gap-2 text-ink-2">
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+                        <span>
+                          {checked.text}
+                          {checked.notes.length > 0 && <span className="mt-0.5 block text-xs text-ink-3">{checked.notes.join(" ")}</span>}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             />

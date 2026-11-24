@@ -7,6 +7,7 @@ import {
   pointsData,
   pointsRange,
   ratioLabel,
+  ratioRangeLabel,
   ratioVaries,
   transferSources,
   type PointsData,
@@ -119,8 +120,7 @@ export function SweetSpotCard({
                     <Dot color={CURRENCY_COLOR[currency]} />
                     {CURRENCY_ABBR[currency]}
                     <span className="font-semibold tabular-nums">
-                      {ratioLabel(partner)}
-                      {varies && <span aria-hidden>*</span>}
+                      {varies ? ratioRangeLabel(currency, via ?? spot.program, data) : ratioLabel(partner)}
                     </span>
                     {via && <span className="font-normal opacity-80">via {programName(via)}</span>}
                     {yours && <span className="sr-only">(you earn this)</span>}

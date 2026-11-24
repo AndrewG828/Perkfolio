@@ -9,13 +9,11 @@ import { useHydrated, useWallet } from "@/frontend/state/wallet-store";
 import { strategyPrefs, useStrategyPrefs } from "@/frontend/state/strategy-prefs";
 import { applicationRules } from "@/shared/data/strategy/application-rules";
 import { programUnit } from "@/shared/data/strategy/programs";
-import { valuations } from "@/shared/data/strategy/valuations";
 import type { UserFact } from "@/shared/data/strategy/types";
 import { NEEDS_HISTORY, USER_FACTS, chase524, historyContext, type RuleResult } from "@/shared/lib/eligibility";
 import { NEXT_CARD_SCOPES, byRankValue, rankNextCards, usableKey, type Candidate, type NextCardScope } from "@/shared/lib/next-card";
-import { centsFor } from "@/shared/lib/trackers";
+import { MEDIAN_SOURCE, basisLabel, formatCents } from "@/shared/lib/point-value";
 import { frequencyShort } from "@/shared/lib/periods";
-import { formatMonth } from "@/shared/lib/dates";
 import { cn, num, usd } from "@/shared/lib/format";
 import { ApplicationsEditor } from "./applications-editor";
 import { FiveTwentyFourPanel } from "./five-24-panel";
@@ -46,11 +44,6 @@ const scopeFromUrl = (): NextCardScope => {
 /** How many rows each list shows before "Show all". */
 const FIRST = { eligible: 8, unknown: 5, blocked: 6 };
 
-const OUTLETS = Object.values(valuations.datasets).map((d) => d.outlet);
-/** "The Points Guy, Upgraded Points and NerdWallet". */
-const OUTLET_LIST = `${OUTLETS.slice(0, -1).join(", ")} and ${OUTLETS[OUTLETS.length - 1]}`;
-const EDITION = formatMonth(Object.values(valuations.datasets)[0]?.edition ?? valuations.verified.slice(0, 7));
-
 /** Rendered only in the browser: reads the wallet, preferences, the URL and today's date. */
 function NextCardDashboard() {
   const wallet = useWallet();
@@ -72,7 +65,7 @@ function NextCardDashboard() {
   const ctx = useMemo(() => historyContext(wallet, now, prefs.facts), [wallet, now, prefs.facts]);
   const counter = useMemo(() => chase524(ctx), [ctx]);
   const ranking = useMemo(
-    () => rankNextCards({ wallet, today: now, usable: prefs.usable, scope, facts: prefs.facts, cents: (p) => centsFor(p, prefs.cpp) }),
+    () => rankNextCards({ wallet, today: now, usable: prefs.usable, scope, facts: prefs.facts, values: { own: prefs.cpp } }),
     [wallet, now, prefs.usable, scope, prefs.facts, prefs.cpp],
   );
   // Without a card history almost every rule is unknown, so splitting "ready" from "check first" would put cards we
@@ -127,8 +120,8 @@ function NextCardDashboard() {
                     : "Cards whose rules you pass, ranked by first-year value: welcome offer + credits you'd use − annual fee. Issuers can still decline for other reasons."}
                 </p>
                 <p className="mt-1 text-xs text-ink-3">
-                  Points are valued at the median of the {EDITION} figures from {OUTLET_LIST}, or at your own value from the
-                  Points tab. The ranking leaves out a bonus the issuer may withhold, one a rule can&apos;t confirm yet and
+                  Points are valued at {MEDIAN_SOURCE}, or at your own value from the tracker&apos;s Points tab, the same
+                  value every page uses. The ranking leaves out a bonus the issuer may withhold, one a rule can&apos;t confirm yet and
                   the amount of an &ldquo;as high as&rdquo; offer (the most anyone gets); those cards show what the bonus would
                   add.
                 </p>
@@ -370,7 +363,6 @@ function ShowMore<T>({
 const thousands = (n: number) => (n >= 1000 ? `$${num(Math.round(n / 1000))}k` : usd(n));
 /** "$1,205", or a negative amount with a real minus sign (U+2212), like the fee. */
 const signedUsd = (n: number) => (n < 0 ? `\u2212${usd(-n)}` : usd(n));
-const centsText = (c: number) => `${Number(c.toFixed(3))}¢`;
 
 /** Chips that say what the headline offer leaves out: it varies, it ends, or it needs a lot of spending. */
 function OfferChips({ c }: { c: Candidate }) {
@@ -428,12 +420,12 @@ const fixHref = (keys: string[] | undefined) => {
 };
 
 /** The lines under the value cells: how the points were valued, and what the headline number leaves out. */
-function ValueNotes({ c, own }: { c: Candidate; own: boolean }) {
+function ValueNotes({ c }: { c: Candidate }) {
   const v = c.value;
   const o = v.offer;
   const notes: { text: string; tone?: "warn" | "strong" }[] = [];
-  if (o.points > 0 && v.cents !== undefined) {
-    notes.push({ text: `${num(o.points)} ${programUnit(v.program)} at ${centsText(v.cents)} (${own ? "your value" : `${EDITION} median`})` });
+  if (o.points > 0 && v.points) {
+    notes.push({ text: `${num(o.points)} ${programUnit(v.points.id)} at ${formatCents(v.points.cents)} (${basisLabel(v.points)})` });
   }
   const adds = bonusAddsText(c);
   if (adds) notes.push({ text: adds, tone: c.bonus === "varies" ? "strong" : "warn" });
@@ -454,7 +446,6 @@ function ValueNotes({ c, own }: { c: Candidate; own: boolean }) {
 }
 
 function CandidateRow({ c, rank, usable, topLabel = "Top pick" }: { c: Candidate; rank?: number; usable: Record<string, true>; topLabel?: string }) {
-  const prefs = useStrategyPrefs();
   const [open, setOpen] = useState<"credits" | "rules" | null>(null);
   const { card, value, eligibility } = c;
   const verdict = verdictOf(eligibility);
@@ -463,7 +454,6 @@ function CandidateRow({ c, rank, usable, topLabel = "Top pick" }: { c: Candidate
   const missing = [...new Set(unknowns.flatMap((r) => r.missing ?? []))].filter((m) => m !== NEEDS_HISTORY);
   const fix = fixHref(unknowns.flatMap((r) => r.records ?? []));
   const toggle = (k: "credits" | "rules") => setOpen(open === k ? null : k);
-  const own = Boolean(value.program && prefs.cpp[value.program] !== undefined);
   const counted = c.bonus === "counted";
   return (
     <li className={cn("panel overflow-hidden", rank === 1 && "ring-2 ring-brand")}>
@@ -522,7 +512,7 @@ function CandidateRow({ c, rank, usable, topLabel = "Top pick" }: { c: Candidate
             <Cell label="Fee" value={value.fee ? `−${usd(value.fee)}` : "$0"} reserve={value.offer.upTo} />
             <Cell label="First year" value={signedUsd(c.rankValue)} reserve={value.offer.upTo} strong tone={c.rankValue >= 0 ? "pos" : "neg"} />
           </dl>
-          <ValueNotes c={c} own={own} />
+          <ValueNotes c={c} />
           {(card.credits.length > 0 || eligibility.results.length > 0) && (
             <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm xl:justify-end">
               {card.credits.length > 0 && (

@@ -9,7 +9,6 @@ import { ApplicationsEditor } from "@/frontend/features/next-card/applications-e
 import { FiveTwentyFourPanel } from "@/frontend/features/next-card/five-24-panel";
 import { chase524, historyContext } from "@/shared/lib/eligibility";
 import { rankNextCards } from "@/shared/lib/next-card";
-import { centsFor } from "@/shared/lib/trackers";
 import { usd } from "@/shared/lib/format";
 import { TabFrame } from "./tab-parts";
 
@@ -18,7 +17,7 @@ export function ApplicationsTab({ wallet, now }: { wallet: WalletState; now: Dat
   const counter = useMemo(() => chase524(historyContext(wallet, now)), [wallet, now]);
   const { usable, facts, cpp } = useStrategyPrefs();
   const best = useMemo(
-    () => rankNextCards({ wallet, today: now, usable, facts, cents: (p) => centsFor(p, cpp) }).eligible[0],
+    () => rankNextCards({ wallet, today: now, usable, facts, values: { own: cpp } }).eligible[0],
     [wallet, now, usable, facts, cpp],
   );
   return (

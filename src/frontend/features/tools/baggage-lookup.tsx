@@ -20,14 +20,15 @@ import { DataNotice, ExternalA, LinkedText, SourceLinks } from "./ui";
 const ALLIANCES: (Alliance | "none")[] = ["oneworld", "Star Alliance", "SkyTeam", "none"];
 
 /** Co-branded cards by airline, to pick out the bag perks that apply to the airline you searched. */
-const CARD_AIRLINE: [RegExp, string][] = [
-  [/delta/i, "DL"],
-  [/united/i, "UA"],
-  [/aadvantage|american airlines/i, "AA"],
-  [/atmos|alaska/i, "AS"],
-  [/southwest/i, "WN"],
-  [/jetblue/i, "B6"],
-  [/hawaiian/i, "HA"],
+/** The airlines a co-brand card's bag perk covers, by the card's name (Atmos cards: Alaska and Hawaiian flights). */
+const CARD_AIRLINE: [RegExp, string[]][] = [
+  [/delta/i, ["DL"]],
+  [/united/i, ["UA"]],
+  [/aadvantage|american airlines/i, ["AA"]],
+  [/atmos|alaska/i, ["AS", "HA"]],
+  [/southwest/i, ["WN"]],
+  [/jetblue/i, ["B6"]],
+  [/hawaiian/i, ["HA"]],
 ];
 
 /** One airline in the directory: verified (with its official baggage page) or still pending. */
@@ -85,7 +86,7 @@ function searchAirlines(q: string, alliance: Alliance | "none" | "all"): Directo
 /** "Upgraded Points, Jun 2026" */
 const citedLabel = (c: CandidateBaggageLink) => `${c.citedBy}, ${formatIsoMonth(c.month)}`;
 
-/** How a verified link was confirmed, for its "How this was checked" note. */
+/** How a verified link was confirmed, for its "Where this comes from" note. */
 function verificationText(a: DirectoryAirline): string | null {
   const v = a.verification;
   if (!v || !a.url) return null;
@@ -261,8 +262,8 @@ export function BaggageLookup() {
           <RuleList icon={Award} title="Bags on award tickets" items={baggage.awardRules} preview={RULES_PREVIEW.awardRules} />
           <div className="space-y-2 px-1 text-xs leading-relaxed text-ink-3">
             <p>
-              Fees change often and differ by route, fare and status. The airline&apos;s own page is the final word. Research
-              verified {formatIsoDate(baggage.verifiedAt)}.
+              Fees change often and differ by route, fare and status. The airline&apos;s own page is the final word. Checked{" "}
+              {formatIsoDate(baggage.verifiedAt)}.
             </p>
             <details>
               <summary className="cursor-pointer font-medium text-brand">All {ALL_SOURCES} sources</summary>
@@ -436,7 +437,7 @@ function FeaturedAirline({ airline, fee }: { airline: DirectoryAirline; fee?: Do
             )}
             {verification && (
               <details className="text-ink-3">
-                <summary className="cursor-pointer font-medium text-brand">How this was checked</summary>
+                <summary className="cursor-pointer font-medium text-brand">Where this comes from</summary>
                 <p className="mt-1">{verification}</p>
                 <SourceLinks sources={airline.sources} max={4} className="mt-1" />
               </details>
@@ -629,11 +630,11 @@ function CardBagPerks({ airline, idPrefix }: { airline: string | null; idPrefix:
   const wallet = useWallet();
   const owned = wallet.cards.map(getCard).filter((c): c is Card => Boolean(c));
   const perks = owned
-    .map((c) => ({ card: c, perk: c.perks.find((p) => /checked bag|free bag/i.test(p)), airline: CARD_AIRLINE.find(([re]) => re.test(c.name))?.[1] }))
-    .filter((x): x is { card: Card; perk: string; airline: string | undefined } => Boolean(x.perk))
+    .map((c) => ({ card: c, perk: c.perks.find((p) => /checked bag|free bag/i.test(p)), airlines: CARD_AIRLINE.find(([re]) => re.test(c.name))?.[1] ?? [] }))
+    .filter((x): x is { card: Card; perk: string; airlines: string[] } => Boolean(x.perk))
     // The airline's own fee data can be newer than the card's perk (Delta's second free bag since June 2026).
-    .map((x) => ({ ...x, notes: checkTerms(x.card.id, "perks", x.perk).notes }))
-    .sort((a, b) => Number(b.airline === airline) - Number(a.airline === airline));
+    .map((x) => ({ ...x, notes: checkTerms(x.card.id, "perks", x.perk).notes, here: Boolean(airline && x.airlines.includes(airline)) }))
+    .sort((a, b) => Number(b.here) - Number(a.here));
 
   return (
     <section className="panel p-5" aria-labelledby={`${idPrefix}bag-perks-title`}>
@@ -653,12 +654,12 @@ function CardBagPerks({ airline, idPrefix }: { airline: string | null; idPrefix:
         <p className="mt-2 text-sm text-ink-2">None of your cards includes a free checked bag. Airline co-branded cards usually do.</p>
       ) : (
         <ul className="mt-3 space-y-3">
-          {perks.map(({ card, perk, airline: code, notes }) => (
+          {perks.map(({ card, perk, here, notes }) => (
             <li key={card.id} className="flex items-start gap-3 text-sm">
               <CardArt card={card} size="xs" className="mt-0.5 shrink-0" />
               <span>
                 <span className="font-semibold text-ink">{card.name}</span>
-                {code && code === airline && <span className="ml-1.5 rounded bg-success/10 px-1.5 py-0.5 text-[11px] font-semibold text-success">This airline</span>}
+                {here && <span className="ml-1.5 rounded bg-success/10 px-1.5 py-0.5 text-[11px] font-semibold text-success">This airline</span>}
                 <span className="block text-ink-2">{perk}</span>
                 {notes.map((n) => (
                   <span key={n} className="mt-0.5 block text-ink-2">

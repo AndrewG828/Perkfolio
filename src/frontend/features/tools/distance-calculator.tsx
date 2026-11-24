@@ -7,7 +7,6 @@ import { ArrowRight, ArrowUpDown, Clock, Info, Plus, RotateCcw, Route, Sparkles,
 import { MAX_ROUTE_POINTS, formatRoute, parseRoute, parseRouteParam, sameAirportLegs, summarizeRoute, type WorldAirport } from "@/shared/lib/airports";
 import { formatDuration } from "@/shared/lib/geo";
 import { regionFor, sweetSpotsHref } from "@/shared/data/travel/regions";
-import { routeLive } from "@/shared/lib/site-routes";
 import { whole } from "@/shared/lib/travel-format";
 import { cn } from "@/shared/lib/format";
 import { useWorldAirports } from "@/frontend/state/airports";
@@ -33,6 +32,10 @@ function slotsFrom(codes: string[]): Slot[] {
 }
 
 /** Flight distance calculator: origin, up to three stops and a destination; distances, times and a map. */
+/** A total as the legs above it show: the sum of each leg rounded, so the Total row adds up to what's printed. */
+const legTotal = (summary: ReturnType<typeof summarizeRoute>, unit: "miles" | "km" | "nm") =>
+  summary.legs.reduce((t, l) => t + Math.round(l[unit]), 0);
+
 export function DistanceCalculator() {
   const params = useSearchParams();
   const [slots, setSlots] = useState<Slot[]>(() => slotsFrom(parseRoute(params.get("route"))));
@@ -69,7 +72,7 @@ export function DistanceCalculator() {
   const summary = resolved.length >= 2 && unknown.length === 0 && repeats.length === 0 ? summarizeRoute(resolved) : null;
   const dest = resolved.length >= 2 ? resolved[resolved.length - 1] : null;
   // The sweet-spots link waits for the Points & Miles section's page.
-  const region = dest && routeLive("/points/sweet-spots") ? regionFor(dest.country, dest.lat, dest.lon) : null;
+  const region = dest ? regionFor(dest.country, dest.lat, dest.lon) : null;
 
   const setCode = (key: number, a: WorldAirport | null) =>
     setSlots((ss) => ss.map((s) => (s.key === key ? { ...s, code: a?.code ?? null } : s)));
@@ -226,7 +229,8 @@ export function DistanceCalculator() {
 
           {summary && <LegsTable summary={summary} />}
 
-          {region && dest && (
+          {/* Only for a route we could measure (not JFK-JFK or one with an unknown airport). */}
+          {summary && region && dest && (
             <section className="panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sky text-brand">
@@ -324,8 +328,8 @@ function Summary({
       <Stat
         icon={Route}
         label="Total distance"
-        value={`${whole(summary.miles)} mi`}
-        sub={`${whole(summary.km)} km · ${whole(summary.nm)} nm`}
+        value={`${whole(legTotal(summary, "miles"))} mi`}
+        sub={`${whole(legTotal(summary, "km"))} km · ${whole(legTotal(summary, "nm"))} nm`}
       />
       <Stat
         icon={Clock}
@@ -409,11 +413,11 @@ function LegsTable({ summary }: { summary: ReturnType<typeof summarizeRoute> }) 
                   Total
                 </th>
                 <td className="px-2 py-3 text-right text-navy tabular-nums sm:px-3">
-                  {whole(summary.miles)}
-                  <span className="block text-xs font-normal text-ink-3 sm:hidden">{whole(summary.km)} km</span>
+                  {whole(legTotal(summary, "miles"))}
+                  <span className="block text-xs font-normal text-ink-3 sm:hidden">{whole(legTotal(summary, "km"))} km</span>
                 </td>
-                <td className="hidden px-3 py-3 text-right text-ink tabular-nums sm:table-cell">{whole(summary.km)}</td>
-                <td className="hidden px-3 py-3 text-right text-ink tabular-nums md:table-cell">{whole(summary.nm)}</td>
+                <td className="hidden px-3 py-3 text-right text-ink tabular-nums sm:table-cell">{whole(legTotal(summary, "km"))}</td>
+                <td className="hidden px-3 py-3 text-right text-ink tabular-nums md:table-cell">{whole(legTotal(summary, "nm"))}</td>
                 <td className="py-3 pr-4 pl-2 text-right whitespace-nowrap text-ink tabular-nums sm:pr-5">{formatDuration(summary.minutes)}</td>
               </tr>
             </tfoot>

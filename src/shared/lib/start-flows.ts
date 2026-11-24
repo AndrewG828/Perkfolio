@@ -1,11 +1,13 @@
 import type { Card } from "@/shared/data/types";
 import { annualizedCreditValue, cards, featuredIds, getCard } from "@/shared/data/cards";
 import { rateFor, type SpendCategory } from "@/shared/data/calculator-rates";
-import { airportByCode, bigAirports, loungeCountByAirport } from "@/shared/lib/lounge-access";
+import { airportByCode, bigAirports, loungeCountByAirport } from "@/shared/lib/lounge-directory";
 import { shortCardName } from "@/shared/lib/card-name";
-import { sweetSpotsHref, type SweetSpotRegion } from "@/shared/data/travel/regions";
-import { routeLive } from "@/shared/lib/site-routes";
-import { earnsCashBack } from "@/shared/lib/hotel-points";
+import { sweetSpotsHref } from "@/shared/data/travel/regions";
+import { BANK_CURRENCY_IDS, type Region } from "@/shared/data/points/types";
+import { programName } from "@/shared/data/strategy/programs";
+import { returnPercent, type ValueContext } from "@/shared/lib/point-value";
+import { USAGE } from "@/shared/lib/credit-usage";
 
 /**
  * The "Start here" wizard: five guided flows of one-tap questions that end on the tools that answer them, with
@@ -18,7 +20,12 @@ export type Answers = Partial<Record<string, string>>;
 export interface StartContext {
   /** Card ids in the visitor's wallet (empty until hydrated). */
   wallet: string[];
+  /** The visitor's own point values (the tracker's Points tab), once hydrated. */
+  own?: Readonly<Record<string, number>>;
 }
+
+/** What points are worth for this visitor (shared/lib/point-value.ts), from the wizard's context. */
+export const startValues = (ctx: StartContext): ValueContext => ({ own: ctx.own, cards: ctx.wallet });
 
 export interface StartOption {
   value: string;
@@ -48,10 +55,7 @@ export interface StartFlow {
   id: FlowId;
   title: string;
   blurb: string;
-  /** The page the flow is built around; the flow is offered only once it's on the site (see site-routes.ts). */
-  requires?: string;
   questions: StartQuestion[];
-  /** Every result, including links to sections that may not be on the site yet; pages use `resultsFor`. */
   results: (a: Answers, ctx: StartContext) => StartResult[];
 }
 
@@ -65,19 +69,15 @@ const qs = (params: Record<string, string | undefined>) => {
 
 // --- Shared option lists ---------------------------------------------------------------------------------------
 
+/** The bank currencies (named as everywhere else, from the Points & Miles data), then airline miles and hotel points. */
 const CURRENCIES: StartOption[] = [
-  { value: "amex-mr", label: "Amex Membership Rewards" },
-  { value: "chase-ur", label: "Chase Ultimate Rewards" },
-  { value: "capital-one", label: "Capital One miles" },
-  { value: "citi-typ", label: "Citi ThankYou points" },
-  { value: "bilt", label: "Bilt Points" },
-  { value: "wells-fargo", label: "Wells Fargo Rewards" },
+  ...BANK_CURRENCY_IDS.map((id) => ({ value: id, label: programName(id) })),
   { value: "airline", label: "Airline miles" },
   { value: "hotel", label: "Hotel points" },
 ];
-const BANK = new Set(["amex-mr", "chase-ur", "capital-one", "citi-typ", "bilt", "wells-fargo"]);
+const BANK = new Set<string>(BANK_CURRENCY_IDS);
 
-const REGIONS: { value: SweetSpotRegion | "anywhere"; label: string }[] = [
+const REGIONS: { value: Region | "anywhere"; label: string }[] = [
   { value: "Europe", label: "Europe" },
   { value: "Japan", label: "Japan" },
   { value: "East Asia", label: "Korea, China & Taiwan" },
@@ -99,7 +99,7 @@ const CITY: Record<string, string> = {
 };
 
 /** Trip destinations: an airport, its country (for entry rules) and region (for sweet spots). */
-export const TRIP_DESTINATIONS: { code: string; city: string; country: string | null; region: SweetSpotRegion }[] = [
+export const TRIP_DESTINATIONS: { code: string; city: string; country: string | null; region: Region }[] = [
   { code: "LHR", city: "London", country: "United Kingdom", region: "Europe" },
   { code: "CDG", city: "Paris", country: "France", region: "Europe" },
   { code: "FCO", city: "Rome", country: "Italy", region: "Europe" },
@@ -140,29 +140,24 @@ const FEES: Record<string, { label: string; max: number }> = {
   any: { label: "Any, if it pays for itself", max: Infinity },
 };
 
-const USAGE: Record<string, { label: string; share: number }> = {
-  all: { label: "Nearly all of them", share: 0.9 },
-  half: { label: "About half", share: 0.5 },
-  little: { label: "Hardly any", share: 0.15 },
-};
 
 // --- Helpers used by results -------------------------------------------------------------------------------------
 
-/** Return in percent for a spend category (points × our valuation, or the cash-back rate; Bilt Points are points). */
-function returnPct(card: Card, cat: SpendCategory) {
-  const rate = rateFor(card, cat, false);
-  return earnsCashBack(card) ? rate : rate * card.pointValueCents;
-}
+/** Return in percent for a spend category: the earn rate × what a point is worth (cash back at face value). */
+const returnPct = (card: Card, cat: SpendCategory, values: ValueContext) => returnPercent(card, rateFor(card, cat, false), values);
 
-/** Up to three personal cards worth comparing for this spending and fee comfort. */
-export function suggestCards(spend: string | undefined, fee: string | undefined, travel: string | undefined): string[] {
+/**
+ * Up to three personal cards worth comparing for this spending and fee comfort, with points valued like every other
+ * page (`values`: the user's own values and cards, once known).
+ */
+export function suggestCards(spend: string | undefined, fee: string | undefined, travel: string | undefined, values: ValueContext = {}): string[] {
   const cats = SPEND[spend ?? ""]?.cats ?? ["other"];
   const max = FEES[fee ?? ""]?.max ?? Infinity;
   const traveler = travel === "often";
   return cards
     .filter((c) => c.category !== "business" && c.annualFee <= max)
     .map((c) => {
-      const earn = Math.max(...cats.map((cat) => returnPct(c, cat)));
+      const earn = Math.max(...cats.map((cat) => returnPct(c, cat, values)));
       const lounge = traveler && c.loungeAccess.length > 0 ? 1 : 0;
       return { c, score: earn + lounge };
     })
@@ -192,7 +187,6 @@ export const START_FLOWS: StartFlow[] = [
     id: "points",
     title: "I have points. What can I do?",
     blurb: "See what they're worth, where they transfer and the best awards for them.",
-    requires: "/points",
     questions: [
       { id: "currency", prompt: "Which points do you have the most of?", options: fixed(CURRENCIES) },
       {
@@ -216,16 +210,18 @@ export const START_FLOWS: StartFlow[] = [
       const currency = a.currency ?? "";
       const name = CURRENCIES.find((c) => c.value === currency)?.label ?? "your points";
       const bank = BANK.has(currency);
-      const region = a.region && a.region !== "anywhere" ? (a.region as SweetSpotRegion) : null;
+      const region = a.region && a.region !== "anywhere" ? (a.region as Region) : null;
       const cabin = a.goal === "business" || a.goal === "economy" ? a.goal : undefined;
       const kind = a.goal === "hotel" ? "hotel" : undefined;
+      // Only parameters the pages read (a test checks): sweet spots filter by region, cabin and type, the transfer
+      // chart by currency.
       const spots = region
-        ? sweetSpotsHref(region, { ...(cabin ? { cabin } : {}), ...(kind ? { type: kind } : {}), ...(bank ? { from: currency } : {}) })
-        : `/points/sweet-spots${qs({ cabin, type: kind, from: bank ? currency : undefined })}`;
+        ? sweetSpotsHref(region, { ...(cabin ? { cabin } : {}), ...(kind ? { type: kind } : {}) })
+        : `/points/sweet-spots${qs({ cabin, type: kind })}`;
       const out: StartResult[] = [];
       if (bank) {
-        out.push({ href: `/points${qs({ currency })}`, title: `What ${name} are worth`, body: "Our valuation, and the redemptions that get the most from them." });
-        out.push({ href: `/points/transfers${qs({ from: currency })}`, title: `Where ${name} transfer`, body: "Every airline and hotel partner, with ratios and transfer times." });
+        out.push({ href: "/about#points-data", title: `What ${name} are worth`, body: "The value we use for each point, and the published figures behind it." });
+        out.push({ href: `/points/transfers${qs({ currency })}`, title: `Where ${name} transfer`, body: "Every airline and hotel partner, with ratios and transfer times." });
       } else {
         out.push({ href: "/points/programs", title: "Airline and hotel programs", body: "How each program prices awards, and what it's good for." });
       }
@@ -263,11 +259,11 @@ export const START_FLOWS: StartFlow[] = [
         ]),
       },
     ],
-    results: (a) => {
-      const picks = suggestCards(a.spend, a.fee, a.travel);
+    results: (a, ctx) => {
+      const picks = suggestCards(a.spend, a.fee, a.travel, startValues(ctx));
       const cat = a.spend === "travel" ? "flights" : a.spend === "everything" ? "other" : a.spend;
       return [
-        { href: `/next-card${qs({ spend: a.spend, fee: a.fee, travel: a.travel })}`, title: "Your next card", body: "Ranked for how you spend and what you already hold, with issuer rules like Chase 5/24." },
+        { href: "/next-card", title: "Your next card", body: "Ranked by first-year value for what you already hold, with issuer rules like Chase 5/24." },
         { href: `/compare?cards=${picks.join(",")}`, title: "Compare your top three", body: picks.map((id) => shortCardName(getCard(id)?.name ?? id)).join(", ") },
         { href: `/best-card${qs({ category: cat })}`, title: "Which card to use", body: "The best card in your wallet for each kind of purchase." },
       ];
@@ -305,7 +301,7 @@ export const START_FLOWS: StartFlow[] = [
       const card = a.card ? getCard(a.card) : undefined;
       const short = card ? shortCardName(card.name) : "your card";
       return [
-        { href: `/calculator${qs({ card: a.card, credits: a.usage })}`, title: "Run the numbers", body: "Rewards on your spending plus credits, minus the fee, against other cards." },
+        { href: `/calculator${qs({ credits: a.usage })}`, title: "Run the numbers", body: "Rewards on your spending plus credits, minus the fee, against other cards." },
         { href: "/tracker", title: "Track its credits", body: `Log ${short} credits as you use them and watch value against the fee.` },
         ...(card ? [{ href: `/cards/${card.id}`, title: `Every ${short} benefit`, body: "Credits, earn rates, lounge access and protections." }] : []),
       ];
@@ -314,9 +310,7 @@ export const START_FLOWS: StartFlow[] = [
   {
     id: "trip",
     title: "I'm planning a trip",
-    blurb: routeLive("/points/sweet-spots")
-      ? "Lounges, entry rules, award sweet spots and flight distance for your route."
-      : "Lounges, entry rules and flight distance for your route.",
+    blurb: "Lounges, entry rules, award sweet spots and flight distance for your route.",
     questions: [
       {
         id: "from",
@@ -352,7 +346,7 @@ export const START_FLOWS: StartFlow[] = [
         out.push({ href: `/tools/entry-requirements${qs({ q: dest.country })}`, title: `Entry rules: ${dest.country}`, body: "Visas, travel authorizations and passport validity for U.S. citizens." });
       }
       if (dest) {
-        out.push({ href: sweetSpotsHref(dest.region, { cabin: a.cabin ?? "economy", from }), title: `Award sweet spots: ${dest.region}`, body: "Where your points go furthest on this trip." });
+        out.push({ href: sweetSpotsHref(dest.region, { cabin: a.cabin ?? "economy" }), title: `Award sweet spots: ${dest.region}`, body: "Where your points go furthest on this trip." });
         out.push({ href: `/tools/distance${qs({ route: `${from}-${dest.code}` })}`, title: `Flight distance: ${from} → ${dest.code}`, body: "Miles and flight time, and how much farther a stop makes it." });
       }
       return out;
@@ -417,14 +411,7 @@ export const START_FLOWS: StartFlow[] = [
   },
 ];
 
-/** The flows offered on this site: the points flow waits for the Points & Miles pages. */
-export const LIVE_FLOWS: StartFlow[] = START_FLOWS.filter((f) => !f.requires || routeLive(f.requires));
-
-export const flowById = (id: string | null | undefined) => LIVE_FLOWS.find((f) => f.id === id) ?? null;
-
-/** A flow's results that link to pages on the site (a sweet-spots or next-card link waits for its section). */
-export const resultsFor = (flow: StartFlow, a: Answers, ctx: StartContext): StartResult[] =>
-  flow.results(a, ctx).filter((r) => routeLive(r.href));
+export const flowById = (id: string | null | undefined) => START_FLOWS.find((f) => f.id === id) ?? null;
 
 /** The questions that apply given the answers so far, in order. */
 export function activeQuestions(flow: StartFlow, answers: Answers): StartQuestion[] {

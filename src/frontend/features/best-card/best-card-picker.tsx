@@ -2,20 +2,21 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Info, Trophy } from "lucide-react";
 import type { Card } from "@/shared/data/types";
-import { cards, getCard, isCashBack, rateLabel } from "@/shared/data/cards";
-import { SPEND_CATEGORIES, rateFor, type SpendCategory } from "@/shared/data/calculator-rates";
+import { cards, getCard } from "@/shared/data/cards";
+import { SPEND_CATEGORIES, rateCondition, rateFor, type SpendCategory } from "@/shared/data/calculator-rates";
 import { CardArt } from "@/frontend/components/card-art";
 import { Meter } from "@/frontend/components/meter";
 import { useHydrated, useWallet, type WalletState } from "@/frontend/state/wallet-store";
+import { useValueContext } from "@/frontend/state/point-values";
 import { limitPeriod, limitsFor, tallyKey } from "@/shared/lib/limits";
+import { cardPointValue, formatCents, MEDIAN_SOURCE, returnPercent, type CardPointValue } from "@/shared/lib/point-value";
 import { cn } from "@/shared/lib/format";
 
-/** Effective return in percent: 3x points worth 1.7¢ = 5.1%. Cash-back rates are already percent. */
-function returnPct(card: Card, rate: number) {
-  return isCashBack(card) ? rate : (rate * card.pointValueCents);
-}
+/** "3% cash back", or "3x × 2¢ per point" (a card whose transfers another card unlocks earns points, not cash). */
+const returnText = (rate: number, v: CardPointValue) => (v.basis === "cash" ? `${rate}% cash back` : `${rate}x × ${formatCents(v.cents)} per point`);
 
 const CAT_MATCH: Partial<Record<SpendCategory, RegExp>> = {
   dining: /restaurant|dining/i,
@@ -36,8 +37,11 @@ function capReached(card: Card, cat: SpendCategory, wallet: WalletState, now: Da
 export function BestCardPicker() {
   const hydrated = useHydrated();
   const wallet = useWallet();
-  const [cat, setCat] = useState<SpendCategory>("dining");
+  // ?category=groceries (from Start here) picks the category to start on.
+  const params = useSearchParams();
+  const [cat, setCat] = useState<SpendCategory>(() => SPEND_CATEGORIES.find((c) => c.id === params.get("category"))?.id ?? "dining");
   const [portal, setPortal] = useState(false);
+  const values = useValueContext();
   const owned = wallet.cards.map(getCard).filter((c): c is Card => Boolean(c));
   const [scopeChoice, setScope] = useState<"wallet" | "all" | null>(null);
   const scope = scopeChoice ?? (owned.length ? "wallet" : "all");
@@ -48,12 +52,15 @@ export function BestCardPicker() {
       .map((card) => {
         const capped = scope === "wallet" && capReached(card, cat, wallet, new Date());
         const rate = capped ? card.baseRate : rateFor(card, cat, portal);
-        return { card, rate, pct: returnPct(card, rate), capped };
+        // Return in percent: the earn rate × what a point is worth (3x at 2¢ = 6%); cash-back rates are already percent.
+        // A rate that holds only for some purchases (one airline or hotel brand, a choice, a tier) says so on its row.
+        const only = capped ? null : rateCondition(card, cat, portal);
+        return { card, rate, value: cardPointValue(card, values), pct: returnPercent(card, rate, values), capped, only };
       })
       .filter((r) => r.rate > 0)
       .sort((a, b) => b.pct - a.pct)
       .slice(0, scope === "wallet" ? 50 : 10);
-  }, [owned, scope, cat, portal, wallet]);
+  }, [owned, scope, cat, portal, wallet, values]);
 
   const best = ranked[0]?.pct ?? 1;
   const catLabel = SPEND_CATEGORIES.find((c) => c.id === cat)?.label ?? "";
@@ -111,7 +118,7 @@ export function BestCardPicker() {
           </div>
         ) : (
           <ol className="space-y-3" aria-label={`Best cards for ${catLabel}`}>
-            {ranked.map(({ card, rate, pct, capped }, i) => (
+            {ranked.map(({ card, rate, value, pct, capped, only }, i) => (
               <li key={card.id} className={cn("panel flex flex-wrap items-center gap-5 p-5", i === 0 && "ring-2 ring-brand")}>
                 <CardArt card={card} size="sm" />
                 <div className="min-w-[200px] flex-1">
@@ -128,10 +135,11 @@ export function BestCardPicker() {
                 <div className="text-right">
                   <p className="text-2xl font-semibold text-navy">{pct.toFixed(1)}%</p>
                   <p className="text-xs text-ink-3">
-                    {rateLabel(card, rate)}
-                    {isCashBack(card) ? " cash back" : ` × ${card.pointValueCents}¢ per point`}
+                    {returnText(rate, value)}
+                    {value.basis === "own" ? " (your value)" : ""}
                   </p>
                   {capped && <p className="text-xs font-semibold text-warn">Bonus cap reached this year</p>}
+                  {only && <p className="mt-0.5 max-w-[16rem] text-xs font-medium text-warn">{only}</p>}
                 </div>
               </li>
             ))}
@@ -139,8 +147,10 @@ export function BestCardPicker() {
         )}
         <p className="flex gap-2 text-xs leading-relaxed text-ink-3">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Return = earn rate × our point valuation. Check the Caps &amp; allowances section of your tracker — once a bonus
-          category&apos;s cap is reached, that card drops to its base rate.
+          Return = earn rate × what a point is worth: {MEDIAN_SOURCE}, or your own value from the tracker&apos;s Points tab
+          (cash back at face value). A rate marked in orange holds only for some purchases (one airline or hotel brand,
+          a category you pick, a tier); anything else earns the card&apos;s base rate. Check the Caps &amp; allowances
+          section of your tracker — once a bonus category&apos;s cap is reached, that card drops to its base rate.
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { shownPhotos } from "../src/shared/data/points/shown-photos";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -11,6 +12,7 @@ import {
   PROGRAM_BRIDGES,
   PROGRAM_IDS,
   REGIONS,
+  airportPhoto,
   airportPhotos,
   allPhotos,
   airlinesBookableWith,
@@ -51,7 +53,6 @@ import {
   bestPartnerFor,
   bonusOn,
   bookingOptionsFor,
-  cardPageValue,
   centsPerPoint,
   classifyCard,
   currencyOfCard,
@@ -71,12 +72,10 @@ import {
   transferSources,
   transferSpeedRank,
   trimCents,
-  valueForWallet,
-  valueRelation,
-  valueSources,
   walletPoints,
   type PointsData,
 } from "../src/shared/lib/points";
+import { resolvePointValue, valueSources } from "../src/shared/lib/point-value";
 
 const isIsoDate = (s: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
@@ -267,6 +266,22 @@ test("photos are keyed by real regions, airports and lounges, credited, and open
   }
 });
 
+test("the About page credits every photo a page shows", () => {
+  const shown = shownPhotos();
+  // A region's photo is on every sweet spot that goes there (cards, the hub's postcards).
+  for (const s of sweetSpots) {
+    const p = regionPhotos[s.to];
+    if (p) assert.ok(shown.regions.includes(p), `${s.to}'s photo (sweet spot ${s.id})`);
+  }
+  // An airport's photo is in the header of its lounge page, which every airport with lounges has.
+  const withPage = new Set(lounges.map((l) => l.airportCode));
+  for (const [code, p] of Object.entries(airportPhotos)) {
+    if (p && withPage.has(code)) assert.ok(shown.airports.some((a) => a.code === code && a.photo === p), `airport ${code}`);
+  }
+  assert.equal(airportPhoto("IAD"), airportPhotos.IAD);
+  assert.equal(airportPhoto("NOPE"), undefined);
+});
+
 test("booking rules: airline programs, one entry each; every rule is text or null (unknown)", () => {
   assert.deepEqual(dupes(bookingRules.map((r) => r.program)), []);
   assert.ok(bookingRules.length >= 20);
@@ -308,8 +323,14 @@ test("who can book: real programs and airlines, unique codes, no research-proces
     assert.doesNotMatch(c, /alliance rule/i, c);
   }
   // Caveats the research attached to alliance-based listings are kept, reworded.
-  assert.match(getAirline("WY")?.notes ?? "", /oneworld membership; each one's Oman Air coverage wasn't checked/);
+  assert.match(getAirline("WY")?.notes ?? "", /oneworld membership; each one's Oman Air coverage isn't confirmed/);
   assert.ok(programBookingNotes.some((n) => n.program === "copa-connectmiles"), "Copa's note survives without its process preface");
+  // What wasn't confirmed reads as a caveat, never as how the research went ("wasn't checked").
+  for (const f of ["airlines.ts", "booking-rules.ts", "programs.ts", "transfers.ts", "sweet-spots.ts", "valuations.ts"]) {
+    const text = readFileSync(join("src/shared/data/points", f), "utf8");
+    assert.doesNotMatch(text, /\b(?:wasn't|weren't) checked\b/, f);
+    assert.doesNotMatch(text, /see the separate row/, f);
+  }
 });
 
 /** "LATAM Airlines" and "LATAM" → "latam" (the importer matches sweet-spot operators the same way). */
@@ -357,7 +378,7 @@ test("valuations: real ids, consistent ranges, nothing invented for unvalued ids
   const sources = valueSources();
   assert.equal(sources.length, pointValues.length);
   for (const id of unvaluedIds) assert.equal(sources.some((s) => s.id === id), false);
-  assert.equal(sources.find((s) => s.id === "amex-mr")?.cents, pointValues.find((v) => v.id === "amex-mr")?.median);
+  assert.equal(resolvePointValue(sources.find((s) => s.id === "amex-mr")!.id)?.cents, pointValues.find((v) => v.id === "amex-mr")?.median);
 });
 
 test("hotel conversions, bonuses and the change log reference real ids", () => {
@@ -668,6 +689,13 @@ test("who can book: an airline's programs, with the wallet's best routes first",
   assert.ok(withChase.slice(firstMissing).every((o) => !o.reach), "reachable programs come first");
   assert.ok(withChase.some((o) => o.program.id === "united-mileageplus" && o.reach?.best?.currency === "chase-ur"));
   assert.deepEqual(bookingOptionsFor("ZZ"), []);
+  // An airline's own program leads the programs a wallet reaches: ratios in different programs' miles don't compare
+  // (Aeromexico's 5:8 from Membership Rewards isn't better than Delta's 1:1).
+  for (const iata of ["DL", "AF", "KL", "VS", "KE"]) {
+    const opts = bookingOptionsFor(iata, ["amex-platinum"]);
+    const own = opts.find((o) => o.own);
+    if (own?.reach) assert.equal(opts[0], own, `${iata}: ${opts[0].program.id} first`);
+  }
   // Program side: Copa books Copa (its own airline first).
   assert.equal(airlinesBookableWith("copa-connectmiles")[0]?.iata, "CM");
   for (const a of bookableAirlines) for (const p of a.bookableWith) assert.ok(airlinesBookableWith(p).includes(a));
@@ -804,32 +832,6 @@ test("booking rules: a bridge program points at the rules it uses instead of cou
   }
   for (const r of bookingRules) for (const n of r.notes ?? []) assert.doesNotMatch(n, PROCESS, `${r.program}: ${n}`);
   assert.ok(bookingRules.find((r) => r.program === "japan-airlines-mileage-bank")?.notes?.some((n) => /360-day window is for JAL-operated flights/.test(n)));
-});
-
-test("values for a wallet: an outlet's figure for the wallet's cards, and the card pages' own value", () => {
-  const citi = pointValues.find((v) => v.id === "citi-typ")!;
-  assert.equal(valueForWallet(citi, ["citi-double-cash"]).median, 1.6, "NerdWallet's 1.3¢ for other Citi cards");
-  assert.equal(valueForWallet(citi, ["citi-double-cash"]).variant?.cents, 1.3);
-  assert.equal(valueForWallet(citi, ["citi-strata-premier", "citi-double-cash"]).median, citi.median);
-  assert.equal(valueForWallet(citi, []).variant, undefined);
-  const chase = cardPageValue("chase-ur")!;
-  assert.deepEqual([chase.low, chase.high], [1.5, 1.7]);
-  assert.ok(chase.cards.every((c) => currencyOfCard(c)?.kind === "currency"), "the cards behind the figure earn the currency in full");
-  assert.equal(cardPageValue("copa-connectmiles"), null);
-});
-
-test("card-page values are worded by how they compare with the published median, never assumed conservative", () => {
-  const rel = (id: string) => {
-    const card = cardPageValue(id as ProgramId)!;
-    return valueRelation(card, pointValues.find((v) => v.id === id)!);
-  };
-  // World of Hyatt (1.7¢ vs 1.55–1.65¢) and Hilton (0.5¢ vs 0.4–0.41¢) sit above every outlet.
-  assert.deepEqual(rel("world-of-hyatt"), { relation: "above", aboveAll: true, belowAll: false });
-  assert.deepEqual(rel("hilton-honors"), { relation: "above", aboveAll: true, belowAll: false });
-  assert.equal(rel("united-mileageplus").relation, "same");
-  assert.equal(rel("amex-mr").relation, "below");
-  assert.equal(valueRelation({ low: 1.5, high: 1.7 }, { low: 1, median: 1.6, high: 2 }).relation, "spans");
-  assert.equal(valueRelation({ low: 1.2, high: 1.2 }, { low: 1.2, median: 1.2000001, high: 1.2 }).relation, "same", "to the hundredth of a cent");
 });
 
 test("partners the change log adds take the bank's minimum and steps, so the planner never proposes too little", { skip: !changeLogApplied && "imported with --no-change-log" }, () => {

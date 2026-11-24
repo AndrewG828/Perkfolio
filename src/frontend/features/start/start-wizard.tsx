@@ -7,7 +7,7 @@ import { ArrowLeft, ArrowRight, Armchair, Check, CircleCheck, Coins, CreditCard,
 import type { Card } from "@/shared/data/types";
 import { getCard } from "@/shared/data/cards";
 import {
-  LIVE_FLOWS,
+  START_FLOWS,
   activeQuestions,
   answersFrom,
   feeCheck,
@@ -15,7 +15,7 @@ import {
   flowHref,
   isAnswered,
   nextQuestion,
-  resultsFor,
+  startValues,
   suggestCards,
   type Answers,
   type FlowId,
@@ -26,6 +26,7 @@ import { shortCardName } from "@/shared/lib/card-name";
 import { cn, usd } from "@/shared/lib/format";
 import { CardArt } from "@/frontend/components/card-art";
 import { useHydrated, useWallet } from "@/frontend/state/wallet-store";
+import { useStrategyPrefs } from "@/frontend/state/strategy-prefs";
 import { toolFor } from "@/frontend/features/tools/catalog";
 
 const FLOW_ICONS: Record<FlowId, LucideIcon> = {
@@ -50,7 +51,8 @@ export function StartWizard() {
   const params = useSearchParams();
   const wallet = useWallet();
   const hydrated = useHydrated();
-  const ctx: StartContext = { wallet: hydrated ? wallet.cards : [] };
+  const { cpp } = useStrategyPrefs();
+  const ctx: StartContext = hydrated ? { wallet: wallet.cards, own: cpp } : { wallet: [] };
   const flow = flowById(params.get("flow"));
   const answers = flow ? answersFrom(flow, params) : {};
   const question = flow ? nextQuestion(flow, answers, ctx) : null;
@@ -169,7 +171,7 @@ function FlowPicker({ headingRef }: { headingRef: RefObject<HTMLHeadingElement |
         </h2>
         <p className="mt-1 text-ink-2">Pick one, then two to four quick taps.</p>
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {LIVE_FLOWS.map((f) => {
+          {START_FLOWS.map((f) => {
             const Icon = FLOW_ICONS[f.id];
             return (
               <li key={f.id} className="flex">
@@ -260,9 +262,9 @@ function Results({
   ctx: StartContext;
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
-  const results = resultsFor(flow, answers, ctx);
+  const results = flow.results(answers, ctx);
   const fee = flow.id === "fee" ? feeCheck(answers.card, answers.usage) : null;
-  const picks = flow.id === "card" ? suggestCards(answers.spend, answers.fee, answers.travel).map(getCard).filter((c): c is Card => Boolean(c)) : [];
+  const picks = flow.id === "card" ? suggestCards(answers.spend, answers.fee, answers.travel, startValues(ctx)).map(getCard).filter((c): c is Card => Boolean(c)) : [];
   return (
     <>
       <p className="eyebrow">Your plan</p>

@@ -17,7 +17,7 @@ export function parseBonusTerms(offer: string): { target: number; amount: number
 const toISO = (d: Date) => d.toISOString().slice(0, 10);
 const DAY = 86_400_000;
 
-export function BonusTracker({ card, progress, now }: { card: Card; progress?: BonusProgress; now: Date }) {
+export function BonusTracker({ card, progress, now, openedOn }: { card: Card; progress?: BonusProgress; now: Date; openedOn?: string | null }) {
   const terms = parseBonusTerms(card.welcomeOffer);
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -33,6 +33,11 @@ export function BonusTracker({ card, progress, now }: { card: Card; progress?: B
           : new Date(now.getFullYear(), now.getMonth() + (terms?.amount ?? 3), now.getDate()),
       ),
   }));
+
+  // Opened (by the card history) before the welcome offer's window could still be open: nothing to offer.
+  const windowDays = terms ? (terms.unit === "days" ? terms.amount : terms.amount * 31) : 186;
+  const opened = openedOn ? new Date(`${openedOn.length >= 10 ? openedOn : `${openedOn}-01`}T12:00:00`) : null;
+  if (!progress && !editing && opened && now.getTime() - opened.getTime() > (windowDays + 31) * DAY) return null;
 
   // Nothing to track and the user hasn't started: offer it quietly.
   if (!progress && !editing) {

@@ -5,8 +5,10 @@ import { Calculator, Plus } from "lucide-react";
 import { programName } from "@/shared/data/strategy/programs";
 import { Meter } from "@/frontend/components/meter";
 import { ProgramSelect } from "@/frontend/components/program-select";
-import { strategyPrefs, useStrategyPrefs } from "@/frontend/state/strategy-prefs";
-import { centsFor, missingValuation, pointsVsCash } from "@/shared/lib/trackers";
+import { strategyPrefs } from "@/frontend/state/strategy-prefs";
+import { useValueContext } from "@/frontend/state/point-values";
+import { pointsVsCash } from "@/shared/lib/trackers";
+import { noValueReason, resolvePointValue } from "@/shared/lib/point-value";
 import { cn, num, usd } from "@/shared/lib/format";
 
 export interface PointsVsCashValues {
@@ -23,8 +25,9 @@ const cents = (c: number) => `${c.toFixed(2).replace(/\.?0+$/, "")}¢`;
 const aOrAn = (word: string) => (/^(?:[aeio]|u(?!ni|s[aei]))/i.test(word) ? "an" : "a");
 
 /**
- * "Should I use points?": the redemption's actual cents per point against the program's valuation (the user's own
- * figure if they set one), with a verdict and the dollars at stake. Pass `onLog` to offer saving it as a redemption.
+ * "Should I use points?": the redemption's actual cents per point against what the program's points are worth (the one
+ * value every page uses: the user's own figure if they set one, else the published median), with a verdict and the
+ * dollars at stake. Pass `onLog` to offer saving it as a redemption.
  */
 export function PointsVsCash({
   defaultProgram = "",
@@ -35,7 +38,7 @@ export function PointsVsCash({
   onLog?: (values: PointsVsCashValues) => void;
   className?: string;
 }) {
-  const prefs = useStrategyPrefs();
+  const values = useValueContext();
   const uid = useId();
   const [program, setProgram] = useState(defaultProgram);
   const [cash, setCash] = useState("");
@@ -45,8 +48,9 @@ export function PointsVsCash({
   const c = Number(cash);
   const t = taxes.trim() === "" ? 0 : Number(taxes);
   const ready = points.trim() !== "" && cash.trim() !== "" && p > 0 && c >= 0 && t >= 0 && Number.isFinite(p + c + t);
-  const valuation = centsFor(program || undefined, prefs.cpp);
-  const own = Boolean(program && prefs.cpp[program] !== undefined);
+  const resolved = resolvePointValue(program || undefined, values);
+  const valuation = resolved?.cents;
+  const own = resolved?.basis === "own";
   const r = ready ? pointsVsCash({ points: p, taxesUsd: t, cashPriceUsd: c, valuationCents: valuation }) : null;
 
   return (
@@ -136,7 +140,7 @@ export function PointsVsCash({
   );
 }
 
-/** For programs no outlet values (missingValuation): ask what a point is worth to the user, and remember it. */
+/** For programs no outlet values (noValueReason): ask what a point is worth to the user, and remember it. */
 function OwnValue({ program }: { program: string }) {
   const uid = useId();
   const [draft, setDraft] = useState("");
@@ -152,7 +156,7 @@ function OwnValue({ program }: { program: string }) {
     >
       <label htmlFor={`${uid}-own`} className="block text-ink">
         <span className="font-medium">No published value for {programName(program)}.</span>{" "}
-        <span className="text-ink-2">{missingValuation(program) ?? ""} What&apos;s a point worth to you?</span>
+        <span className="text-ink-2">{noValueReason(program) ?? ""} What&apos;s a point worth to you?</span>
       </label>
       <span className="mt-2 flex items-center gap-2">
         <input

@@ -39,11 +39,13 @@ export function readRuleFilters(params: Pick<URLSearchParams, "get">): RuleFilte
   const alliance = (Object.keys(ALLIANCE_SLUG) as (Alliance | "none")[]).find((a) => ALLIANCE_SLUG[a] === slug) ?? "all";
   const sort = params.get("sort");
   const cols = (params.get("rules") ?? "").split(",").filter((k): k is BookingRuleKey => (BOOKING_RULE_KEYS as readonly string[]).includes(k));
+  const shown = cols.length ? BOOKING_RULE_KEYS.filter((k) => cols.includes(k)) : [...BOOKING_RULE_KEYS];
   return {
     q: params.get("q") ?? "",
     alliance,
-    sort: sort === "window" || sort === "name" ? sort : "known",
-    cols: cols.length ? BOOKING_RULE_KEYS.filter((k) => cols.includes(k)) : [...BOOKING_RULE_KEYS],
+    // Sorting by the booking window needs its column on screen, or the order has no visible reason.
+    sort: (sort === "window" && shown.includes("bookingWindowDays")) || sort === "name" ? sort : "known",
+    cols: shown,
   };
 }
 
@@ -101,8 +103,9 @@ export function filterRules(f: RuleFilters): Row[] {
   const days = (r: Row) => r.rules.bookingWindowDays ?? -1;
   // A program that uses another's rules (Virgin Red) has nothing of its own to rank, so it goes last.
   const borrowed = (r: Row) => Number(Boolean(r.rules.sameAs));
+  const byWindow = f.sort === "window" && f.cols.includes("bookingWindowDays");
   return out.sort((a, b) =>
-    f.sort === "window"
+    byWindow
       ? borrowed(a) - borrowed(b) || days(b) - days(a) || a.name.localeCompare(b.name)
       : f.sort === "known"
         ? borrowed(a) - borrowed(b) || b.known - a.known || a.name.localeCompare(b.name)

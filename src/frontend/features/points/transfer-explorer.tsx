@@ -7,7 +7,7 @@ import { ArrowRight, Info } from "lucide-react";
 import { currencies, getCurrency, isCurrencyId, programList, type BankCurrencyId } from "@/shared/data/points";
 import { bestPartnerFor, directRoute, pointsData, ratioVaries } from "@/shared/lib/points";
 import { cn } from "@/shared/lib/format";
-import { CardPageNote, ValueInline } from "./point-value";
+import { ValueInline } from "./point-value";
 import { CURRENCY_ABBR, CURRENCY_COLOR, Dot, RatioPill, programColor, timeLabel } from "./ui";
 import { useWalletReach, type WalletReach } from "./use-wallet-reach";
 
@@ -111,7 +111,7 @@ export function TransferExplorer({
               <strong className="text-ink">
                 {hotels.length} hotel program{hotels.length === 1 ? "" : "s"}
               </strong>
-              . Published valuations put a point at <ValueInline id={currency} />. <CardPageNote id={currency} />
+              . A point is worth <ValueInline id={currency} />.
             </p>
             {!perRow && (
               <p className="mt-1 text-xs text-ink-3">

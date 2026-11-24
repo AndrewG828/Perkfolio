@@ -94,9 +94,9 @@ export const visitorSources = (sources: string[]) => Array.from(new Set(sources.
 
 /** Datasets and sites whose host alone says little (a GitHub raw file), named for what they are. */
 const KNOWN_SOURCES: [RegExp, string][] = [
-  [/raw\.githubusercontent\.com\/imorte\/passport-index-data\/main\/README/i, "Passport Index data notes"],
-  [/raw\.githubusercontent\.com\/imorte\/passport-index-data/i, "Passport Index data (Feb 2026)"],
-  [/raw\.githubusercontent\.com\/ilyankou\/passport-index-dataset/i, "Passport Index data (Jan 2025)"],
+  [/raw\.githubusercontent\.com\/imorte\/passport-index-data\/main\/README/i, "Passport Index dataset notes (third-party)"],
+  [/raw\.githubusercontent\.com\/imorte\/passport-index-data/i, "Passport Index dataset, Feb 2026 (third-party)"],
+  [/raw\.githubusercontent\.com\/ilyankou\/passport-index-dataset/i, "Passport Index dataset, Jan 2025 (third-party)"],
   [/raw\.githubusercontent\.com\/jpatokal\/openflights/i, "OpenFlights airline list"],
   [/raw\.githubusercontent\.com\/opentraveldata/i, "OpenTravelData airline list"],
   [/raw\.githubusercontent\.com\/alphagov\/smart-answers/i, "GOV.UK visa checker"],

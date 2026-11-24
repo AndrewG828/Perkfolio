@@ -1,28 +1,10 @@
+import type { Region } from "../points/types";
+
 /**
- * Destination regions, matching the Points & Miles section's REGIONS (shared/data/points/types.ts on that branch),
+ * The countries in each of the Points & Miles section's destination regions (REGIONS in shared/data/points/types.ts),
  * so tools can link to /points/sweet-spots?region=<Region>. Countries are ISO 3166-1 alpha-2 codes.
  */
-export const SWEET_SPOT_REGIONS = [
-  "United States",
-  "Canada",
-  "Mexico & Central America",
-  "Caribbean",
-  "South America",
-  "Hawaii",
-  "Europe",
-  "Middle East",
-  "Africa",
-  "South Asia",
-  "Indian Ocean",
-  "Southeast Asia",
-  "East Asia",
-  "Japan",
-  "Australia & New Zealand",
-  "South Pacific",
-] as const;
-export type SweetSpotRegion = (typeof SWEET_SPOT_REGIONS)[number];
-
-const COUNTRIES: Record<SweetSpotRegion, string> = {
+const COUNTRIES: Record<Region, string> = {
   "United States": "US",
   Canada: "CA PM",
   "Mexico & Central America": "MX GT BZ SV HN NI CR PA",
@@ -44,8 +26,8 @@ const COUNTRIES: Record<SweetSpotRegion, string> = {
   "South Pacific": "AS CK FJ FM GU KI MH MP NC NR NU PF PG PN PW SB TK TO TV UM VU WF WS",
 };
 
-const BY_COUNTRY = new Map<string, SweetSpotRegion>(
-  (Object.entries(COUNTRIES) as [SweetSpotRegion, string][]).flatMap(([region, codes]) =>
+const BY_COUNTRY = new Map<string, Region>(
+  (Object.entries(COUNTRIES) as [Region, string][]).flatMap(([region, codes]) =>
     codes
       .split(/\s+/)
       .filter(Boolean)
@@ -57,7 +39,7 @@ const BY_COUNTRY = new Map<string, SweetSpotRegion>(
  * The sweet-spot region for a place, from its country code (and coordinates, which pick out Hawaii from the rest of
  * the U.S.). Central Asia and Antarctica have no region.
  */
-export function regionFor(country: string, lat?: number, lon?: number): SweetSpotRegion | null {
+export function regionFor(country: string, lat?: number, lon?: number): Region | null {
   const code = country.toUpperCase();
   if (code === "US" && lat !== undefined && lon !== undefined && lat > 18 && lat < 23.5 && lon > -161 && lon < -154) {
     return "Hawaii";
@@ -66,5 +48,5 @@ export function regionFor(country: string, lat?: number, lon?: number): SweetSpo
 }
 
 /** Link to the award sweet spots for a region (the page lives in the Points & Miles section). */
-export const sweetSpotsHref = (region: SweetSpotRegion, extra: Record<string, string> = {}) =>
+export const sweetSpotsHref = (region: Region, extra: Record<string, string> = {}) =>
   `/points/sweet-spots?${new URLSearchParams({ region, ...extra }).toString()}`;

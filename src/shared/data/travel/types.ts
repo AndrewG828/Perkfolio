@@ -268,7 +268,7 @@ export interface HotelCardEarn {
 }
 
 export interface HotelChain {
-  /** Program name ("Marriott Bonvoy") or id ("marriott-bonvoy"); its slug is the valuation id. */
+  /** Program name ("Marriott Bonvoy") or id ("marriott-bonvoy"); its slug is the Points & Miles program id. */
   program: string;
   /** Base points per dollar at most brands; null while unconfirmed (the calculator then counts card points only). */
   basePerDollar: number | null;
@@ -291,81 +291,6 @@ export interface HotelChain {
 export interface HotelEarningData {
   verifiedAt: string;
   chains: HotelChain[];
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Point valuations (cents per point), shared by the hotel calculator
-
-/** A figure an outlet prints for a subset of cardholders (NerdWallet splits Chase and Citi). */
-export interface ValuationVariant {
-  appliesTo: string;
-  cents: number;
-  basis?: string;
-  outletLabel?: string;
-}
-
-export interface ValuationValue {
-  /** Who published the value. */
-  source: string;
-  cents: number;
-  asOf: string;
-  url: string;
-  /** The edition it comes from (a key of `ValuationsData.editions`). */
-  via?: string;
-  /** The row's name in the outlet's table. */
-  outletLabel?: string;
-  /** The outlet's previous edition, where the figure changed. */
-  previousCents?: number;
-  method?: string;
-  /** For a bank currency valued at its best transfer partner: that partner. */
-  basis?: string;
-  /** The outlet's baseline (travel-portal) value for a bank currency. */
-  baselineCents?: number;
-  variants?: ValuationVariant[];
-  note?: string;
-}
-
-export interface Valuation {
-  /** Program or currency id, e.g. "marriott-bonvoy", "amex-mr", "chase-ur". */
-  id: string;
-  kind?: "bank-currency" | "airline" | "hotel";
-  values: ValuationValue[];
-  /** Smallest and largest outlet figures, and the middle one (the mean of two when there are two). */
-  low: number;
-  median: number;
-  high: number;
-  outletCount?: number;
-  sources?: string[];
-  note?: string;
-}
-
-/** One outlet's valuations table, as read. */
-export interface ValuationEdition {
-  outlet: string;
-  url: string;
-  /** YYYY-MM */
-  edition: string;
-  published?: string;
-  modified?: string;
-  readOn: string;
-  method: string;
-  methodologyUrl?: string;
-}
-
-/** A program no outlet values: it has no value rather than an estimate. */
-export interface MissingValuation {
-  id: string;
-  kind: string;
-  reason: string;
-}
-
-export interface ValuationsData {
-  verifiedAt: string;
-  /** "US cents per point or mile" */
-  unit: string;
-  editions: Record<string, ValuationEdition>;
-  valuations: Valuation[];
-  missing: MissingValuation[];
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

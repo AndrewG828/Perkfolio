@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Locate, Minus, Plus } from "lucide-react";
+import { Locate, MapPinOff, Minus, Plus } from "lucide-react";
 import type { Lounge } from "@/shared/data/types";
 import type { AirportNav } from "@/shared/data/airport-nav";
+import { PREBUILT_AIRPORT_MAPS } from "@/shared/data/airport-map-files";
 import { loungeNetworks } from "@/shared/data/networks";
 import type { LoungeAccessGrant } from "@/shared/lib/lounge-access";
 import { zoneForLounge, type Origin, type Route } from "@/shared/lib/wayfinding";
@@ -37,7 +38,7 @@ async function buildFromOsm(code: string): Promise<AirportMapData | null> {
   const res = await fetch("https://overpass-api.de/api/interpreter", {
     method: "POST",
     body: new URLSearchParams({ data: overpassQuery(code) }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) return null;
   const data = build(code, await res.json());
@@ -52,9 +53,10 @@ function loadMap(code: string) {
   if (!cache.has(code)) {
     cache.set(
       code,
-      fetch(`/airport-maps/${code}.json`)
-        .then((r) => (r.ok ? (r.json() as Promise<AirportMapData>) : buildFromOsm(code)))
-        .catch(() => null),
+      (PREBUILT_AIRPORT_MAPS.includes(code)
+        ? fetch(`/airport-maps/${code}.json`).then((r) => (r.ok ? (r.json() as Promise<AirportMapData>) : buildFromOsm(code)))
+        : buildFromOsm(code)
+      ).catch(() => null),
     );
   }
   return cache.get(code)!;
@@ -162,6 +164,7 @@ export function AirportMap({
   nav,
   lounges,
   grants,
+  closed = () => false,
   checking,
   origin,
   route,
@@ -172,6 +175,8 @@ export function AirportMap({
   nav: AirportNav;
   lounges: Lounge[];
   grants: Map<string, LoungeAccessGrant[]>;
+  /** Lounges closed for now: drawn as hollow, dashed pins. */
+  closed?: (l: Lounge) => boolean;
   checking: boolean;
   origin: Origin | null;
   route: Route | null;
@@ -268,13 +273,40 @@ export function AirportMap({
     setManual(v ? { key: viewKey, view: v } : null);
   };
 
+  // The wheel zooms the map without scrolling the page under it: a listener added by hand, since React's is passive
+  // and can't stop the scroll. Re-added each render, with the view it zooms from.
+  useEffect(() => {
+    const el = svg.current;
+    if (!el || !view) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const at: Pt = [view.x + ((e.clientX - r.left) / r.width) * view.w, view.y + ((e.clientY - r.top) / r.height) * view.h];
+      const w = Math.min(Math.max(view.w * (e.deltaY > 0 ? 1.15 : 1 / 1.15), 150), 20000);
+      const h = (w / view.w) * view.h;
+      setManual({ key: viewKey, view: { x: at[0] - ((at[0] - view.x) * w) / view.w, y: at[1] - ((at[1] - view.y) * h) / view.h, w, h } });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  });
+
   if (data === undefined || (data && !ready))
     return (
       <div className="grid h-[340px] animate-pulse place-items-center rounded-md bg-canvas text-sm text-ink-3 sm:h-[420px]" aria-live="polite">
         {data ? "Finding the way…" : "Loading the airport map…"}
       </div>
     );
-  if (data === null || !view) return null;
+  if (data === null)
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-line bg-canvas p-4 text-sm text-ink-2" role="status">
+        <MapPinOff className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" aria-hidden />
+        <span>
+          The map of {code} couldn&apos;t load right now (it&apos;s built from OpenStreetMap). The directions below still
+          work, and the Concourse overview further down shows where each lounge is.
+        </span>
+      </div>
+    );
+  if (!view) return null;
 
   const scale = Math.min(size.w / view.w, size.h / view.h); // px per meter
   const px = (n: number) => n / scale;
@@ -309,11 +341,17 @@ export function AirportMap({
     const d = drag.current;
     if (!d || !d.pointers.has(e.pointerId) || !d.start) return;
     const prev = d.pointers.get(e.pointerId)!;
+    const before = [...d.pointers.values()];
     d.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const ps = [...d.pointers.values()];
     if (ps.length === 2 && d.dist) {
+      // Two fingers: pinch to zoom and move together to pan (one finger scrolls the page on a phone).
       const dist = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+      const r = svg.current!.getBoundingClientRect();
+      const dx = (ps[0].x + ps[1].x - before[0].x - before[1].x) / 2;
+      const dy = (ps[0].y + ps[1].y - before[0].y - before[1].y) / 2;
       zoom(d.dist / dist, toMap((ps[0].x + ps[1].x) / 2, (ps[0].y + ps[1].y) / 2));
+      setView((v) => ({ ...v, x: v.x - (dx / r.width) * v.w, y: v.y - (dy / r.height) * v.h }));
       d.dist = dist;
     } else if (ps.length === 1) {
       const r = svg.current!.getBoundingClientRect();
@@ -511,10 +549,11 @@ export function AirportMap({
   };
 
   const drawPin = ({ lounge: l, p }: { lounge: Lounge; p: Pt }) => {
-    const ok = isOpen(l);
+    const shut = closed(l);
+    const ok = !shut && isOpen(l);
     const color = loungeNetworks[l.network].color;
     const isTarget = target?.id === l.id;
-    const filled = !checking || ok;
+    const filled = !shut && (!checking || ok);
     return (
       <g
         key={l.id}
@@ -526,9 +565,18 @@ export function AirportMap({
         onClick={() => onPick(l)}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onPick(l)}
       >
-        <title>{`${l.name} (${loungeNetworks[l.network].label})${checking ? (ok ? " — you can get in" : " — not with these cards") : ""}`}</title>
+        <title>{`${l.name} (${loungeNetworks[l.network].label})${shut ? " — closed for now" : checking ? (ok ? " — you can get in" : " — not with these cards") : ""}`}</title>
         {!isTarget && underRoute(p, pinRadius(l)) && <circle cx={p[0]} cy={p[1]} r={px(pinRadius(l) + 3.5)} fill="#fff" />}
-        <circle cx={p[0]} cy={p[1]} r={px(pinRadius(l))} fill={filled ? color : "#fff"} stroke={filled ? "#fff" : "#8a8d91"} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        <circle
+          cx={p[0]}
+          cy={p[1]}
+          r={px(pinRadius(l))}
+          fill={filled ? color : "#fff"}
+          stroke={filled ? "#fff" : shut ? "var(--color-warn)" : "#8a8d91"}
+          strokeWidth={2}
+          strokeDasharray={shut ? "3 2" : undefined}
+          vectorEffect="non-scaling-stroke"
+        />
         {filled && <circle cx={p[0]} cy={p[1]} r={px(3)} fill="#fff" />}
         {renderLabel(`pin:${l.id}`, isTarget ? "var(--color-navy)" : "#4b4f55")}
       </g>
@@ -541,14 +589,13 @@ export function AirportMap({
         <svg
           ref={svg}
           viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
-          className="h-full w-full touch-none select-none"
+          className="h-full w-full touch-pan-y select-none"
           role="img"
           aria-label={`Map of ${code} terminals${target ? ` with the way to ${target.name}` : ""}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
-          onWheel={(e) => zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, toMap(e.clientX, e.clientY))}
         >
           {data.runways.map((r, i) => (
             <polyline key={`r${i}`} points={r.map((p) => p.join(",")).join(" ")} fill="none" stroke="#cfd6df" strokeWidth={45} strokeLinecap="butt" />
@@ -660,7 +707,11 @@ export function AirportMap({
         <span className={cn("flex items-center gap-1.5", !hasMode("landside") && "hidden")}>
           <span className="h-1 w-5 rounded bg-[repeating-linear-gradient(90deg,var(--color-warn)_0_2px,transparent_2px_7px)]" /> Outside security
         </span>
-        <span className="ml-auto">Drag to move · scroll or pinch to zoom · Map data {data.attribution}</span>
+        <span className="ml-auto">
+          <span className="hidden pointer-fine:inline">Drag to move · scroll to zoom · </span>
+          <span className="pointer-fine:hidden">Two fingers to move or zoom · </span>
+          Map data {data.attribution}
+        </span>
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ import { CardArt } from "@/frontend/components/card-art";
 import { Meter } from "@/frontend/components/meter";
 import { useHydrated, useWallet, usageKey, walletActions, type WalletState } from "@/frontend/state/wallet-store";
 import { frequencyLabel, periodsInYear } from "@/shared/lib/periods";
-import { statusFor, type CreditStatus } from "@/shared/lib/credit-status";
+import { openDateFor, statusFor, type CreditStatus } from "@/shared/lib/credit-status";
 import { cn, usd } from "@/shared/lib/format";
 import { CardPickerDialog, CardPickerGrid } from "./card-picker";
 import { BonusTracker } from "./bonus-tracker";
@@ -106,7 +106,7 @@ function TrackerDashboard() {
           <div className="panel p-6">
             <p className="text-sm font-medium text-ink-2">Credits captured in {now.getFullYear()}</p>
             <p className="mt-2 text-4xl font-semibold tracking-tight text-navy">
-              {usd(captured)} <span className="text-base font-medium text-ink-3">of {usd(available)} available</span>
+              {usd(captured)} <span className="text-base font-medium text-ink-3">of {usd(available)} this year</span>
             </p>
             <Meter
               className="mt-5"
@@ -135,7 +135,11 @@ function TrackerDashboard() {
               )}
             </p>
           </div>
-          <Stat label="Available this year" value={usd(available)} sub={`Across ${active.length} tracked credits`} />
+          <Stat
+            label={`Credits in ${now.getFullYear()}`}
+            value={usd(available)}
+            sub={`Across ${active.length} tracked credits; once-every-4-years credits (Global Entry) aren't counted, unlike card pages' yearly figure`}
+          />
           <Stat label="Cards in wallet" value={String(owned.length)} sub={`${usd(totalFees)} in annual fees`}>
             <button className="btn-secondary mt-4 w-full" onClick={() => setPickerOpen(true)}>
               <Settings2 className="h-4 w-4" /> Manage cards
@@ -197,9 +201,9 @@ function TrackerDashboard() {
               <AlarmClock className="h-5 w-5 text-warn" />
               <h2 className="text-xl font-semibold text-navy">Use it before you lose it</h2>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {expiring.map((s) => (
-                <div key={s.card.id + s.credit.id} className="panel flex flex-col gap-3 p-5">
+                <div key={s.card.id + s.credit.id} className="panel flex min-w-0 flex-col gap-3 p-5">
                   <div className="flex items-center gap-3">
                     <CardArt card={s.card} size="xs" />
                     <div className="min-w-0">
@@ -278,7 +282,7 @@ function TrackerDashboard() {
                     </p>
                   </div>
                 </header>
-                <BonusTracker card={card} progress={wallet.bonus?.[card.id]} now={now} />
+                <BonusTracker card={card} progress={wallet.bonus?.[card.id]} now={now} openedOn={openDateFor(card, wallet)?.date} />
                 <OpenDateRow card={card} wallet={wallet} now={now} />
                 <LimitsPanel card={card} wallet={wallet} now={now} />
                 {rows.length === 0 ? (

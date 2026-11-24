@@ -15,7 +15,7 @@ export default function ToolsPage() {
         back={null}
         eyebrow="Tools"
         title="Everything for your next trip and your cards"
-        subtitle="Calculators and lookups built on data we check against official sources. Free, no sign-up, and your wallet stays on your device."
+        subtitle="Calculators and lookups built on data we check against official sources. Free, and no sign-up needed."
       />
       <ToolsIndex />
     </>

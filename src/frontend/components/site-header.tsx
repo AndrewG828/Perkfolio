@@ -3,102 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import {
-  ArrowLeftRight,
-  BadgeDollarSign,
-  BedDouble,
-  Briefcase,
-  Calculator,
-  ChevronDown,
-  Coins,
-  Columns3,
-  Compass,
-  CreditCard,
-  FileCheck,
-  History,
-  Landmark,
-  LayoutGrid,
-  Menu,
-  Plane,
-  Receipt,
-  Ruler,
-  ScrollText,
-  Sparkles,
-  Star,
-  Target,
-  Ticket,
-  TrendingUp,
-  Wallet,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronDown, Menu, Wallet, X } from "lucide-react";
 import { Logo } from "./logo";
 import { AccountMenu } from "./account-menu";
 import { useWallet } from "@/frontend/state/wallet-store";
 import { cn } from "@/shared/lib/format";
-
-type NavItem = { href: string; label: string; blurb: string; icon: LucideIcon };
-type NavGroup = {
-  label: string;
-  /** Path prefixes that make this group the active one. */
-  match: string[];
-  /** A plain link (no menu). */
-  href?: string;
-  items?: NavItem[];
-};
-
-export const NAV: NavGroup[] = [
-  { label: "Lounges", href: "/lounges", match: ["/lounges"] },
-  {
-    label: "Points & Miles",
-    match: ["/points"],
-    items: [
-      { href: "/points", label: "Overview", blurb: "What your points are worth and where they can go", icon: Sparkles },
-      { href: "/points/sweet-spots", label: "Sweet spots", blurb: "Award flights and hotel nights that stretch points furthest", icon: Star },
-      { href: "/points/transfers", label: "Transfer partners", blurb: "Every bank-to-airline and hotel ratio, plus current bonuses", icon: ArrowLeftRight },
-      { href: "/points/programs", label: "Programs", blurb: "Airline and hotel loyalty programs, explained", icon: Landmark },
-      { href: "/points/airlines", label: "Who can book", blurb: "Which programs book a given airline's award seats", icon: Plane },
-      { href: "/points/booking-rules", label: "Booking rules", blurb: "Holds, changes, stopovers and fees by program", icon: ScrollText },
-    ],
-  },
-  {
-    label: "Cards",
-    match: ["/cards", "/compare", "/best-card", "/next-card", "/calculator"],
-    items: [
-      { href: "/cards", label: "Explore cards", blurb: "Fees, credits and lounge access for every card we track", icon: CreditCard },
-      { href: "/compare", label: "Compare", blurb: "Put cards side by side", icon: Columns3 },
-      { href: "/best-card", label: "Which card to use", blurb: "The best card in your wallet for each purchase", icon: Target },
-      { href: "/next-card", label: "Your next card", blurb: "Ranked for you, with issuer application rules checked", icon: TrendingUp },
-      { href: "/calculator", label: "Value calculator", blurb: "Does the annual fee pay for itself?", icon: Calculator },
-    ],
-  },
-  {
-    label: "Tracker",
-    match: ["/tracker"],
-    items: [
-      { href: "/tracker", label: "Credits", blurb: "Statement credits, caps and lounge visits", icon: BadgeDollarSign },
-      { href: "/tracker?tab=points", label: "Points balances", blurb: "Balances and when they expire", icon: Coins },
-      { href: "/tracker?tab=certificates", label: "Certificates", blurb: "Free nights and companion fares before they lapse", icon: Ticket },
-      { href: "/tracker?tab=redemptions", label: "Redemptions", blurb: "What you booked and what each point got you", icon: Receipt },
-      { href: "/tracker?tab=applications", label: "Applications", blurb: "Your card history and 5/24 count", icon: History },
-    ],
-  },
-  {
-    label: "Tools",
-    match: ["/tools", "/start"],
-    items: [
-      { href: "/start", label: "Start here", blurb: "A short guided path for what you want to do", icon: Compass },
-      { href: "/tools/distance", label: "Flight distance", blurb: "Miles between airports, for distance-based award charts", icon: Ruler },
-      { href: "/tools/baggage", label: "Baggage fees", blurb: "Checked bag fees and which cards waive them", icon: Briefcase },
-      { href: "/tools/entry-requirements", label: "Entry requirements", blurb: "Visas and entry rules for U.S. passport holders", icon: FileCheck },
-      { href: "/tools/hotel-points", label: "Hotel points", blurb: "What a stay earns with each chain and card", icon: BedDouble },
-      { href: "/tools", label: "All tools", blurb: "Everything in one place", icon: LayoutGrid },
-    ],
-  },
-];
-
-const groupActive = (g: NavGroup, pathname: string) =>
-  g.match.some((p) => pathname === p || pathname.startsWith(p + "/"));
+import { NAV, TOP_LINKS, groupActive, type NavGroup } from "./site-nav";
 
 /** One desktop menu: a button that opens a panel of links (click, hover with a mouse, or the keyboard). */
 function DesktopMenu({
@@ -107,12 +17,15 @@ function DesktopMenu({
   open,
   onOpen,
   onClose,
+  alignEnd = false,
 }: {
   group: NavGroup;
   active: boolean;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
+  /** Open toward the left (the last menus, so the panel stays on screen). */
+  alignEnd?: boolean;
 }) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
@@ -207,7 +120,10 @@ function DesktopMenu({
         id={id}
         hidden={!open}
         onKeyDown={onPanelKey}
-        className="absolute top-full left-0 z-50 -mt-px w-[23rem] rounded-b-lg border border-line bg-white p-2 shadow-[0_18px_40px_-12px_rgba(0,23,90,0.28)]"
+        className={cn(
+          "absolute top-full z-50 -mt-px w-[23rem] max-w-[calc(100vw-2rem)] rounded-b-lg border border-line bg-white p-2 shadow-[0_18px_40px_-12px_rgba(0,23,90,0.28)]",
+          alignEnd ? "right-0" : "left-0",
+        )}
       >
         <ul className="space-y-0.5">
           {group.items?.map((item) => (
@@ -246,6 +162,19 @@ export function SiteHeader() {
     setMobileOpen(false);
   }
 
+  // Escape closes the phone menu and gives focus back to its button.
+  const menuButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setMobileOpen(false);
+      menuButton.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
+
   // Escape and clicks outside close the open desktop menu.
   useEffect(() => {
     if (!menu) return;
@@ -265,13 +194,21 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
+      >
+        Skip to content
+      </a>
       <div className="hidden bg-navy text-[12px] text-white/80 md:block">
         <div className="container-page flex h-8 items-center justify-between">
           <span>Independent card research · Terms verified November 2026</span>
           <span className="flex gap-5">
-            <Link href="/start" className="hover:text-white">New here? Start here</Link>
-            <Link href="/about" className="hover:text-white">About our data</Link>
-            <Link href="/tracker" className="hover:text-white">My Wallet</Link>
+            {TOP_LINKS.map((l) => (
+              <Link key={l.href} href={l.href} className="hover:text-white">
+                {l.label}
+              </Link>
+            ))}
           </span>
         </div>
       </div>
@@ -300,6 +237,7 @@ export function SiteHeader() {
               <DesktopMenu
                 key={g.label}
                 group={g}
+                alignEnd={NAV.indexOf(g) >= NAV.length - 2}
                 active={active}
                 open={menu === g.label}
                 onOpen={() => setMenu(g.label)}
@@ -318,6 +256,7 @@ export function SiteHeader() {
             )}
           </Link>
           <button
+            ref={menuButton}
             className="grid h-10 w-10 place-items-center rounded text-navy hover:bg-sky lg:hidden"
             onClick={() => setMobileOpen((o) => !o)}
             aria-label={mobileOpen ? "Close menu" : "Open menu"}
@@ -371,6 +310,15 @@ export function SiteHeader() {
                 </Link>
               ),
             )}
+            <ul className="flex flex-wrap gap-x-5 gap-y-1 border-b border-line px-2 py-3 text-[15px] md:hidden">
+              {TOP_LINKS.filter((l) => l.href !== "/tracker").map((l) => (
+                <li key={l.href}>
+                  <Link href={l.href} onClick={() => setMobileOpen(false)} className="text-ink-2 hover:text-brand">
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
             <Link
               href="/tracker"
               onClick={() => setMobileOpen(false)}

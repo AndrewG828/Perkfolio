@@ -1,11 +1,11 @@
 import { getCard } from "@/shared/data/cards";
 import { expirationPolicies } from "@/shared/data/strategy/expiration";
 import { programForCard, programForName } from "@/shared/data/strategy/programs";
-import { valuations } from "@/shared/data/strategy/valuations";
-import type { ExpirationPolicy, Valuation } from "@/shared/data/strategy/types";
+import type { ExpirationPolicy } from "@/shared/data/strategy/types";
 import type { Certificate, PointsBalance, Redemption, WalletState } from "./wallet";
 import { accountHistory } from "./eligibility";
 import { addMonths, daysSince, daysUntil } from "./dates";
+import { resolvePointValue, type ValueContext } from "./point-value";
 
 /**
  * Math for the points, certificate and redemption trackers. Pure: dates come in as `today`.
@@ -25,39 +25,25 @@ export function expiryTone(daysLeft: number): ExpiryTone {
   return "ok";
 }
 
-// --- Valuations -------------------------------------------------------------------------------------------------
-
-const valuationById = new Map(valuations.valuations.map((v) => [v.id, v]));
-export const valuationOf = (id: string): Valuation | undefined => valuationById.get(id);
-/** Why a program has no valuation (no outlet lists it), so the UI can ask for the user's own figure. */
-export const missingValuation = (id: string): string | undefined => valuations.missing.find((m) => m.id === id)?.reason;
-/** The outlet edition a figure comes from, e.g. The Points Guy's November 2026 table. */
-export const valuationDataset = (via: string | undefined) => (via ? valuations.datasets[via] : undefined);
-
-/** Cents per point for a program: the user's own figure if they set one, else the median valuation. */
-export function centsFor(id: string | undefined, overrides: Record<string, number> = {}): number | undefined {
-  if (!id) return undefined;
-  const own = overrides[id];
-  if (typeof own === "number" && Number.isFinite(own) && own > 0) return own;
-  return valuationById.get(id)?.median;
-}
+// --- Values ------------------------------------------------------------------------------------------------------
 
 export const pointsValueUsd = (points: number, cents: number) => (points * cents) / 100;
 
 export interface PortfolioValue {
   totalUsd: number;
-  /** Programs with a balance and a valuation. */
+  /** Programs with a balance and a value. */
   valued: number;
-  /** Program ids with a balance but no valuation (not in the total). */
+  /** Program ids with a balance but no value (not in the total). */
   unvalued: string[];
 }
 
-export function portfolioValue(balances: Record<string, PointsBalance>, overrides: Record<string, number> = {}): PortfolioValue {
+/** Balances at what their points are worth (resolvePointValue: the user's own value, else the published median). */
+export function portfolioValue(balances: Record<string, PointsBalance>, values: ValueContext = {}): PortfolioValue {
   let totalUsd = 0;
   let valued = 0;
   const unvalued: string[] = [];
   for (const [id, b] of Object.entries(balances)) {
-    const cents = centsFor(id, overrides);
+    const cents = resolvePointValue(id, values)?.cents;
     if (cents === undefined) unvalued.push(id);
     else {
       totalUsd += pointsValueUsd(b.points, cents);

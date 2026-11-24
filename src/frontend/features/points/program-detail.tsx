@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { programUnit } from "@/shared/data/strategy/programs";
 import { ArrowRight, Calculator, CheckCircle2, CreditCard, Gift, Plus, XCircle } from "lucide-react";
 import {
   BANK_CURRENCY_IDS,
@@ -140,7 +141,7 @@ function SourceRow({
           {changed && <span className="ml-2 rounded-full bg-sky px-2 py-0.5 align-[1px] text-[11px] font-semibold text-brand">{changed}</span>}
         </p>
         <p className="mt-0.5 text-sm text-ink-2">
-          {num(1000)} {unit} → {num(partnerPointsFor(partner, 1000))} {program.currency ?? "program points"} ·{" "}
+          {num(1000)} {unit} → {num(partnerPointsFor(partner, 1000))} {program.currency ?? programUnit(program.id)} ·{" "}
           <span className={partner.time ? undefined : "text-ink-3 italic"}>{timeLabel(partner)}</span>
           {rules && <span className="text-ink-3"> · {rules}</span>}
         </p>

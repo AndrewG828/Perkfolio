@@ -1,5 +1,6 @@
 import type { Card } from "@/shared/data/types";
 import { cards as allCards } from "@/shared/data/cards";
+import { cardsEarningIn, currencyOfCard, earnsFully, trimCents, type LimitedTransfers } from "./card-currency";
 import {
   BANK_CURRENCY_IDS,
   PROGRAM_BRIDGES,
@@ -8,7 +9,6 @@ import {
   bookableAirlines,
   hotelToAirline,
   hotelTransferRules,
-  pointValues,
   programBookingNotes,
   programNames,
   programRef,
@@ -44,7 +44,6 @@ export interface PointsData {
   programs: AwardProgram[];
   partners: TransferPartner[];
   sweetSpots: SweetSpot[];
-  values: PointValue[];
   bonuses: TransferBonus[];
   hotelRoutes: HotelToAirline[];
   hotelRules: HotelTransferRule[];
@@ -60,7 +59,6 @@ export const pointsData: PointsData = {
   programs: awardPrograms,
   partners: transferPartners,
   sweetSpots: allSweetSpots,
-  values: pointValues,
   bonuses: transferBonuses,
   hotelRoutes: hotelToAirline,
   hotelRules: hotelTransferRules,
@@ -71,116 +69,16 @@ export const pointsData: PointsData = {
 
 // ------------------------------------------------------------------------------------------------ Card classification
 
-/** What a card's rewards are: a bank currency, or one program's points earned directly (co-brand cards). */
-export type CardPoints =
-  | { kind: "currency"; currency: BankCurrencyId; limited?: LimitedTransfers }
-  | { kind: "program"; program: ProgramId };
+export {
+  classifyCard,
+  currencyOfCard,
+  earnsFully,
+  trimCents,
+  type CardPoints,
+  type ClassificationRule,
+  type LimitedTransfers,
+} from "./card-currency";
 
-/** A card that earns a bank currency but can only transfer it with help from another card. */
-export interface LimitedTransfers {
-  /** Why, in one sentence. */
-  note: string;
-  /** Card ids that unlock full transfers once points are combined. */
-  unlockedBy: string[];
-}
-
-/** Matched against `rewardsCurrency` for cards that earn a bank currency outright. */
-const CURRENCY_PATTERNS: [RegExp, BankCurrencyId][] = [
-  [/membership rewards/i, "amex-mr"],
-  [/ultimate rewards/i, "chase-ur"],
-  [/capital one miles/i, "capital-one"],
-  [/thankyou/i, "citi-typ"],
-  [/bilt points/i, "bilt"],
-  [/wells fargo rewards/i, "wells-fargo"],
-];
-
-/** Matched against `rewardsCurrency` for co-brand cards. */
-const PROGRAM_PATTERNS: [RegExp, ProgramId][] = [
-  [/united mileageplus/i, "united-mileageplus"],
-  [/delta skymiles/i, "delta-skymiles"],
-  [/atmos rewards/i, "atmos-rewards"],
-  [/aadvantage/i, "american-aadvantage"],
-  [/southwest rapid rewards/i, "southwest-rapid-rewards"],
-  [/world of hyatt/i, "world-of-hyatt"],
-  [/marriott bonvoy/i, "marriott-bonvoy"],
-  [/hilton honors/i, "hilton-honors"],
-];
-
-const SAPPHIRE_OR_INK = [
-  "chase-sapphire-preferred",
-  "chase-sapphire-reserve",
-  "chase-sapphire-reserve-business",
-  "chase-ink-business-preferred",
-];
-const STRATA = ["citi-strata-elite", "citi-strata-premier"];
-const VENTURE = ["capital-one-venture-x", "capital-one-venture-x-business", "capital-one-venture"];
-
-/** Listed by id, on purpose: these earn a bank currency, but transfers need another card. */
-const LIMITED: Record<string, { currency: BankCurrencyId } & LimitedTransfers> = {
-  "chase-freedom-unlimited": {
-    currency: "chase-ur",
-    note: "Points transfer only after you combine them with a Sapphire Preferred, Sapphire Reserve or Ink Business Preferred account.",
-    unlockedBy: SAPPHIRE_OR_INK,
-  },
-  "chase-freedom-flex": {
-    currency: "chase-ur",
-    note: "Points transfer only after you combine them with a Sapphire Preferred, Sapphire Reserve or Ink Business Preferred account.",
-    unlockedBy: SAPPHIRE_OR_INK,
-  },
-  "citi-double-cash": {
-    currency: "citi-typ",
-    note: "On its own it transfers at reduced rates (usually 1,000 points to 700 miles) and not to every partner; pool the points into a Strata Premier or Strata Elite account to move them at the full ratios.",
-    unlockedBy: STRATA,
-  },
-  "citi-custom-cash": {
-    currency: "citi-typ",
-    note: "On its own it transfers at reduced rates (usually 1,000 points to 700 miles) and not to every partner; pool the points into a Strata Premier or Strata Elite account to move them at the full ratios.",
-    unlockedBy: STRATA,
-  },
-  "capital-one-savor": {
-    currency: "capital-one",
-    note: "Cash back becomes transferable miles only when you move it to a Venture or Venture X account.",
-    unlockedBy: VENTURE,
-  },
-};
-
-/** Listed by id, on purpose: plain cash back that can't become airline or hotel points. */
-const CASH_ONLY = new Set(["amex-blue-cash-preferred", "amex-blue-cash-everyday", "wells-fargo-active-cash"]);
-
-export type ClassificationRule = "limited" | "cash-only" | "currency" | "program" | "unclassified";
-
-/**
- * How a card was classified. "unclassified" means no rule matched: a new card that needs an entry above (a test
- * fails until it has one). Cash-back cards must be listed by id so a "Cash back (… points)" card is never mistaken
- * for one that earns full transferable points.
- */
-export function classifyCard(card: Pick<Card, "id" | "rewardsCurrency">): { points: CardPoints | null; rule: ClassificationRule } {
-  const limited = LIMITED[card.id];
-  if (limited) {
-    const { currency, note, unlockedBy } = limited;
-    return { points: { kind: "currency", currency, limited: { note, unlockedBy } }, rule: "limited" };
-  }
-  if (CASH_ONLY.has(card.id)) return { points: null, rule: "cash-only" };
-  if (/^cash/i.test(card.rewardsCurrency)) return { points: null, rule: "unclassified" };
-  for (const [re, program] of PROGRAM_PATTERNS) {
-    if (re.test(card.rewardsCurrency)) return { points: { kind: "program", program }, rule: "program" };
-  }
-  for (const [re, currency] of CURRENCY_PATTERNS) {
-    if (re.test(card.rewardsCurrency)) return { points: { kind: "currency", currency }, rule: "currency" };
-  }
-  return { points: null, rule: "unclassified" };
-}
-
-/** What a card's points are: a bank currency (maybe with limited transfers), a program directly, or null for cash. */
-export function currencyOfCard(card: Pick<Card, "id" | "rewardsCurrency">): CardPoints | null {
-  return classifyCard(card).points;
-}
-
-/** True when the card earns this bank currency with full transfer rights. */
-function earnsFully(card: Card, currency: BankCurrencyId): boolean {
-  const p = currencyOfCard(card);
-  return p?.kind === "currency" && p.currency === currency && !p.limited;
-}
 
 /** Cards (from the dataset) that earn a program's points directly. */
 export function coBrandCards(program: ProgramId, data: PointsData = pointsData): Card[] {
@@ -192,11 +90,7 @@ export function coBrandCards(program: ProgramId, data: PointsData = pointsData):
 
 /** Cards (from the dataset) that earn a bank currency, full earners first. */
 export function cardsEarning(currency: BankCurrencyId, data: PointsData = pointsData): Card[] {
-  const earning = data.cards.filter((c) => {
-    const p = currencyOfCard(c);
-    return p?.kind === "currency" && p.currency === currency;
-  });
-  return [...earning.filter((c) => earnsFully(c, currency)), ...earning.filter((c) => !earnsFully(c, currency))];
+  return cardsEarningIn(currency, data.cards);
 }
 
 // ------------------------------------------------------------------------------------------------------- The wallet
@@ -275,6 +169,24 @@ const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
  */
 export function ratioLabel(p: Pick<TransferPartner, "from" | "to">): string {
   return wholeRatio(p, 20) ?? `1:${trim(p.to / p.from)}`;
+}
+
+/**
+ * An effective rate written like the pills write ratios: exact when it reduces ("5:2"), else the nearest whole-number
+ * ratio within 1% with neither side above 20 (an overall rate through a hotel, 87,500 points for 35,000 miles → "5:2"),
+ * else as ratioLabel would ("1:0.37").
+ */
+export function effectiveRatio(from: number, to: number): Pick<TransferPartner, "from" | "to"> {
+  if (wholeRatio({ from, to }, 20) || !(from > 0) || !(to > 0)) return { from, to };
+  const r = to / from;
+  let best: { from: number; to: number; err: number } | null = null;
+  for (let a = 1; a <= 20; a++) {
+    for (let b = 1; b <= 20; b++) {
+      const err = Math.abs(b / a - r) / r;
+      if (err <= 0.01 && (!best || err < best.err - 1e-12)) best = { from: a, to: b, err };
+    }
+  }
+  return best ? { from: best.from, to: best.to } : { from, to };
 }
 
 /** `from:to` in smallest whole numbers with neither side above `max`, or null when it doesn't reduce that far. */
@@ -449,6 +361,15 @@ export function ratioVaries(currency: BankCurrencyId, program: string, data: Poi
   return data.partners.some((p) => p.currency === currency && p.program === program && p.cards);
 }
 
+/**
+ * Every ratio a bank currency moves into a program at, best first ("1:1 or 4:3" for Chase to Hyatt: Sapphire Reserve,
+ * then Sapphire Preferred and Ink Preferred), for chips that can't say which card the reader holds.
+ */
+export function ratioRangeLabel(currency: BankCurrencyId, program: string, data: PointsData = pointsData): string {
+  const pairs = data.partners.filter((p) => p.currency === currency && p.program === program).sort((a, b) => b.to / b.from - a.to / a.from);
+  return Array.from(new Set(pairs.map((p) => ratioLabel(p)))).join(" or ");
+}
+
 export interface TransferSource {
   currency: BankCurrencyId;
   /** The best general transfer: into the program, or into `via`. */
@@ -494,8 +415,9 @@ export interface DealJudgement {
 }
 
 /**
- * Compares a redemption with a value per point (by default the median of the published valuations): at least 1.5× is
- * great, at least 1× is good, at least 0.8× is fair, below that you'd do better paying cash and keeping the points.
+ * Compares a redemption with a value per point (the deal calculator passes the one value every page uses,
+ * shared/lib/point-value.ts, or a value typed in): at least 1.5× is great, at least 1× is good, at least 0.8× is fair,
+ * below that you'd do better paying cash and keeping the points.
  */
 export function judgeRedemption(input: { cashPrice: number; taxes: number; points: number; baselineCents: number }): DealJudgement | null {
   const cents = centsPerPoint(input.cashPrice, input.taxes, input.points);
@@ -510,127 +432,11 @@ export function judgeRedemption(input: { cashPrice: number; taxes: number; point
   };
 }
 
-export interface ValueSource {
-  id: BankCurrencyId | ProgramId;
-  label: string;
-  /** The median of the outlets' published values. */
-  cents: number;
-  kind: "currency" | "program";
-  value: PointValue;
-}
-
-/**
- * Points the deal calculator can value: every currency and program with a published valuation (bank currencies first,
- * then programs by name). Ids no outlet values are left out, never estimated.
- */
-export function valueSources(data: PointsData = pointsData): ValueSource[] {
-  const label = new Map<string, string>(data.currencies.map((c) => [c.id, c.shortName]));
-  const isCurrency = (id: string): id is BankCurrencyId => (BANK_CURRENCY_IDS as readonly string[]).includes(id);
-  const list = data.values.map(
-    (v): ValueSource => ({
-      id: v.id,
-      label: isCurrency(v.id) ? (label.get(v.id) ?? v.id) : programNames[v.id].name,
-      cents: v.median,
-      kind: isCurrency(v.id) ? "currency" : "program",
-      value: v,
-    }),
-  );
-  const currencies = BANK_CURRENCY_IDS.flatMap((id) => list.filter((s) => s.id === id));
-  const programs = list.filter((s) => s.kind === "program").sort((a, b) => a.label.localeCompare(b.label));
-  return [...currencies, ...programs];
-}
-
 /** "1.3–2.2¢" (or "1.3¢" when the outlets agree). */
 export function valueRangeLabel(v: Pick<PointValue, "low" | "high">): string {
   return v.low === v.high ? `${trimCents(v.low)}¢` : `${trimCents(v.low)}–${trimCents(v.high)}¢`;
 }
 
-/** Cents for display: at most two decimals ("2.225" → "2.23", "1.90" → "1.9"). */
-export function trimCents(n: number): string {
-  return String(Math.round((n + Number.EPSILON) * 100) / 100);
-}
-
-/** The middle value (the mean of the two middle ones for an even count). */
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
-
-/**
- * Which wallets an outlet's lower variant (OutletValue.variants) applies to, by currency. NerdWallet values Chase at
- * 1.4¢ for "Sapphire Preferred and Ink Preferred cardholders" (Hyatt at 4:3) and Citi at 1.3¢ for "other Citi cards"
- * (no Strata Premier or Strata Elite).
- */
-const VARIANT_FOR: Partial<Record<BankCurrencyId, (cardIds: Set<string>) => boolean>> = {
-  "chase-ur": (ids) =>
-    !["chase-sapphire-reserve", "chase-sapphire-reserve-business"].some((id) => ids.has(id)) &&
-    ["chase-sapphire-preferred", "chase-ink-business-preferred"].some((id) => ids.has(id)),
-  "citi-typ": (ids) => !STRATA.some((id) => ids.has(id)) && cardsEarningIds("citi-typ").some((id) => ids.has(id)),
-};
-const cardsEarningIds = (currency: BankCurrencyId) => cardsEarning(currency).map((c) => c.id);
-
-export interface WalletValue {
-  low: number;
-  median: number;
-  high: number;
-  /** Set when an outlet's figure for these cards replaced its headline figure. */
-  variant?: { outlet: string; appliesTo: string; cents: number };
-}
-
-/**
- * A published value as it applies to a wallet: an outlet's lower figure for the wallet's cards (NerdWallet's 1.3¢ for
- * Citi cards without a Strata Premier or Elite) replaces its headline figure, and the median is taken again.
- */
-export function valueForWallet(v: PointValue, cardIds: string[]): WalletValue {
-  const ids = new Set(cardIds);
-  const applies = (BANK_CURRENCY_IDS as readonly string[]).includes(v.id) && VARIANT_FOR[v.id as BankCurrencyId]?.(ids);
-  const outlet = applies ? v.values.find((o) => o.variants?.length) : undefined;
-  if (!outlet) return { low: v.low, median: v.median, high: v.high };
-  const variant = outlet.variants![0];
-  const cents = v.values.map((o) => (o === outlet ? variant.cents : o.cents));
-  return {
-    low: Math.min(...cents),
-    median: Math.round(median(cents) * 1000) / 1000,
-    high: Math.max(...cents),
-    variant: { outlet: outlet.outlet, appliesTo: variant.appliesTo, cents: variant.cents },
-  };
-}
-
-/**
- * The value Perkfolio's card pages use for a currency or program (the card data's own `pointValueCents`, set for
- * comparing cards), as a range across the cards that earn it in full, with those cards. Null when no card earns it.
- * It can sit below, at or above the published median: compare with valueRelation() before describing it.
- */
-export function cardPageValue(
-  id: BankCurrencyId | ProgramId,
-  data: Pick<PointsData, "cards"> = pointsData,
-): { low: number; high: number; cards: Card[] } | null {
-  const earning = data.cards.filter((c) => {
-    const p = currencyOfCard(c);
-    return p?.kind === "currency" ? p.currency === id && !p.limited : p?.kind === "program" && p.program === id;
-  });
-  if (earning.length === 0) return null;
-  const cents = earning.map((c) => c.pointValueCents);
-  return { low: Math.min(...cents), high: Math.max(...cents), cards: earning };
-}
-
-export type ValueRelation = "below" | "same" | "above" | "spans";
-
-/**
- * How a card-page value (one figure or a range across cards) compares with published values, to the hundredth of a
- * cent: "below" the median (more conservative), the "same", "above" it, or a range that "spans" it. `aboveAll` is set
- * when it is higher than every outlet's figure, `belowAll` when it is lower than every one.
- */
-export function valueRelation(
-  card: { low: number; high: number },
-  published: { low: number; median: number; high: number },
-): { relation: ValueRelation; aboveAll: boolean; belowAll: boolean } {
-  const c = (n: number) => Math.round(n * 100);
-  const [lo, hi, m] = [c(card.low), c(card.high), c(published.median)];
-  const relation: ValueRelation = hi < m ? "below" : lo > m ? "above" : lo === m && hi === m ? "same" : "spans";
-  return { relation, aboveAll: lo > c(published.high), belowAll: hi < c(published.low) };
-}
 
 // ------------------------------------------------------------------------------------------------ Transfer bonuses
 
@@ -703,9 +509,11 @@ export function bookingPrograms(airline: Pick<BookableAirline, "bookableWith">, 
 }
 
 /**
- * Programs that can book an airline's award seats. With `cardIds`, the ones the wallet reaches come first (best ratio
- * first); otherwise (and within each group) the airline's own program, then the programs most banks transfer to. A
- * bridge program (Virgin Red) is folded into the program it books through (Flying Club) when both are listed.
+ * Programs that can book an airline's award seats. With `cardIds`, the ones the wallet reaches come first. Within each
+ * group the airline's own program leads (its ratio is in its own miles, so it can't be compared with another
+ * program's: Aeromexico's 1.6 points per Membership Rewards point aren't worth more than Delta's 1:1), then the best
+ * ratio, then the programs most banks transfer to. A bridge program (Virgin Red) is folded into the program it books
+ * through (Flying Club) when both are listed.
  */
 export function bookingOptionsFor(iata: string, cardIds?: string[], data: PointsData = pointsData): BookingOption[] {
   const airline = data.airlines.find((a) => a.iata === iata.toUpperCase());
@@ -727,8 +535,8 @@ export function bookingOptionsFor(iata: string, cardIds?: string[], data: Points
   return options.sort(
     (a, b) =>
       Number(Boolean(b.reach)) - Number(Boolean(a.reach)) ||
-      ratio(b) - ratio(a) ||
       Number(b.own) - Number(a.own) ||
+      ratio(b) - ratio(a) ||
       b.sources.length - a.sources.length ||
       a.program.name.localeCompare(b.program.name),
   );
@@ -868,9 +676,11 @@ export function milesPlan(target: ProgramId, miles: number, opts: { cardIds?: st
     return bonus && bonusApplies(bonus, p, cards) ? { bonus, bankPoints: bankPointsWithBonus(p, bonus, amount) } : undefined;
   };
   const usable = (r: MilesRoute) => (r.cards.length > 0 ? 0 : 1);
+  // A route with a bonus running today costs what the bonus makes it cost.
+  const cost = (r: MilesRoute) => r.bonus?.bankPoints ?? r.bankPoints;
   const order = (a: MilesRoute, b: MilesRoute) =>
     usable(a) - usable(b) ||
-    a.bankPoints - b.bankPoints ||
+    cost(a) - cost(b) ||
     Number(Boolean(a.via)) - Number(Boolean(b.via)) ||
     transferSpeedRank(a.partner.time) - transferSpeedRank(b.partner.time) ||
     BANK_CURRENCY_IDS.indexOf(a.currency) - BANK_CURRENCY_IDS.indexOf(b.currency);

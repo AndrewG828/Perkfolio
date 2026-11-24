@@ -984,7 +984,7 @@ export const awardPrograms: AwardProgram[] = [
     ],
     watchOuts: [
       "No award chart: prices move with demand, and a standard room at the most luxurious hotels can reach 250,000 points a night",
-      "Each Hilton point covers less of a stay than other chains' points (The Points Guy values them at about 0.4 cents, against 0.8 for Marriott and 1.6 for Hyatt), so award prices look large",
+      "Each Hilton point covers less of a stay than other chains' points, so award prices look large",
       "Bilt transfers at 1:1, half the rate Amex gives",
       "Points expire after 24 months without account activity",
     ],
@@ -1025,7 +1025,7 @@ export const awardPrograms: AwardProgram[] = [
       "Points book reward nights from 15,000 points a night, Reward Nights Plus (points and cash) from 3,000 points, room upgrades and on-property experiences",
     ],
     watchOuts: [
-      "Reward certificates are poor value at about 0.2 cents a point (12,500 points for a $25 certificate); Upgraded Points values points at 0.5 to 0.6 cents when used for nights, so a bank point moved at 1:2 is worth roughly 1 to 1.2 cents",
+      "Reward certificates are poor value at about 0.2 cents a point (12,500 points for a $25 certificate); points go further on free nights",
       "Citi cut its rate from 1:4 to 1:2 on April 19, 2026, and no-fee Citi cards get 1,000 → 1,400",
       "Each hotel is independently owned, so award rules and availability vary from one property to the next",
       "Points expire after 24 months without earning or redeeming",

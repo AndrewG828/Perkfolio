@@ -56,6 +56,12 @@ export interface Credit {
   enrollmentRequired?: boolean;
   /** Optional caveat, e.g. "December bonus of $15" or "Through 12/31/2026". */
   note?: string;
+  /**
+   * A benefit paid in points, not dollars (Venture X's 10,000 anniversary miles). `annualValue` and `amountPerPeriod`
+   * are these points at the published median (point-value.ts; a test keeps them in step), and pages that know the
+   * visitor's own values use creditValue() instead.
+   */
+  points?: { amount: number; program: string };
 }
 
 export interface EarnRate {
@@ -102,11 +108,18 @@ export interface Card {
   annualFee: number;
   /** Rewards currency, e.g. "Membership Rewards points" */
   rewardsCurrency: string;
-  /** Conservative estimated value per point in cents (e.g. 1.6). Cash back = 1.0 */
+  /**
+   * The card file's own value per point in cents (e.g. 1.6; cash back = 1.0). Used only when no outlet publishes a
+   * value for the card's points: every page values points with shared/lib/point-value.ts (the user's own value, else
+   * the published median).
+   */
   pointValueCents: number;
   /** Current public welcome offer, short form. */
   welcomeOffer: string;
-  /** Approx. welcome bonus value in USD using pointValueCents (for sorting). */
+  /**
+   * The welcome offer's approximate value in USD. Used only for an offer that can't be valued from its points and cash
+   * (free nights); point offers are valued with shared/lib/point-value.ts (shared/lib/welcome-offer.ts).
+   */
   welcomeOfferValue: number;
   earnRates: EarnRate[];
   /** Base rate on all other purchases. */
@@ -143,6 +156,17 @@ export interface Lounge {
   location?: string;
   /** e.g. "Opened 2025; showers available" */
   notes?: string;
+  /**
+   * Closed for now (as the notes say): left out of access counts, nearest-lounge rankings and automatic directions,
+   * and shown as closed. `from` and `until` (ISO dates, the first day closed and the day it's due to reopen) limit it
+   * in time when known; `until` is how pages word the reopening ("end of 2027 (expected)").
+   */
+  closed?: { from?: string; until?: string; untilLabel?: string };
+  /**
+   * Card access isn't confirmed here although the lounge belongs to a network cards open (Plaza Premium First): no
+   * card is counted as getting in, and the row says why.
+   */
+  cardAccessUnconfirmed?: string;
 }
 
 export interface Airport {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Info, Plus } from "lucide-react";
-import { getCurrency, programName } from "@/shared/data/points";
+import { PROGRAM_BRIDGES, getCurrency, programName } from "@/shared/data/points";
 import { CURRENCY_COLOR, Dot, currencyProse, listJoin } from "./ui";
 import { useWalletReach } from "./use-wallet-reach";
 
@@ -31,7 +31,10 @@ export function WalletPointsSummary() {
   const limited = points.currencies.filter((c) => !c.transferable);
   const names = [...points.currencies.map((c) => currencyProse(c.currency)), ...points.programs.map((p) => programName(p.program))];
   const all = Array.from(reach.values());
-  const airlines = all.filter((r) => r.kind === "airline").length;
+  // Airline programs, not airlines; a bridge program spent through another (Virgin Red → Flying Club, one balance)
+  // counts once.
+  const bridged = new Set(PROGRAM_BRIDGES.filter((b) => reach.has(b.to)).map((b) => b.from as string));
+  const airlines = all.filter((r) => r.kind === "airline" && !bridged.has(r.program)).length;
   const hotels = all.filter((r) => r.kind === "hotel").length;
 
   return (
@@ -41,7 +44,7 @@ export function WalletPointsSummary() {
           Your cards earn <strong className="text-white">{listJoin(names)}</strong>
           {all.length > 0 ? (
             <>
-              , which reach <strong className="text-white">{plural(airlines, "airline", "airlines")}</strong> and{" "}
+              , which reach <strong className="text-white">{plural(airlines, "airline program", "airline programs")}</strong> and{" "}
               <strong className="text-white">{plural(hotels, "hotel program", "hotel programs")}</strong>.
             </>
           ) : (

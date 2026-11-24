@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PROGRAMS, programForCard } from "../src/shared/data/strategy/programs";
+import { PROGRAMS, programForCard, programName, programUnit } from "../src/shared/data/strategy/programs";
+import { currencyOfCard } from "../src/shared/lib/card-currency";
 import { expirationPolicies } from "../src/shared/data/strategy/expiration";
-import { valuations } from "../src/shared/data/strategy/valuations";
+import { BANK_CURRENCY_IDS, PROGRAM_IDS, awardPrograms, getCurrency, pointValues, programNames, unvaluedIds } from "../src/shared/data/points";
+import { noValueReason, resolvePointValue } from "../src/shared/lib/point-value";
 import { cards, getCard } from "../src/shared/data/cards";
 import type { Card } from "../src/shared/data/types";
 import type { Certificate, WalletState } from "../src/shared/lib/wallet";
@@ -10,13 +12,11 @@ import { addMonths, daysUntil, formatDate, isoDate } from "../src/shared/lib/dat
 import {
   balanceStatus,
   ownCardPrograms,
-  centsFor,
   centsPerPoint,
   certificateStatus,
   certificateTotals,
   expiryTone,
   missingPolicy,
-  missingValuation,
   pointsVsCash,
   portfolioValue,
   redemptionStats,
@@ -103,7 +103,7 @@ test("redemption stats weight by points and compare only the redemptions that ha
       { id: "h", date: "2026-03-01", label: "Hilton", program: "hilton-honors", points: 100_000, taxesUsd: 0, cashPriceUsd: 190 },
       { id: "t", date: "2026-04-01", label: "TAP", program: "tap-miles-and-go", points: 50_000, taxesUsd: 40, cashPriceUsd: 3500 },
     ],
-    (p) => centsFor(p),
+    (p) => resolvePointValue(p)?.cents,
   );
   assert.equal(mixed.valued.count, 1);
   assert.ok(Math.abs((mixed.valued.cpp ?? 0) - 0.19) < 1e-9);
@@ -144,40 +144,47 @@ test("balances: inactivity expiry from the last activity, stale nudges, bank poi
 
 test("portfolio value uses the median valuation unless the user overrides it", () => {
   const balances = { "chase-ur": { points: 100_000, updated: "2026-11-01" }, "made-up": { points: 5, updated: "2026-11-01" } };
-  const median = centsFor("chase-ur") as number;
+  const median = resolvePointValue("chase-ur")!.cents;
+  assert.equal(median, pointValues.find((v) => v.id === "chase-ur")!.median);
   assert.deepEqual(portfolioValue(balances), { totalUsd: 100_000 * median / 100, valued: 1, unvalued: ["made-up"] });
-  assert.equal(portfolioValue(balances, { "chase-ur": 2 }).totalUsd, 2000);
-  assert.equal(centsFor("chase-ur", { "chase-ur": -1 }), median);
+  assert.equal(portfolioValue(balances, { own: { "chase-ur": 2.5 } }).totalUsd, 2500);
+  assert.equal(resolvePointValue("chase-ur", { own: { "chase-ur": -1 } })!.cents, median, "a nonsense own value is ignored");
+  // A wallet that earns ThankYou points only on a Double Cash can't transfer them at full value: they're cash back, 1¢,
+  // as the card itself is everywhere else. With a Strata Premier they're worth the published median.
+  const citi = { "citi-typ": { points: 10_000, updated: "2026-11-01" } };
+  assert.equal(portfolioValue(citi, { cards: ["citi-double-cash"] }).totalUsd, 100);
+  assert.equal(resolvePointValue("citi-typ", { cards: ["citi-double-cash"] })!.basis, "cash");
+  assert.equal(resolvePointValue("citi-typ", { cards: ["citi-double-cash", "citi-strata-premier"] })!.cents, 1.9);
 });
 
-test("strategy data: every program has a valuation and a policy, or is listed as missing one", () => {
+test("strategy data: the program list is the Points & Miles list, and every program has a policy or a reason", () => {
   const ids = PROGRAMS.map((p) => p.id);
   assert.equal(new Set(ids).size, ids.length);
+  // Derived from the Points & Miles data, so names can't drift: every bank currency and every program id, named the same.
+  assert.deepEqual(ids.slice(), [...BANK_CURRENCY_IDS, ...PROGRAM_IDS]);
+  for (const id of BANK_CURRENCY_IDS) assert.equal(programName(id), getCurrency(id)!.name, id);
+  for (const id of PROGRAM_IDS) assert.equal(programName(id), programNames[id].name, id);
+  assert.equal(PROGRAMS.find((p) => p.id === "virgin-red")?.kind, "other", "a bridge program is grouped apart");
+  // Units come from program-names.ts (no Points & Miles guides loaded): each must match its guide's currency.
+  for (const g of awardPrograms) {
+    const unit = /\bavios\b/i.test(g.currency) ? "Avios" : /miles/i.test(g.currency) ? "miles" : "points";
+    assert.equal(programUnit(g.id), unit, `${g.id}: ${g.currency}`);
+  }
+  assert.ok(ids.includes("copa-connectmiles"));
+  // Units read from what each program calls its points.
+  for (const id of ["british-airways-club", "iberia-club", "aer-lingus-aerclub", "qatar-privilege-club", "finnair-plus"]) assert.equal(programUnit(id), "Avios", id);
+  for (const id of ["capital-one", "united-mileageplus", "delta-skymiles", "american-aadvantage", "avianca-lifemiles", "copa-connectmiles"]) assert.equal(programUnit(id), "miles", id);
+  for (const id of ["amex-mr", "chase-ur", "world-of-hyatt", "southwest-rapid-rewards", "virgin-atlantic-flying-club", "qantas-frequent-flyer"]) assert.equal(programUnit(id), "points", id);
   const policyIds = expirationPolicies.programs.map((p) => p.id);
-  const valuationIds = valuations.valuations.map((v) => v.id);
   const noPolicy = expirationPolicies.missing.map((m) => m.id);
-  const noValue = valuations.missing.map((m) => m.id);
-  for (const id of [...policyIds, ...valuationIds, ...noPolicy, ...noValue]) assert.ok(ids.includes(id), `unknown program ${id}`);
-  for (const id of ids) {
-    assert.equal(Number(valuationIds.includes(id)) + Number(noValue.includes(id)), 1, `valuation for ${id}`);
-    assert.equal(Number(policyIds.includes(id)) + Number(noPolicy.includes(id)), 1, `policy for ${id}`);
-  }
+  for (const id of [...policyIds, ...noPolicy, ...pointValues.map((v) => v.id), ...unvaluedIds]) assert.ok(ids.includes(id), `unknown program ${id}`);
+  for (const id of policyIds) assert.ok(!noPolicy.includes(id), `policy for ${id}`);
   assert.equal(policyIds.length, 41);
-  assert.equal(valuationIds.length, 38);
-  assert.deepEqual([...noValue].sort(), ["eva-air-infinity-mileagelands", "tap-miles-and-go", "thai-royal-orchid-plus", "virgin-red"]);
   assert.deepEqual(noPolicy, ["thai-royal-orchid-plus"]);
-  for (const v of valuations.valuations) {
-    const figures = v.values.map((x) => x.cents);
-    assert.ok(v.low <= v.median && v.median <= v.high && v.low > 0, v.id);
-    assert.equal(v.low, Math.min(...figures), v.id);
-    assert.equal(v.high, Math.max(...figures), v.id);
-    assert.equal(v.outletCount, v.values.length, v.id);
-    for (const x of v.values) {
-      assert.match(x.asOf, /^\d{4}-\d{2}$/);
-      assert.match(x.url, /^https:\/\//);
-      if (x.via) assert.ok(valuations.datasets[x.via], `${v.id}: dataset ${x.via}`);
-    }
-  }
+  // Copa ConnectMiles joined the list with the Points & Miles data: no policy or value researched yet, so none is shown.
+  assert.deepEqual(ids.filter((id) => !policyIds.includes(id) && !noPolicy.includes(id)), ["copa-connectmiles"]);
+  assert.equal(resolvePointValue("copa-connectmiles"), undefined);
+  assert.equal(missingPolicy("copa-connectmiles"), undefined);
   for (const p of expirationPolicies.programs) {
     if (p.rule === "inactivity" || p.rule === "fixed-term") assert.ok((p.months ?? 0) > 0, p.id);
     assert.match(p.asOf, /^\d{4}-\d{2}$/);
@@ -188,23 +195,27 @@ test("strategy data: every program has a valuation and a policy, or is listed as
   assert.equal(programForCard(card("amex-gold")), "amex-mr");
   assert.equal(programForCard(card("chase-freedom-unlimited")), "chase-ur");
   assert.equal(programForCard(card("citi-double-cash")), "citi-typ");
-  assert.equal(programForCard(card("wells-fargo-active-cash")), "wells-fargo");
+  // One classifier: the tracker files a card's points where every value comes from (currencyOfCard).
+  assert.equal(programForCard(card("wells-fargo-active-cash")), undefined, "cash back, as everywhere else");
+  assert.equal(programForCard(card("capital-one-savor")), "capital-one");
   assert.equal(programForCard(card("amex-blue-cash-everyday")), undefined);
   for (const c of cards) {
     const id = programForCard(c);
     if (id) assert.ok(ids.includes(id), `${c.id} → ${id}`);
+    const p = currencyOfCard(c);
+    assert.equal(id, p ? (p.kind === "currency" ? p.currency : p.program) : undefined, c.id);
   }
 });
 
 test("programs without a valuation or a policy still work: no value until the user sets one, no expiry guess", () => {
-  assert.equal(centsFor("virgin-red"), undefined);
-  assert.equal(centsFor("virgin-red", { "virgin-red": 1.1 }), 1.1);
-  assert.ok(missingValuation("virgin-red"));
-  assert.equal(missingValuation("chase-ur"), undefined);
+  assert.equal(resolvePointValue("virgin-red"), undefined);
+  assert.deepEqual(resolvePointValue("virgin-red", { own: { "virgin-red": 1.1 } }), { cents: 1.1, basis: "own", id: "virgin-red" });
+  assert.equal(noValueReason("virgin-red"), "Not listed in the November 2026 tables of The Points Guy, Upgraded Points or NerdWallet.");
+  assert.equal(noValueReason("chase-ur"), undefined);
   const balances = { "virgin-red": { points: 10_000, updated: "2026-11-01" }, "united-mileageplus": { points: 10_000, updated: "2026-11-01" } };
   assert.deepEqual(portfolioValue(balances), { totalUsd: 120, valued: 1, unvalued: ["virgin-red"] });
-  assert.equal(portfolioValue(balances, { "virgin-red": 1 }).totalUsd, 220);
-  assert.equal(pointsVsCash({ points: 10_000, taxesUsd: 0, cashPriceUsd: 150, valuationCents: centsFor("tap-miles-and-go") }).verdict, undefined);
+  assert.equal(portfolioValue(balances, { own: { "virgin-red": 1 } }).totalUsd, 220);
+  assert.equal(pointsVsCash({ points: 10_000, taxesUsd: 0, cashPriceUsd: 150, valuationCents: resolvePointValue("tap-miles-and-go")?.cents }).verdict, undefined);
   const thai = balanceStatus("thai-royal-orchid-plus", { points: 1, updated: "2026-11-20" }, TODAY, { earningCard: false });
   assert.equal(thai.kind, "no-data");
   assert.ok(missingPolicy("thai-royal-orchid-plus"));
@@ -296,4 +307,32 @@ test("inactivity programs whose research narrows or disputes what counts as acti
   // Aeroméxico's "doesn't expire" rests on its card terms and TPG; Upgraded Points still gives 24 months.
   assert.match(caveat("aeromexico-rewards"), /Upgraded Points still describes a 24-month/);
   assert.match(expirationPolicies.programs.find((p) => p.id === "aeromexico-rewards")?.notes ?? "", /Upgraded Points' 2026 earning and redemption guides/);
+});
+
+test("anniversary credits count from the card history's open date when none is entered on the tracker", async () => {
+  const { openDateFor, statusFor } = await import("../src/shared/lib/credit-status");
+  const { getCard: get } = await import("../src/shared/data/cards");
+  const vx = get("capital-one-venture-x")!;
+  const miles = vx.credits.find((c) => c.id === "anniversary-miles")!;
+  const now = new Date(2026, 10, 24);
+  const base: WalletState = { version: 1, cards: [vx.id], usage: {}, ignored: {} };
+  // No date anywhere: the calendar year, and the tracker asks for the open date.
+  const none = statusFor(vx, miles, base, now);
+  assert.equal(none.needsOpenDate, true);
+  assert.equal(none.daysLeft, 38, "to Dec 31");
+  // Opened Aug 2025 (month only, from the card history): the card year runs from Aug 1, so no December countdown.
+  const history = { ...base, applications: [{ id: "a1", issuer: "Capital One", cardId: vx.id, opened: "2025-08", business: false }] };
+  assert.deepEqual(openDateFor(vx, history), { date: "2025-08-01", monthOnly: true });
+  const fromMonth = statusFor(vx, miles, history, now);
+  assert.equal(fromMonth.needsOpenDate, false);
+  assert.equal(fromMonth.openMonthOnly, true);
+  assert.ok(fromMonth.daysLeft > 240, `${fromMonth.daysLeft} days left`);
+  // Marked used on the month's card year, it stays used once the exact day is entered.
+  const used = { ...history, usage: { [`${vx.id}:${miles.id}:${fromMonth.periodKey}`]: miles.amountPerPeriod } };
+  const exact = statusFor(vx, miles, { ...used, openDates: { [vx.id]: "2025-08-15" } }, now);
+  assert.equal(exact.openMonthOnly, false);
+  assert.equal(exact.used, miles.amountPerPeriod);
+  // A closed account or an authorized-user card doesn't set the date.
+  assert.equal(openDateFor(vx, { ...base, applications: [{ id: "a2", issuer: "Capital One", cardId: vx.id, opened: "2025-08", business: false, closed: "2026-01" }] }), null);
+  assert.equal(openDateFor(vx, { ...base, applications: [{ id: "a3", issuer: "Capital One", cardId: vx.id, opened: "2025-08", business: false, authorizedUser: true }] }), null);
 });

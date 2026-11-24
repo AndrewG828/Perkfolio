@@ -1,6 +1,6 @@
 import type { Lounge } from "@/shared/data/types";
 import { airportNav, type AirportNav, type LinkMode, type NavLink, type NavZone } from "@/shared/data/airport-nav";
-import { gateOf } from "./lounge-access";
+import { gateOf } from "./lounge-directory";
 
 /**
  * Gate-to-lounge routing over the zone graph in airport-nav.ts. Pure functions: the airport page and tests share them.
@@ -230,12 +230,26 @@ export function routeTo(nav: AirportNav, origin: Origin, lounge: Lounge): Route 
   };
 }
 
-/** Lounges ranked by how long they take to reach from the origin (unplaceable lounges dropped). */
+/**
+ * Lounges ranked by how long they take to reach from the origin (unplaceable lounges dropped). Where departing
+ * travelers can only use their own terminal (`ownTerminalOnly`), lounges behind another terminal's security are left
+ * out once we know where you are.
+ */
 export function rankByDistance(nav: AirportNav, origin: Origin, ls: Lounge[]): { lounge: Lounge; route: Route }[] {
   return ls
     .map((lounge) => ({ lounge, route: routeTo(nav, origin, lounge) }))
     .filter((x): x is { lounge: Lounge; route: Route } => x.route !== null)
+    .filter((x) => !(nav.ownTerminalOnly && origin.kind !== "landside" && x.route.reclearsSecurity))
     .sort((a, b) => Number(a.route.reclearsSecurity) - Number(b.route.reclearsSecurity) || a.route.minutes - b.route.minutes);
+}
+
+/**
+ * True when where you clear security decides which lounges you can reach: two security areas that aren't connected
+ * after security (JFK's terminals). Before you say where you are, "nearest" means nothing there.
+ */
+export function terminalsSeparate(nav: AirportNav): boolean {
+  const checkpoints = nav.zones.filter((z) => z.checkpoint);
+  return checkpoints.some((a, i) => checkpoints.slice(i + 1).some((b) => !isConnected(nav, a.id, b.id)));
 }
 
 /** Apple Maps walking directions (indoor maps at many large airports on iPhone/Mac). */
@@ -249,10 +263,13 @@ export const googleMapsUrl = (lounge: Lounge, airportName: string) =>
 /** True if two zones are connected after security (directly or through others). */
 export const isConnected = (nav: AirportNav, a: string, b: string) => a === b || airsidePath(nav, a, b) !== null;
 
-/** Resolves what the traveler typed into an origin, or explains what's missing. */
+/**
+ * Resolves what the traveler typed into an origin, or explains what's missing: `ambiguous` when the gate is in more
+ * than one zone, `terminal` at an airport whose zones have no gate rules (Heathrow, LaGuardia), so we ask which.
+ */
 export type OriginResult =
   | { ok: true; origin: Origin; label: string }
-  | { ok: false; reason: "empty" | "unknown" | "ambiguous"; options: NavZone[]; gate?: ParsedGate };
+  | { ok: false; reason: "empty" | "unknown" | "ambiguous" | "terminal"; options: NavZone[]; gate?: ParsedGate };
 
 export function resolveOrigin(nav: AirportNav, from: string): OriginResult {
   if (!from) return { ok: false, reason: "empty", options: nav.zones };
@@ -266,6 +283,8 @@ export function resolveOrigin(nav: AirportNav, from: string): OriginResult {
   }
   const gate = parseGate(from);
   if (!gate) return { ok: false, reason: "unknown", options: nav.zones };
+  // No zone knows its gates: ask which terminal the gate is in rather than calling it unknown.
+  if (nav.zones.every((z) => !z.gates?.length)) return { ok: false, reason: "terminal", options: nav.zones, gate };
   const zones = zonesForGate(nav, gate);
   if (zones.length === 1) return { ok: true, origin: { kind: "gate", zone: zones[0].id, gate }, label: `Gate ${gate.label} · ${zones[0].name}` };
   return { ok: false, reason: zones.length ? "ambiguous" : "unknown", options: zones.length ? zones : nav.zones, gate };

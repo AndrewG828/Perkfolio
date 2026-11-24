@@ -7,14 +7,15 @@ import { BedDouble, CreditCard, Info, Minus, Plus } from "lucide-react";
 import type { Card } from "@/shared/data/types";
 import type { BrandException, HotelChain } from "@/shared/data/travel/types";
 import { hotelEarning } from "@/shared/data/travel/hotel-earning";
-import { valuations } from "@/shared/data/travel/valuations";
 import { getCard } from "@/shared/data/cards";
 import { rateFor } from "@/shared/data/calculator-rates";
-import { chainCards, programId, programName, stayPoints, taxesEarnPoints, walletCard, type StayCard } from "@/shared/lib/hotel-points";
-import { formatIsoDate, formatIsoMonth, noteList, whole } from "@/shared/lib/travel-format";
+import { chainCards, programId, programName, stayCardValue, stayPoints, taxesEarnPoints, walletCard, type StayCard } from "@/shared/lib/hotel-points";
+import { MEDIAN_SOURCE, formatCents, resolvePointValue, type ValueContext } from "@/shared/lib/point-value";
+import { formatIsoDate, noteList, whole } from "@/shared/lib/travel-format";
 import { cn, usd } from "@/shared/lib/format";
 import { CardArt } from "@/frontend/components/card-art";
 import { useHydrated, useWallet } from "@/frontend/state/wallet-store";
+import { useValueContext } from "@/frontend/state/point-values";
 import { DataNotice, SourceLinks } from "./ui";
 
 const chains = hotelEarning.chains;
@@ -26,7 +27,9 @@ const num = (v: string | null, fallback: number, min: number, max: number) => {
 };
 
 const pts = (n: number) => whole(n);
-const cents = (c: number) => `${Number(c.toFixed(2))}¢`;
+const cents = formatCents;
+/** The card's rewards count as cash back (a percent per dollar) rather than points. */
+const earnsCash = (card: StayCard, values: ValueContext) => stayCardValue(card, values)?.basis === "cash";
 
 /** Lower-earning brands grouped by what they earn, for the brand picker. */
 function brandGroups(chain: HotelChain): { label: string; brands: string[] }[] {
@@ -53,6 +56,7 @@ export function HotelPointsCalculator() {
   const params = useSearchParams();
   const wallet = useWallet();
   const hydrated = useHydrated();
+  const values = useValueContext();
   const [chainId, setChainId] = useState(() => programId(chainById(params.get("program")).program));
   const chain = chainById(chainId);
   const [brand, setBrand] = useState(() => params.get("brand") ?? "");
@@ -89,7 +93,7 @@ export function HotelPointsCalculator() {
     taxPercent: tax,
     tier: tierOk ? tier : null,
     card,
-    valuations: valuations.valuations,
+    values,
   });
 
   useEffect(() => {
@@ -114,7 +118,8 @@ export function HotelPointsCalculator() {
   const program = programName(chain.program);
   const exception = brandOk && brand ? chain.brandExceptions.find((e) => e.brands.includes(brand)) : null;
   const notes = noteList(chain.notes);
-  const val = valuations.valuations.find((v) => v.id === programId(program));
+  // What the program's points are worth: the one value every page uses (your own, else the published median).
+  const val = resolvePointValue(programId(chain.program), values);
   const taxes = taxesEarnPoints(chain);
 
   return (
@@ -268,7 +273,7 @@ export function HotelPointsCalculator() {
                 <optgroup label="Your wallet">
                   {options.owned.map((c) => (
                     <option key={c.key} value={c.key}>
-                      {c.name} · {c.cashBack ? `${c.perDollar}%` : `${c.perDollar}x`}
+                      {c.name} · {earnsCash(c, values) ? `${c.perDollar}%` : `${c.perDollar}x`}
                     </option>
                   ))}
                 </optgroup>
@@ -277,7 +282,7 @@ export function HotelPointsCalculator() {
                 <optgroup label="Other cards">
                   {options.other.map((c) => (
                     <option key={c.key} value={c.key}>
-                      {c.name} · {c.cashBack ? `${c.perDollar}%` : `${c.perDollar}x`}
+                      {c.name} · {earnsCash(c, values) ? `${c.perDollar}%` : `${c.perDollar}x`}
                     </option>
                   ))}
                 </optgroup>
@@ -308,8 +313,8 @@ export function HotelPointsCalculator() {
                   </p>
                   {card && !result.sameCurrency && result.cardPoints > 0 && (
                     <p className="mt-1 text-lg font-semibold text-navy tabular-nums">
-                      + {card.cashBack ? usd(result.cardValue ?? 0, { cents: true }) : pts(result.cardPoints)}{" "}
-                      <span className="text-base font-medium text-ink-2">{card.cashBack ? "cash back" : card.currencyLabel}</span>
+                      + {result.cardCash ? usd(result.cardValue ?? 0, { cents: true }) : pts(result.cardPoints)}{" "}
+                      <span className="text-base font-medium text-ink-2">{result.cardLabel}</span>
                     </p>
                   )}
                 </div>
@@ -357,7 +362,7 @@ export function HotelPointsCalculator() {
             <CardComparison
               rows={options.all.map((c) => ({
                 card: c,
-                value: stayPoints({ chain, brand: brandOk ? brand : null, nightlyRate: rate, nights, taxPercent: tax, tier: tierOk ? tier : null, card: c, valuations: valuations.valuations }),
+                value: stayPoints({ chain, brand: brandOk ? brand : null, nightlyRate: rate, nights, taxPercent: tax, tier: tierOk ? tier : null, card: c, values }),
               }))}
               selected={card?.key ?? null}
               onPick={setCardKey}
@@ -402,15 +407,15 @@ export function HotelPointsCalculator() {
               </details>
             )}
             <p className="text-xs leading-relaxed text-ink-3">
-              Points valued at the median of published valuations
-              {val
-                ? ` (${val.low === val.high ? cents(val.median) : `${cents(val.low)}–${cents(val.high)}`} each for ${program}: ${val.values
-                    .map((v) => `${v.source} ${cents(v.cents)}`)
-                    .join(", ")}; ${formatIsoMonth(val.values[0]?.asOf ?? "")} tables)`
-                : ""}
-              . Earning rules checked {formatIsoDate(chain.asOf)}. <SourceLinks sources={chain.sources} max={4} />
+              {val?.basis === "own"
+                ? `${program} points are valued at ${cents(val.cents)}, your own value from the tracker's Points tab`
+                : val?.published
+                  ? `${program} points are valued at ${cents(val.cents)}, ${MEDIAN_SOURCE} (${val.published.values.map((v) => `${v.outlet} ${cents(v.cents)}`).join(", ")})`
+                  : `Points are valued at ${MEDIAN_SOURCE}`}
+              , and card points the same way; cash back counts at face value. Earning rules checked {formatIsoDate(chain.asOf)}.{" "}
+              <SourceLinks sources={chain.sources} max={4} />
             </p>
-            <DataNotice datasets={["hotelEarning", "valuations"]} />
+            <DataNotice datasets={["hotelEarning"]} />
           </section>
 
           <p className="flex gap-2 text-xs leading-relaxed text-ink-3">
@@ -496,7 +501,7 @@ function CardComparison({
                   </button>
                 </th>
                 <td className="hidden px-3 py-2.5 text-right text-ink-2 tabular-nums sm:table-cell">
-                  {card.cashBack ? `${card.perDollar}% back` : `${card.perDollar}x`}
+                  {value.cardCash ? `${card.perDollar}% back` : `${card.perDollar}x`}
                 </td>
                 <td className={cn("py-2.5 pr-4 pl-2 text-right font-semibold tabular-nums sm:pr-5", best ? "text-success" : "text-navy")}>
                   {value.totalValue === null ? "—" : usd(value.totalValue)}
@@ -615,8 +620,8 @@ function Breakdown({
                 <span className="flex items-center gap-2">
                   {cardArt && <CardArt card={cardArt} size="xs" className="hidden shrink-0 sm:block" />}
                   <span>
-                    {card.name}: {usd(result.total, { cents: true })} × {card.cashBack ? `${card.perDollar}%` : `${card.perDollar} per $`}
-                    <span className="block text-xs text-ink-3">{card.cashBack ? "Cash back" : card.currencyLabel}</span>
+                    {card.name}: {usd(result.total, { cents: true })} × {result.cardCash ? `${card.perDollar}%` : `${card.perDollar} per $`}
+                    <span className="block text-xs text-ink-3">{result.cardCash ? "Cash back" : result.cardLabel}</span>
                   </span>
                 </span>
               ) : (
@@ -624,13 +629,13 @@ function Breakdown({
               )}
             </th>
             <td className="py-2.5 text-right font-medium text-ink tabular-nums">
-              {card ? (card.cashBack ? usd(result.cardValue ?? 0, { cents: true }) : `+${pts(result.cardPoints)}`) : "—"}
+              {card ? (result.cardCash ? usd(result.cardValue ?? 0, { cents: true }) : `+${pts(result.cardPoints)}`) : "—"}
             </td>
           </tr>
           <tr className="font-semibold">
             <th scope="row" className="py-2.5 pr-3 text-left text-navy">
               Value{result.hotelCents !== null ? ` at ${cents(result.hotelCents)} per ${program} point` : ""}
-              {card && !result.sameCurrency && result.cardCents !== null && !card.cashBack ? `, ${cents(result.cardCents)} per card point` : ""}
+              {card && !result.sameCurrency && result.cardCents !== null && !result.cardCash ? `, ${cents(result.cardCents)} per card point` : ""}
             </th>
             <td className="py-2.5 text-right text-success tabular-nums">{result.totalValue === null ? "—" : usd(result.totalValue, { cents: true })}</td>
           </tr>

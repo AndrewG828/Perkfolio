@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { programName, type BankCurrencyId, type ProgramRef } from "@/shared/data/points";
-import { coBrandCards, pointsData, ratioLabel, ratioVaries, transferSources, type PointsData, type ProgramReach } from "@/shared/lib/points";
+import { coBrandCards, pointsData, ratioLabel, ratioRangeLabel, ratioVaries, transferSources, type PointsData, type ProgramReach } from "@/shared/lib/points";
 import { shortCardName } from "@/shared/lib/card-name";
 import { cn } from "@/shared/lib/format";
 import { ValueInline } from "./point-value";
@@ -79,10 +79,7 @@ export function ProgramTile({
                   >
                     <Dot color={CURRENCY_COLOR[currency]} />
                     {CURRENCY_ABBR[currency]}
-                    <span className="text-ink-3 tabular-nums">
-                      {ratioLabel(yours ?? partner)}
-                      {varies && <span aria-hidden>*</span>}
-                    </span>
+                    <span className="text-ink-3 tabular-nums">{varies ? ratioRangeLabel(currency, via ?? program.id, data) : ratioLabel(yours ?? partner)}</span>
                     {via && <span className="text-ink-3">via {programName(via)}</span>}
                   </li>
                 );

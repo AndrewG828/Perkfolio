@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Gift } from "lucide-react";
 import { getCard } from "@/shared/data/cards";
-import { getCurrency, hasProgramPage, programName, type BankCurrencyId } from "@/shared/data/points";
+import { getCurrency, hasProgramPage, programName, transferPartners, type BankCurrencyId } from "@/shared/data/points";
 import { liveBonuses, localIsoDate, partnerPointsFor, type LiveBonus } from "@/shared/lib/points";
 import { shortCardName } from "@/shared/lib/card-name";
 import { cn, num } from "@/shared/lib/format";
@@ -18,8 +18,9 @@ export function bonusTiming(b: LiveBonus): string {
 }
 
 /**
- * Limited-time transfer bonuses. The list depends on today's date, so it renders after hydration (a placeholder
- * before): a bonus disappears the day after it ends. Currencies the wallet earns come first.
+ * Limited-time transfer bonuses, soonest ending first (as the hub says). The list depends on today's date, so it
+ * renders after hydration (a placeholder before): a bonus disappears the day after it ends. Currencies the wallet
+ * earns are marked, not moved up, so a bonus about to end is never pushed off a short list.
  */
 export function TransferBonuses({ limit, compact = false }: { limit?: number; compact?: boolean }) {
   const wallet = useWalletReach();
@@ -35,8 +36,7 @@ export function TransferBonuses({ limit, compact = false }: { limit?: number; co
   const today = localIsoDate();
   const mine = wallet.mine;
   const all = liveBonuses(today);
-  const list = [...all].sort((a, b) => Number(mine.has(b.bonus.currency)) - Number(mine.has(a.bonus.currency)));
-  const shown = limit ? list.slice(0, limit) : list;
+  const shown = limit ? all.slice(0, limit) : all;
   if (all.length === 0) {
     return <p className="panel p-5 text-sm text-ink-2">No transfer bonuses are running right now. Banks run them a few times a year; check back.</p>;
   }
@@ -61,6 +61,9 @@ function BonusCard({ live, yours, compact }: { live: LiveBonus; yours: boolean; 
   const currency = getCurrency(bonus.currency);
   const cards = (bonus.cards ?? []).map((id) => getCard(id)).filter(Boolean).map((c) => shortCardName(c!.name));
   const soon = live.started && live.daysLeft <= 3;
+  // The usual rate next to the bonus one, so a bonus on a below-1:1 transfer (Copa's 4:3) doesn't read like a loss.
+  const usualRow = transferPartners.find((p) => p.currency === bonus.currency && p.program === bonus.program && !p.cards);
+  const usual = usualRow && partnerPointsFor(usualRow, 1000) !== 1000 ? usualRow : null;
   return (
     <li className={cn("panel flex flex-col gap-2 p-4", yours && "ring-2 ring-brand/40")}>
       <div className="flex items-start justify-between gap-3">
@@ -86,7 +89,7 @@ function BonusCard({ live, yours, compact }: { live: LiveBonus; yours: boolean; 
         <span className="font-semibold text-ink tabular-nums">
           {num(1000)} → {num(partnerPointsFor(bonus, 1000))}
         </span>{" "}
-        while it runs ·{" "}
+        while it runs{usual ? <span className="text-ink-3"> (usually {num(partnerPointsFor(usual, 1000))})</span> : null} ·{" "}
         <span className={cn("font-semibold", soon ? "text-danger" : "text-ink")}>{bonusTiming(live)}</span>
         <span className="text-ink-3"> · ends {formatDate(bonus.ends)}</span>
       </p>

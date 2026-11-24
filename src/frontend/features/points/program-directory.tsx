@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
+import { Plus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { ALLIANCES, programList, type Alliance, type ProgramRef } from "@/shared/data/points";
 import { Segmented, Switch } from "./controls";
@@ -115,7 +117,15 @@ export function ProgramDirectory({
         </Switch>
       </div>
 
-      {sections.length === 0 ? (
+      {sections.length === 0 && filters.mine && personal && !hasCards ? (
+        <div className="panel flex flex-col items-center gap-3 p-10 text-center">
+          <p className="font-semibold text-navy">Add your cards to see the programs they reach</p>
+          <p className="max-w-md text-sm text-ink-2">We match each program against the points your cards earn.</p>
+          <Link href="/tracker" className="btn-primary mt-1">
+            <Plus className="h-4 w-4" /> Add my cards
+          </Link>
+        </div>
+      ) : sections.length === 0 ? (
         <div className="panel p-10 text-center text-ink-2">
           No programs match these filters.{" "}
           {onChange && (

@@ -262,7 +262,7 @@ export function EntryRequirements() {
                   </button>
                 </>
               ) : shown.length > 0 ? (
-                `${shown.length} destination${shown.length === 1 ? "" : "s"} · research verified ${formatIsoDate(verifiedAt)}`
+                `${shown.length} destination${shown.length === 1 ? "" : "s"} · checked ${formatIsoDate(verifiedAt)}`
               ) : usPlace ? (
                 usPlace.kind === "country" ? (
                   "This guide is for U.S. citizens going abroad, so the United States itself isn't listed."
@@ -389,7 +389,7 @@ export function EntryRequirements() {
                       </summary>
                       <p className="mt-1 text-sm leading-relaxed text-ink-2">{prose(t.rule)}</p>
                       {t.confidence && <p className="mt-1.5 text-xs text-ink-3">{CONFIDENCE[t.confidence]}.</p>}
-                      {t.evidence && <p className="mt-1 text-xs leading-relaxed text-ink-3">How this was checked: {prose(t.evidence.replace(/\.$/, ""))}.</p>}
+                      {t.evidence && <p className="mt-1 text-xs leading-relaxed text-ink-3">Where this comes from: {prose(t.evidence.replace(/\.$/, ""))}.</p>}
                       <SourceLinks sources={t.sources} max={3} className="mt-1 text-xs" />
                     </details>
                   </li>
@@ -600,7 +600,7 @@ function DestinationRows({
               </p>
               {d.evidence && (
                 <details>
-                  <summary className="cursor-pointer font-medium text-brand">How this was checked</summary>
+                  <summary className="cursor-pointer font-medium text-brand">Where this comes from</summary>
                   <p className="mt-1 leading-relaxed">{prose(d.evidence)}</p>
                   <SourceLinks sources={d.sources} className="mt-1" />
                 </details>

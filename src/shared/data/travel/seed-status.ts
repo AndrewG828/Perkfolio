@@ -4,7 +4,7 @@
  * `{ partial }`: verified, but still incomplete; its pages show the text in a "Partly verified" notice, so say what's
  * missing.
  */
-export type TravelDataset = "baggage" | "entryRequirements" | "hotelEarning" | "valuations" | "loungeGuestRules";
+export type TravelDataset = "baggage" | "entryRequirements" | "hotelEarning" | "loungeGuestRules";
 
 export type DatasetStatus = "verified" | "seed" | { partial: string };
 
@@ -15,7 +15,6 @@ export const datasetStatus: Record<TravelDataset, DatasetStatus> = {
   },
   entryRequirements: "verified",
   hotelEarning: "verified",
-  valuations: "verified",
   loungeGuestRules: "verified",
 };
 

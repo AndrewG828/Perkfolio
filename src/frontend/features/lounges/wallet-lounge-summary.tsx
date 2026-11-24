@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react";
 import type { Card } from "@/shared/data/types";
 import { getCard } from "@/shared/data/cards";
 import { accessibleCountByAirport } from "@/shared/lib/lounge-access";
+import { isoDate } from "@/shared/lib/dates";
 import { useHydrated, useWallet } from "@/frontend/state/wallet-store";
 
 /** One line for the home hero: what the visitor's wallet unlocks, or a nudge to add cards. */
@@ -13,11 +14,13 @@ export function WalletLoungeSummary() {
   const wallet = useWallet();
   const hydrated = useHydrated();
   const key = wallet.cards.join(",");
+  // Open lounges only: closed ones aren't counted (dated closures once the visitor's date is known).
+  const today = hydrated ? isoDate(new Date()) : null;
   const open = useMemo(() => {
     const cards = wallet.cards.map(getCard).filter((c): c is Card => Boolean(c));
-    return accessibleCountByAirport(cards);
+    return accessibleCountByAirport(cards, today);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, today]);
   if (!hydrated) return <p className="h-6" />;
   const lounges = Object.values(open).reduce((s, n) => s + n, 0);
   const airports = Object.keys(open).length;

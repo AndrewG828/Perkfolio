@@ -84,6 +84,12 @@ export function useGuestCount(initialGuests?: number): { guests: number; reached
 
 const networkLabel = (n: LoungeNetwork) => loungeNetworks[n]?.short ?? n;
 
+/** "Platinum", for a card id (the id when it's unknown). */
+const cardLabel = (id: string) => {
+  const c = getCard(id);
+  return c ? shortCardName(c.name) : id;
+};
+
 /** "Free", "$90", "£70", or why guests can't be priced ("Fee not published", "Not confirmed", "Needs unlock"). */
 export const costText = costLabel;
 
@@ -112,7 +118,7 @@ export function GuestCost({
   const wallet = useWallet();
   const { guests, reached } = useGuestPrefs(initialGuests);
   const ids = cardIds ?? (hydrated ? wallet.cards : []);
-  const { options, best, tied, missing } = guestCosts(loungeGuestRules, ids, networks, guests, reached, place);
+  const { options, best, tied, missing, unclear, cheapestPriced } = guestCosts(loungeGuestRules, ids, networks, guests, reached, place);
   const missingCards = missing
     .map(getCard)
     .filter((c): c is Card => Boolean(c))
@@ -233,6 +239,15 @@ export function GuestCost({
         </p>
       ) : (
         <>
+          {unclear && cheapestPriced && (
+            <p className="flex items-start gap-1.5 text-sm text-ink-2">
+              <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" aria-hidden />
+              <span>
+                No clear cheapest card: {cardLabel(unclear.cardId)} leaves {unclear.paidGuests === 1 ? "1 guest" : `${unclear.paidGuests} guests`} to
+                pay for at a fee its issuer doesn&apos;t publish, against {costLabel(cheapestPriced)} with {cardLabel(cheapestPriced.cardId)}.
+              </span>
+            </p>
+          )}
           {manyTied && best && (
             <p className="flex items-center gap-1.5 text-sm text-ink-2">
               <Trophy className="h-4 w-4 shrink-0 text-brand" aria-hidden />
@@ -354,15 +369,15 @@ function OptionRow({
   const free = o.cost?.amount === 0 && !o.copay;
   return (
     <li className={cn("rounded-md border bg-white p-3", best ? "border-brand ring-1 ring-brand" : "border-line")}>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {card && <CardArt card={card} size="xs" className="shrink-0" />}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[9rem] flex-1">
           {best && (
             <p className="eyebrow mb-0.5 flex items-center gap-1 text-[10px]">
               <Trophy className="h-3 w-3" aria-hidden /> {compact ? "Best value" : `Best for ${guests} guest${guests === 1 ? "" : "s"}`}
             </p>
           )}
-          <p className="truncate text-sm font-semibold text-ink">{name}</p>
+          <p className="text-sm font-semibold text-ink">{name}</p>
           <p className="text-xs text-ink-2">
             {detail}
             {child}
@@ -371,7 +386,7 @@ function OptionRow({
         </div>
         <p
           className={cn(
-            "max-w-[7.5rem] shrink-0 text-right text-base font-semibold tabular-nums",
+            "ml-auto max-w-[7.5rem] shrink-0 text-right text-base font-semibold tabular-nums",
             free ? "text-success" : o.cost === null && o.unpriced !== "passes" ? "text-sm text-ink-3" : "text-navy",
           )}
         >

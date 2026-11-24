@@ -10,6 +10,7 @@ import { EligibilityPanel } from "@/frontend/features/cards/eligibility-panel";
 import { PointValueNote, WelcomeValue } from "@/frontend/features/cards/welcome-value";
 import { CardTransferPartners } from "@/frontend/features/points/card-transfer-partners";
 import { frequencyLabel, frequencyShort } from "@/shared/lib/periods";
+import { checkTerms } from "@/shared/lib/card-terms";
 import { usd } from "@/shared/lib/format";
 
 export function generateStaticParams() {
@@ -19,7 +20,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps<"/cards/[id]">): Promise<Metadata> {
   const { id } = await params;
   const card = getCard(id);
-  if (!card) return {};
+  if (!card) return { title: "Page not found" };
   return { title: card.name, description: card.tagline };
 }
 
@@ -70,7 +71,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
               ].map(([k, v]) => (
                 <div key={k} className="bg-white p-4">
                   <dt className="text-xs text-ink-3">{k}</dt>
-                  <dd className="mt-1 truncate font-semibold text-ink" title={v}>
+                  <dd className="mt-1 leading-snug font-semibold break-words text-ink">
                     {v}
                   </dd>
                 </div>
@@ -89,8 +90,8 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
         </div>
       </section>
 
-      <div className="container-page grid gap-10 py-12 lg:grid-cols-[1fr_340px]">
-        <div className="space-y-12">
+      <div className="container-page grid grid-cols-1 gap-10 py-12 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-12">
           <Section title="Earning rewards" id="rewards">
             <div className="panel divide-y divide-line">
               {earn.map((r) => (
@@ -104,7 +105,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
               ))}
               <div className="flex items-start gap-5 p-5">
                 <span className="w-16 shrink-0 text-2xl font-semibold text-ink-2">{rateLabel(card, card.baseRate)}</span>
-                <p className="font-medium text-ink">All other eligible purchases</p>
+                <p className="font-medium text-ink">{card.earnRates.length ? "All other eligible purchases" : "All eligible purchases"}</p>
               </div>
             </div>
             <PointValueNote cardId={card.id} />
@@ -155,12 +156,19 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
               <div className="grid gap-4 sm:grid-cols-2">
                 {card.loungeAccess.map((l) => {
                   const net = loungeNetworks[l.network];
+                  // The same terms the lounge finder shows: a clause the issuer's page doesn't confirm comes with a note.
+                  const checked = checkTerms(card.id, l.network, l.terms);
                   return (
                     <div key={l.network} className="panel flex gap-4 p-5">
                       <span className="mt-1 h-10 w-1.5 shrink-0 rounded-full" style={{ background: net.color }} />
                       <div>
                         <p className="font-semibold text-ink">{net.label}</p>
-                        <p className="mt-1 text-sm text-ink-2">{l.terms}</p>
+                        <p className="mt-1 text-sm text-ink-2">{checked.text}</p>
+                        {checked.notes.map((n) => (
+                          <p key={n} className="mt-1 text-xs text-ink-3">
+                            {n}
+                          </p>
+                        ))}
                       </div>
                     </div>
                   );
@@ -175,12 +183,23 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
           {card.perks.length > 0 && (
             <Section title="Other perks & protections" id="perks">
               <ul className="grid gap-3 sm:grid-cols-2">
-                {card.perks.map((p) => (
-                  <li key={p} className="flex gap-3 text-sm text-ink">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                    {p}
-                  </li>
-                ))}
+                {card.perks.map((p) => {
+                  // Perks go through the same checks as lounge terms (a clause the issuer doesn't confirm, with a note).
+                  const checked = checkTerms(card.id, "perks", p);
+                  return (
+                    <li key={p} className="flex gap-3 text-sm text-ink">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                      <span>
+                        {checked.text}
+                        {checked.notes.map((n) => (
+                          <span key={n} className="mt-1 block text-xs text-ink-3">
+                            {n}
+                          </span>
+                        ))}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             </Section>
           )}
@@ -188,7 +207,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
           <CardTransferPartners card={card} />
         </div>
 
-        <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">
+        <aside className="min-w-0 space-y-5 lg:sticky lg:top-28 lg:self-start">
           <div className="panel p-6">
             <h2 className="text-sm font-semibold tracking-wide text-ink-3 uppercase">Value at a glance</h2>
             <dl className="mt-4 space-y-3 text-sm">

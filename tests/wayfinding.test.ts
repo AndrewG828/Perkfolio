@@ -52,3 +52,18 @@ test("routes avoid cautioned links when there's a clean alternative, and ranking
   const ranked = rankByDistance(airportNav.JFK, { kind: "gate", zone: "4B" }, loungesAt("JFK"));
   assert.equal(ranked[0].route.reclearsSecurity, false);
 });
+
+test("Heathrow: no lounges behind another terminal's security once we know your terminal, and gates ask which terminal", async () => {
+  const { terminalsSeparate } = await import("../src/shared/lib/wayfinding");
+  const lhr = airportNav.LHR;
+  const ranked = rankByDistance(lhr, { kind: "gate", zone: "5" }, loungesAt("LHR"));
+  assert.ok(ranked.length > 0);
+  assert.ok(ranked.every((r) => !r.route.reclearsSecurity && zoneForLounge(lhr, r.lounge)?.id === "5"));
+  // JFK still offers other terminals, through security again.
+  assert.ok(rankByDistance(airportNav.JFK, { kind: "gate", zone: "8" }, loungesAt("JFK")).some((r) => r.route.reclearsSecurity));
+  const a10 = resolveOrigin(lhr, "A10");
+  assert.ok(!a10.ok && a10.reason === "terminal" && a10.gate?.label === "A10");
+  assert.ok(resolveOrigin(lhr, "@5:A10").ok);
+  assert.ok(terminalsSeparate(airportNav.JFK) && terminalsSeparate(lhr));
+  assert.ok(!terminalsSeparate(airportNav.ATL) && !terminalsSeparate(airportNav.DFW));
+});

@@ -16,8 +16,13 @@ export interface CreditStatus {
   ignored: boolean;
   /** Resets on the card's open-date anniversary rather than Jan 1. */
   anniversary: boolean;
-  /** Anniversary credit whose card has no open date yet, so we fall back to the calendar year. */
+  /** Anniversary credit whose card has no open date yet (not even a month in the card history): calendar year. */
   needsOpenDate: boolean;
+  /**
+   * The card history knows the month the card was opened but not the day: the card year is counted from the 1st of
+   * that month, the earliest it can reset, so a countdown is never later than the real one.
+   */
+  openMonthOnly: boolean;
 }
 
 const ANNIVERSARY_RE = /anniversar|account year|cardmember year|card ?member year|membership year|renewal/i;
@@ -40,16 +45,33 @@ export function cardmemberYear(openDate: string, now: Date): Period {
   return { key: `cm-${iso}`, label: `${fmt(start)} – ${fmt(last)}`, start, end };
 }
 
+/**
+ * When the card was opened, for anniversary credits: the date the user entered on the tracker, else the open date in
+ * their card history (the latest open, non-authorized-user account of this card), which may be a month ("2025-08").
+ */
+export function openDateFor(card: Pick<Card, "id">, wallet: WalletState): { date: string; monthOnly: boolean } | null {
+  const own = wallet.openDates?.[card.id];
+  if (own) return { date: own, monthOnly: false };
+  const app = (wallet.applications ?? [])
+    .filter((a) => a.cardId === card.id && !a.closed && !a.authorizedUser && /^\d{4}-\d{2}(-\d{2})?$/.test(a.opened))
+    .sort((a, b) => b.opened.localeCompare(a.opened))[0];
+  if (!app) return null;
+  return app.opened.length >= 10 ? { date: app.opened, monthOnly: false } : { date: `${app.opened}-01`, monthOnly: true };
+}
+
 export function creditPeriod(card: Card, credit: Credit, wallet: WalletState, now: Date): Period {
-  const open = wallet.openDates?.[card.id];
-  if (open && isAnniversaryCredit(credit)) return cardmemberYear(open, now);
+  const open = openDateFor(card, wallet);
+  if (open && isAnniversaryCredit(credit)) return cardmemberYear(open.date, now);
   return periodFor(credit.frequency, now);
 }
 
 export function statusFor(card: Card, credit: Credit, wallet: WalletState, now: Date): CreditStatus {
   const anniversary = isAnniversaryCredit(credit);
+  const open = anniversary ? openDateFor(card, wallet) : null;
   const p = creditPeriod(card, credit, wallet, now);
-  const used = wallet.usage[usageKey(card.id, credit.id, p.key)] ?? 0;
+  // A card year first counted from its month (card history) and later from the exact day keeps what was marked used.
+  const monthKey = p.key.startsWith("cm-") ? `${p.key.slice(0, 10)}-01` : null;
+  const used = wallet.usage[usageKey(card.id, credit.id, p.key)] ?? (monthKey ? wallet.usage[usageKey(card.id, credit.id, monthKey)] : undefined) ?? 0;
   const ytd = p.key.startsWith("cm-")
     ? used
     : periodsInYear(credit.frequency, now.getFullYear()).reduce(
@@ -68,7 +90,8 @@ export function statusFor(card: Card, credit: Credit, wallet: WalletState, now: 
     ytd,
     ignored: Boolean(wallet.ignored[`${card.id}:${credit.id}`]),
     anniversary,
-    needsOpenDate: anniversary && !wallet.openDates?.[card.id],
+    needsOpenDate: anniversary && !open,
+    openMonthOnly: Boolean(open?.monthOnly),
   };
 }
 

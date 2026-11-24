@@ -3,7 +3,6 @@ import {
   BANK_CURRENCY_IDS,
   PROGRAM_BRIDGES,
   PROGRAM_IDS,
-  REGIONS,
   type Alliance,
   type AwardProgram,
   type BankCurrency,
@@ -14,7 +13,6 @@ import {
   type HotelTransferRule,
   type PartnerChange,
   type Photo,
-  type PointValue,
   type ProgramBookingNote,
   type ProgramId,
   type ProgramKind,
@@ -194,11 +192,6 @@ export function bookingNoteOf(program: string): ProgramBookingNote | undefined {
   return programBookingNotes.find((n) => n.program === program);
 }
 
-/** Published values per point for a currency or program; undefined when no outlet values it (never estimated). */
-export function pointValueOf(id: string): PointValue | undefined {
-  return pointValues.find((v) => v.id === id);
-}
-
 export function hotelRoutesFrom(hotel: ProgramId): HotelToAirline[] {
   return hotelToAirline.filter((r) => r.from === hotel);
 }
@@ -217,20 +210,13 @@ export function regionPhoto(region: Region): Photo | undefined {
   return regionPhotos[region];
 }
 
+/** The photo in the header of an airport's lounge page, if research found one. */
+export function airportPhoto(code: string): Photo | undefined {
+  return airportPhotos[code];
+}
+
 /** Every credited photo the data has (a test checks each file under public/photos is one of them). */
 export function allPhotos(): Photo[] {
   const list = [...Object.values(regionPhotos), ...Object.values(airportPhotos), ...Object.values(loungePhotos)];
   return list.filter((p): p is Photo => Boolean(p));
-}
-
-/**
- * The photos a page shows, for the credits on the About page: a region's photo appears on the sweet spots that go there
- * (cards, the hub's postcards). Airport and lounge photos aren't shown on any page yet, nor a region no sweet spot goes
- * to (Canada), so they aren't listed.
- */
-export function shownPhotos(): Photo[] {
-  const regions = new Set(sweetSpots.map((s) => s.to));
-  return REGIONS.filter((r) => regions.has(r))
-    .map((r) => regionPhotos[r])
-    .filter((p): p is Photo => Boolean(p));
 }

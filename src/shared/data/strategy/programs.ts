@@ -1,9 +1,15 @@
 import type { Card } from "../types";
+// The fixed lists and names only (not the Points & Miles index), so the tracker and Start here stay small.
+import { BANK_CURRENCY_IDS, PROGRAM_BRIDGES, PROGRAM_IDS } from "../points/types";
+import { bankCurrencies } from "../points/currencies";
+import { programNames } from "../points/program-names";
+import { currencyOfCard } from "../../lib/card-currency";
 
 /**
- * Display names for bank currencies and loyalty programs, keyed by the ids the strategy data uses (balances,
- * certificates, redemptions, expiration policies, valuations). A local map on purpose: full program data
- * (transfer partners, award charts) lives elsewhere and can replace this later.
+ * Bank currencies and loyalty programs as the strategy tools (balances, certificates, redemptions, expiration policies)
+ * list them, derived from the Points & Miles data so names and ids can't drift: every bank currency in
+ * BANK_CURRENCY_IDS (named as in points/currencies.ts) and every program in PROGRAM_IDS (named as in
+ * points/program-names.ts). A bridge program spent through another (Virgin Red) is grouped as "other".
  */
 export type ProgramKind = "bank" | "airline" | "hotel" | "other";
 
@@ -15,53 +21,19 @@ export interface ProgramInfo {
   unit: "points" | "miles" | "Avios";
 }
 
-const p = (id: string, name: string, kind: ProgramKind, unit: ProgramInfo["unit"] = "points"): ProgramInfo => ({ id, name, kind, unit });
+/** The unit, read from what the program calls its currency: "Avios", "SkyMiles" or "Asia Miles" → miles, else points. */
+const unitOf = (currency: string): ProgramInfo["unit"] => (/\bavios\b/i.test(currency) ? "Avios" : /miles/i.test(currency) ? "miles" : "points");
 
 export const PROGRAMS: ProgramInfo[] = [
-  p("amex-mr", "Amex Membership Rewards", "bank"),
-  p("chase-ur", "Chase Ultimate Rewards", "bank"),
-  p("capital-one", "Capital One Miles", "bank", "miles"),
-  p("citi-typ", "Citi ThankYou Points", "bank"),
-  p("bilt", "Bilt Rewards", "bank"),
-  p("wells-fargo", "Wells Fargo Rewards", "bank"),
-
-  p("aer-lingus-aerclub", "Aer Lingus AerClub", "airline", "Avios"),
-  p("aeromexico-rewards", "Aeromexico Rewards", "airline"),
-  p("air-canada-aeroplan", "Air Canada Aeroplan", "airline"),
-  p("air-france-klm-flying-blue", "Air France-KLM Flying Blue", "airline", "miles"),
-  p("ana-mileage-club", "ANA Mileage Club", "airline", "miles"),
-  p("american-aadvantage", "American AAdvantage", "airline", "miles"),
-  p("atmos-rewards", "Atmos Rewards", "airline"),
-  p("avianca-lifemiles", "Avianca LifeMiles", "airline", "miles"),
-  p("british-airways-club", "British Airways Club", "airline", "Avios"),
-  p("cathay-pacific-asia-miles", "Cathay Pacific Asia Miles", "airline", "miles"),
-  p("delta-skymiles", "Delta SkyMiles", "airline", "miles"),
-  p("emirates-skywards", "Emirates Skywards", "airline", "miles"),
-  p("etihad-guest", "Etihad Guest", "airline", "miles"),
-  p("eva-air-infinity-mileagelands", "EVA Air Infinity MileageLands", "airline", "miles"),
-  p("finnair-plus", "Finnair Plus", "airline", "Avios"),
-  p("iberia-club", "Iberia Club", "airline", "Avios"),
-  p("japan-airlines-mileage-bank", "Japan Airlines Mileage Bank", "airline", "miles"),
-  p("jetblue-trueblue", "JetBlue TrueBlue", "airline"),
-  p("qantas-frequent-flyer", "Qantas Frequent Flyer", "airline"),
-  p("qatar-privilege-club", "Qatar Airways Privilege Club", "airline", "Avios"),
-  p("singapore-krisflyer", "Singapore Airlines KrisFlyer", "airline", "miles"),
-  p("southwest-rapid-rewards", "Southwest Rapid Rewards", "airline"),
-  p("tap-miles-and-go", "TAP Miles&Go", "airline", "miles"),
-  p("thai-royal-orchid-plus", "Thai Royal Orchid Plus", "airline", "miles"),
-  p("turkish-miles-and-smiles", "Turkish Airlines Miles&Smiles", "airline", "miles"),
-  p("united-mileageplus", "United MileagePlus", "airline", "miles"),
-  p("virgin-atlantic-flying-club", "Virgin Atlantic Flying Club", "airline"),
-  p("virgin-red", "Virgin Red", "other"),
-
-  p("world-of-hyatt", "World of Hyatt", "hotel"),
-  p("marriott-bonvoy", "Marriott Bonvoy", "hotel"),
-  p("hilton-honors", "Hilton Honors", "hotel"),
-  p("ihg-one-rewards", "IHG One Rewards", "hotel"),
-  p("choice-privileges", "Choice Privileges", "hotel"),
-  p("wyndham-rewards", "Wyndham Rewards", "hotel"),
-  p("accor-live-limitless", "Accor Live Limitless", "hotel"),
-  p("i-prefer", "I Prefer Hotel Rewards", "hotel"),
+  ...BANK_CURRENCY_IDS.map((id): ProgramInfo => {
+    const name = bankCurrencies.find((c) => c.id === id)?.name ?? id;
+    return { id, name, kind: "bank", unit: unitOf(name) };
+  }),
+  ...PROGRAM_IDS.map((id): ProgramInfo => {
+    const p = programNames[id];
+    const kind: ProgramKind = PROGRAM_BRIDGES.some((b) => b.from === id) ? "other" : p.kind;
+    return { id, name: p.name, kind, unit: p.unit ?? unitOf(p.name) };
+  }),
 ];
 
 const byId = new Map(PROGRAMS.map((x) => [x.id, x]));
@@ -84,7 +56,7 @@ export const programGroups = (Object.keys(programKindLabels) as ProgramKind[]).m
   programs: PROGRAMS.filter((x) => x.kind === kind),
 }));
 
-/** The currency or program a card earns, matched on its rewards currency ("Chase Ultimate Rewards points"). */
+/** The currency or program a card we don't list earns, matched on the name the user gave it. */
 const EARNS: [RegExp, string][] = [
   [/Membership Rewards/i, "amex-mr"],
   [/Ultimate Rewards/i, "chase-ur"],
@@ -102,12 +74,13 @@ const EARNS: [RegExp, string][] = [
   [/World of Hyatt/i, "world-of-hyatt"],
 ];
 
-export function programForCard(card: Pick<Card, "rewardsCurrency" | "issuer">): string | undefined {
-  const hit = EARNS.find(([re]) => re.test(card.rewardsCurrency));
-  if (hit) return hit[1];
-  // Wells Fargo's cash-back cards earn into the same Wells Fargo Rewards account.
-  if (card.issuer === "Wells Fargo" && /cash rewards/i.test(card.rewardsCurrency)) return "wells-fargo";
-  return undefined;
+/**
+ * The currency or program a card we list earns, as every page classifies it (currencyOfCard): plain cash back (Active
+ * Cash) earns none, and a card whose transfers need another card (Savor) earns its bank's points.
+ */
+export function programForCard(card: Pick<Card, "id" | "rewardsCurrency">): string | undefined {
+  const p = currencyOfCard(card);
+  return p ? (p.kind === "currency" ? p.currency : p.program) : undefined;
 }
 
 /** Co-brand names that don't spell out the program: Barclays' AAdvantage Aviator cards, a "Hyatt" card. */

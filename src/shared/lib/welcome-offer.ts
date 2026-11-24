@@ -1,12 +1,12 @@
 import type { Card } from "@/shared/data/types";
-import { programForCard } from "@/shared/data/strategy/programs";
+import { cardPointValue, type CardPointValue, type ValueContext } from "./point-value";
 
 /**
  * Reads a card's welcome offer text (src/shared/data/cards: "As high as 175,000 points after $12,000 in purchases
- * in the first 6 months (offers vary)") into parts we can value with the strategy valuations: points in the first
- * spending tier, points across every tier, cash, the spend and window, and flags for "as high as", "offers vary"
- * and limited-time offers. Anything it can't value from its parts (free nights) falls back to the card's own
- * `welcomeOfferValue`. Pure; tests cover every offer in the dataset.
+ * in the first 6 months (offers vary)") into parts we can value with the one point value (shared/lib/point-value.ts):
+ * points in the first spending tier, points across every tier, cash, the spend and window, and flags for "as high
+ * as", "offers vary" and limited-time offers. Anything it can't value from its parts (free nights) falls back to the
+ * card's own `welcomeOfferValue`. Pure; tests cover every offer in the dataset.
  */
 export interface WelcomeOffer {
   /** Points or miles the first spending tier earns (0 for cash offers). */
@@ -79,22 +79,20 @@ export interface WelcomeValue {
   usd: number;
   /** Every tier and add-on. */
   usdAll: number;
-  /** Program the points are in, and the cents per point used. */
-  program?: string;
-  cents?: number;
+  /** What the offer's points are worth each (cardPointValue), when it has points. */
+  points?: CardPointValue;
 }
 
 /**
- * The welcome offer in dollars: points at `centsFor(program)` (the user's own value or the outlets' median from
- * shared/lib/trackers centsFor), plus cash. Falls back to the card file's `pointValueCents` for a program without
- * a valuation, and to `welcomeOfferValue` for offers we can't split into points and cash.
+ * The welcome offer in dollars: points at the card's point value (cardPointValue: the user's own value, else the
+ * published median), plus cash at face value. Offers we can't split into points and cash (free nights) count at the
+ * card file's `welcomeOfferValue`.
  */
-export function welcomeValue(card: Card, centsFor: (program: string) => number | undefined): WelcomeValue {
+export function welcomeValue(card: Card, values: ValueContext = {}): WelcomeValue {
   const offer = parseWelcomeOffer(card.welcomeOffer);
   if (offer.closed) return { offer, usd: 0, usdAll: 0 };
   if (offer.estimate) return { offer, usd: card.welcomeOfferValue, usdAll: card.welcomeOfferValue };
-  const program = offer.points > 0 ? programForCard(card) : undefined;
-  const cents = offer.points > 0 ? ((program ? centsFor(program) : undefined) ?? card.pointValueCents) : undefined;
-  const usd = (points: number, cashUsd: number) => Math.round((points * (cents ?? 0)) / 100 + cashUsd);
-  return { offer, usd: usd(offer.points, offer.cash), usdAll: usd(offer.pointsAll, offer.cashAll), ...(program ? { program } : {}), ...(cents !== undefined ? { cents } : {}) };
+  const points = offer.points > 0 ? cardPointValue(card, values) : undefined;
+  const usd = (n: number, cashUsd: number) => Math.round((n * (points?.cents ?? 0)) / 100 + cashUsd);
+  return { offer, usd: usd(offer.points, offer.cash), usdAll: usd(offer.pointsAll, offer.cashAll), ...(points ? { points } : {}) };
 }

@@ -1,6 +1,9 @@
 import type { Card, Lounge, LoungeNetwork } from "@/shared/data/types";
-import { airportGeo } from "@/shared/data/airport-geo";
-import { airports, lounges } from "@/shared/data/lounges";
+import { lounges } from "@/shared/data/lounges";
+import { loungeGuestRules } from "@/shared/data/travel/lounge-guest-rules";
+import { formatDate } from "./dates";
+
+export * from "./lounge-directory";
 
 /** Who can get into lounges, given a set of cards. Pure, so pages, the map and tests share one set of rules. */
 
@@ -22,67 +25,70 @@ export function networksFor(l: Lounge): LoungeNetwork[] {
   return n;
 }
 
+/**
+ * The lounge's own rule that turns a card away though its network would let it in (Amex's Arlanda lounge admits only
+ * the consumer Platinum Card), with the rule's first sentence as the reason; null when there's none.
+ */
+export function notAdmittedReason(l: Lounge, cardId: string, network: LoungeNetwork): string | null {
+  const rule = loungeGuestRules.locationRules?.find(
+    (r) =>
+      r.network === network &&
+      (r.airports ? r.airports.includes(l.airportCode) : true) &&
+      (r.loungeName ? l.name.toLowerCase().includes(r.loungeName.toLowerCase()) : true),
+  );
+  if (!rule?.notAdmitted?.includes(cardId)) return null;
+  return /^.*?\.(?=\s|$)/.exec(rule.notes)?.[0] ?? rule.notes;
+}
+
+/**
+ * The cards that get you into a lounge, and on what terms. A card the lounge's own rules turn away isn't counted
+ * (`refusedAt` says why), and neither is any card at a lounge where card access isn't confirmed.
+ */
 export function accessFor(l: Lounge, cards: Card[]): LoungeAccessGrant[] {
+  if (l.cardAccessUnconfirmed) return [];
   const nets = networksFor(l);
   return cards.flatMap((card) =>
-    card.loungeAccess.filter((a) => nets.includes(a.network)).map((a) => ({ card, terms: a.terms, via: a.network })),
+    card.loungeAccess
+      .filter((a) => nets.includes(a.network) && !notAdmittedReason(l, card.id, a.network))
+      .map((a) => ({ card, terms: a.terms, via: a.network })),
   );
 }
 
-export const airportByCode = new Map(airports.map((a) => [a.code, a]));
-
-export const loungesAt = (code: string) => lounges.filter((l) => l.airportCode === code);
-
-export const loungeCountByAirport = lounges.reduce<Record<string, number>>((m, l) => {
-  m[l.airportCode] = (m[l.airportCode] ?? 0) + 1;
-  return m;
-}, {});
-
-/** Airports with enough lounges to be worth a map, busiest first. */
-export const bigAirports = airports
-  .filter((a) => (loungeCountByAirport[a.code] ?? 0) >= 5)
-  .sort((a, b) => loungeCountByAirport[b.code] - loungeCountByAirport[a.code]);
-
-/** The terminal a lounge is in, without the concourse ("Terminal 4, Concourse A" → "Terminal 4"). */
-export const terminalOf = (l: Lounge) => l.terminal.split(",")[0].trim();
-
-/** Gate reference from a location like "Near gate B18" → "B18". */
-export function gateOf(l: Lounge): string | null {
-  const m = /\bgates?\s+([A-Z]{0,2})-?(\d{1,3})\b/i.exec(l.location ?? "");
-  return m ? `${m[1].toUpperCase()}${m[2]}` : null;
+/** Cards whose network covers the lounge but that the lounge itself doesn't admit, with the reason. */
+export function refusedAt(l: Lounge, cards: Card[]): { card: Card; reason: string }[] {
+  const nets = networksFor(l);
+  return cards.flatMap((card) => {
+    const a = card.loungeAccess.find((x) => nets.includes(x.network) && notAdmittedReason(l, card.id, x.network));
+    return a ? [{ card, reason: notAdmittedReason(l, card.id, a.network)! }] : [];
+  });
 }
 
-const gateNumber = (l: Lounge) => Number(/\d+/.exec(gateOf(l) ?? "")?.[0] ?? NaN);
-
-export interface TerminalGroup {
-  terminal: string;
-  lounges: Lounge[];
+/**
+ * True while the lounge is closed. Without `today` (before the page knows the visitor's date) a closure counts as in
+ * effect; with it, only between its `from` and `until` dates.
+ */
+export function isClosed(l: Lounge, today?: string | null): boolean {
+  const c = l.closed;
+  if (!c) return false;
+  if (!today) return true;
+  return (!c.from || c.from <= today) && (!c.until || today < c.until);
 }
 
-/** Lounges at an airport grouped by terminal, in physical order where known, and by gate within each. */
-export function terminalsAt(code: string): TerminalGroup[] {
-  const groups = new Map<string, Lounge[]>();
-  for (const l of loungesAt(code)) groups.set(terminalOf(l), [...(groups.get(terminalOf(l)) ?? []), l]);
-  const order = airportGeo[code]?.terminalOrder ?? [];
-  const rank = (t: string) => (order.indexOf(t) === -1 ? order.length : order.indexOf(t));
-  return [...groups.entries()]
-    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b, "en", { numeric: true }))
-    .map(([terminal, ls]) => ({
-      terminal,
-      lounges: ls.sort(
-        (a, b) =>
-          a.terminal.localeCompare(b.terminal, "en", { numeric: true }) ||
-          (Number.isNaN(gateNumber(a)) ? 1 : 0) - (Number.isNaN(gateNumber(b)) ? 1 : 0) ||
-          gateNumber(a) - gateNumber(b) ||
-          a.name.localeCompare(b.name),
-      ),
-    }));
+/** "Closed until end of 2027 (expected)", "Closed until Apr 16, 2027", or "Temporarily closed". */
+export function closedLabel(l: Lounge): string {
+  const c = l.closed;
+  if (!c) return "";
+  const until = c.untilLabel ?? (c.until ? formatDate(c.until) : null);
+  return until ? `Closed until ${until}` : "Temporarily closed";
 }
 
-/** How many lounges each airport has that these cards unlock. */
-export function accessibleCountByAirport(cards: Card[]): Record<string, number> {
+/** The cards get you in and the lounge is open. */
+export const openToCards = (l: Lounge, cards: Card[], today?: string | null) => !isClosed(l, today) && accessFor(l, cards).length > 0;
+
+/** How many open lounges each airport has that these cards unlock (closed ones aren't counted). */
+export function accessibleCountByAirport(cards: Card[], today?: string | null): Record<string, number> {
   const out: Record<string, number> = {};
   if (cards.length === 0) return out;
-  for (const l of lounges) if (accessFor(l, cards).length > 0) out[l.airportCode] = (out[l.airportCode] ?? 0) + 1;
+  for (const l of lounges) if (openToCards(l, cards, today)) out[l.airportCode] = (out[l.airportCode] ?? 0) + 1;
   return out;
 }

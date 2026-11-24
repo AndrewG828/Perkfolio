@@ -155,7 +155,7 @@ export const bookableAirlines: BookableAirline[] = [
       "copa-connectmiles",
     ],
     restrictions: "Joined Star Alliance on April 1, 2026 after leaving SkyTeam in February 2025, so it is no longer a SkyTeam partner. As a recent member it may still be missing from some programs' award search; check that ITA seats show before transferring points.",
-    notes: "ITA's own Volare program ended on March 30, 2026, and ITA moved to Lufthansa's Miles & More on April 1, 2026; we cover neither. Programs are listed by Star Alliance membership; each one's ITA coverage wasn't checked.",
+    notes: "ITA's own Volare program ended on March 30, 2026, and ITA moved to Lufthansa's Miles & More on April 1, 2026; we cover neither. Programs are listed by Star Alliance membership; each one's ITA coverage isn't confirmed.",
     asOf: "2026-11",
     sources: [
       "https://www.staralliance.com/en/members",
@@ -400,7 +400,7 @@ export const bookableAirlines: BookableAirline[] = [
       "turkish-miles-and-smiles",
       "tap-miles-and-go",
     ],
-    notes: "ConnectMiles is listed for every Star Alliance airline by alliance membership; ConnectMiles booking channels weren't checked.",
+    notes: "ConnectMiles is listed for every Star Alliance airline by alliance membership; ConnectMiles booking channels aren't confirmed.",
     asOf: "2026-11",
     sources: [
       "https://www.staralliance.com/en/members",
@@ -600,7 +600,7 @@ export const bookableAirlines: BookableAirline[] = [
       "qatar-privilege-club",
     ],
     restrictions: "Joined oneworld on April 23, 2026 (some outlets say April 22), so some oneworld programs may still be adding Hawaiian to their award search; check that seats show before transferring. Chase's November 2026 list of Iberia Club partners doesn't name Hawaiian, although Iberia says Avios can be used on any oneworld airline. If iberia.com won't show the flight, call Iberia or move the Avios to British Airways Club.",
-    notes: "American listed Hawaiian as a partner before it joined oneworld (Citi, December 2025). Other programs are listed by oneworld membership; their Hawaiian coverage wasn't checked one by one. JetBlue TrueBlue no longer earns or redeems on Hawaiian.",
+    notes: "American listed Hawaiian as a partner before it joined oneworld (Citi, December 2025). Other programs are listed by oneworld membership; their Hawaiian coverage isn't confirmed program by program. JetBlue TrueBlue no longer earns or redeems on Hawaiian.",
     asOf: "2026-11",
     sources: [
       "https://www.oneworld.com/members",
@@ -925,7 +925,7 @@ export const bookableAirlines: BookableAirline[] = [
       "qatar-privilege-club",
     ],
     restrictions: "American AAdvantage isn't listed: Citi's December 2025 list of airlines bookable with AAdvantage miles doesn't name Oman Air, and a 2026 guide to American's partners said AAdvantage miles can't be used on Oman Air. Chase's November 2026 list of Iberia Club partners doesn't name Oman Air, although Iberia says Avios can be used on any oneworld airline. If iberia.com won't show the flight, call Iberia or move the Avios to British Airways Club.",
-    notes: "Joined oneworld as a full member on June 30, 2025. The other programs are listed by oneworld membership; each one's Oman Air coverage wasn't checked.",
+    notes: "Joined oneworld as a full member on June 30, 2025. The other programs are listed by oneworld membership; each one's Oman Air coverage isn't confirmed.",
     asOf: "2026-11",
     sources: [
       "https://www.oneworld.com/members",
@@ -1386,7 +1386,7 @@ export const programBookingNotes: ProgramBookingNote[] = [
   },
   {
     program: "singapore-krisflyer",
-    notes: "Star Alliance partner awards have been bookable online since December 2017; itineraries the website can't price need a call. Non-Star partners weren't checked.",
+    notes: "Star Alliance partner awards have been bookable online since December 2017; itineraries the website can't price need a call. Non-Star partners aren't confirmed.",
     sources: ["https://thepointsguy.com/news/book-star-awards-online-with-krisflyer/"],
   },
   {
@@ -1440,7 +1440,7 @@ export const programBookingNotes: ProgramBookingNote[] = [
   },
   {
     program: "aer-lingus-aerclub",
-    notes: "Avios rewards on Aer Lingus can be booked on aerlingus.com. Partner redemptions through AerClub weren't checked; to book partners, move the Avios to British Airways Club.",
+    notes: "Avios rewards on Aer Lingus can be booked on aerlingus.com. Partner redemptions through AerClub aren't confirmed; to book partners, move the Avios to British Airways Club.",
     sources: [
       "https://www.aerlingus.com/aerclub/spending-avios/buy-reward-flight/",
       "https://www.headforpoints.com/2022/02/21/book-aer-lingus-flights-with-avios-on-ba-com",
@@ -1448,7 +1448,7 @@ export const programBookingNotes: ProgramBookingNote[] = [
   },
   {
     program: "copa-connectmiles",
-    notes: "Capital One lists Copa as a 4:3 transfer partner (guide dated November 2, 2026). Listed for Star Alliance airlines by alliance membership; booking channels weren't checked.",
+    notes: "Capital One lists Copa as a 4:3 transfer partner (guide dated November 2, 2026). Listed for Star Alliance airlines by alliance membership; booking channels aren't confirmed.",
     sources: ["https://www.capitalone.com/learn-grow/money-management/venture-miles-transfer-partnerships/"],
   },
 ];
@@ -1457,7 +1457,7 @@ export const whoCanBookCaveats: string[] = [
   "Being bookable doesn't mean seats are available: many airlines release few premium seats to partners.",
   "Virgin Red is listed wherever Virgin Atlantic Flying Club is, because Virgin Red points are spent through a linked Flying Club account.",
   "Asiana leaves Star Alliance at the end of December 16, 2026 and merges into Korean Air on December 17, 2026.",
-  "Listings based on alliance membership weren't checked program by program. Recent members (ITA Airways and Hawaiian from April 2026, Oman Air from June 2025) are the likeliest gaps, as American's missing Oman Air shows.",
+  "Listings based on alliance membership aren't confirmed program by program. Recent members (ITA Airways and Hawaiian from April 2026, Oman Air from June 2025) are the likeliest gaps, as American's missing Oman Air shows.",
 ];
 
 export const whoCanBookAsOf: string = "2026-11";

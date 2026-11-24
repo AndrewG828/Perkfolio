@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { airports } from "@/shared/data/lounges";
-import { loungeCountByAirport } from "@/shared/lib/lounge-access";
+import { loungeCountByAirport } from "@/shared/lib/lounge-directory";
 import { cn } from "@/shared/lib/format";
 
 /** Airport search box: type a code or city, pick a result, go to that airport's lounge map. */

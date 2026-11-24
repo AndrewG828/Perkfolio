@@ -27,7 +27,7 @@ export function CardPickerGrid({ onPick }: { onPick?: () => void } = {}) {
         return (
           <div key={issuer}>
             <h3 className="mb-3 text-sm font-semibold text-ink-2">{issuer}</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {group.map((c) => {
                 const owned = wallet.cards.includes(c.id);
                 return (
@@ -40,7 +40,7 @@ export function CardPickerGrid({ onPick }: { onPick?: () => void } = {}) {
                     }}
                     aria-pressed={owned}
                     className={cn(
-                      "flex items-center gap-4 rounded-lg border p-3 text-left transition-colors",
+                      "flex min-w-0 items-center gap-4 rounded-lg border p-3 text-left transition-colors",
                       owned ? "border-brand bg-sky" : "border-line bg-white hover:border-brand/50",
                     )}
                   >
