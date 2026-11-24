@@ -120,7 +120,8 @@ export interface Card {
   bestFor: string;
   foreignTransactionFee: boolean;
   authorizedUserFee?: string;
-  /** Main transfer partners, if any. */
+  /** Transfer partner names, for cards that earn a bank currency: set with transferPartnerNames() from the verified
+   *  Points & Miles partner list (shared/data/points/card-partners.ts). */
   transferPartners?: string[];
   /** Card art gradient (CSS colors) and text color for the rendered card visual. */
   art: { from: string; to: string; text: "light" | "dark"; finish?: "metal" | "plastic" };

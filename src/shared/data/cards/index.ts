@@ -58,10 +58,12 @@ export function topEarnRate(card: Card): number {
   return Math.max(card.baseRate, ...card.earnRates.map((r) => r.multiplier));
 }
 
-export function isCashBack(card: Card): boolean {
-  return /cash/i.test(card.rewardsCurrency);
+/** True for cards that earn cash back (rates shown as %). "Bilt Points (plus Bilt Cash)" earns points, so only a
+ *  rewards currency that starts with "Cash" counts. */
+export function isCashBack(card: Pick<Card, "rewardsCurrency">): boolean {
+  return /^cash\b/i.test(card.rewardsCurrency.trim());
 }
 
-export function rateLabel(card: Card, multiplier: number): string {
+export function rateLabel(card: Pick<Card, "rewardsCurrency">, multiplier: number): string {
   return isCashBack(card) ? `${multiplier}%` : `${multiplier}x`;
 }

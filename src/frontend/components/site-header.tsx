@@ -11,6 +11,7 @@ import { cn } from "@/shared/lib/format";
 
 const NAV = [
   { href: "/lounges", label: "Lounge Finder" },
+  { href: "/points", label: "Points & Miles" },
   { href: "/tracker", label: "Benefits Tracker" },
   { href: "/cards", label: "Explore Cards" },
   { href: "/compare", label: "Compare" },
@@ -34,9 +35,10 @@ export function SiteHeader() {
           </span>
         </div>
       </div>
-      <div className="container-page flex h-16 items-center justify-between gap-6">
+      <div className="container-page flex h-16 items-center justify-between gap-4">
         <Logo />
-        <nav className="hidden h-full items-stretch gap-1 lg:flex" aria-label="Primary">
+        {/* Seven links only fit from xl up (with the account and wallet buttons); below that they live in the menu. */}
+        <nav className="hidden h-full items-stretch xl:flex" aria-label="Primary">
           {NAV.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
@@ -44,19 +46,19 @@ export function SiteHeader() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "relative flex items-center px-3 text-[15px] font-medium transition-colors",
+                  "relative flex items-center px-2 text-[14px] font-medium whitespace-nowrap transition-colors",
                   active ? "text-brand" : "text-ink hover:text-brand",
                 )}
               >
                 {item.label}
-                <span className={cn("absolute inset-x-3 bottom-0 h-[3px] rounded-t bg-brand transition-opacity", active ? "opacity-100" : "opacity-0")} />
+                <span className={cn("absolute inset-x-2 bottom-0 h-[3px] rounded-t bg-brand transition-opacity", active ? "opacity-100" : "opacity-0")} />
               </Link>
             );
           })}
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <AccountMenu />
-          <Link href="/tracker" className="btn-primary hidden sm:inline-flex">
+          <Link href="/tracker" className="btn-primary hidden whitespace-nowrap sm:inline-flex">
             <Wallet className="h-4 w-4" />
             My Wallet
             {wallet.cards.length > 0 && (
@@ -64,7 +66,7 @@ export function SiteHeader() {
             )}
           </Link>
           <button
-            className="grid h-10 w-10 place-items-center rounded text-navy hover:bg-sky lg:hidden"
+            className="grid h-10 w-10 place-items-center rounded text-navy hover:bg-sky xl:hidden"
             onClick={() => setOpen((o) => !o)}
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
@@ -74,7 +76,7 @@ export function SiteHeader() {
         </div>
       </div>
       {open && (
-        <nav className="border-t border-line bg-white lg:hidden" aria-label="Mobile">
+        <nav className="border-t border-line bg-white xl:hidden" aria-label="Mobile">
           <div className="container-page flex flex-col py-2">
             {NAV.map((item) => (
               <Link

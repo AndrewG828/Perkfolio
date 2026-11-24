@@ -1,4 +1,8 @@
 import type { Card } from "../types";
+import { transferPartnerNames } from "../points/card-partners";
+
+// `transferPartners` comes from the verified Points & Miles partner list (transferPartnerNames), so don't list
+// partners by hand: update the research and run `npm run points:import`.
 
 // Capital One, Citi, Wells Fargo and Bank of America (Atmos Rewards) cards.
 // Terms checked against 2026 sources (issuer pages, TPG, NerdWallet, OMAAT, Upgraded Points,
@@ -7,44 +11,7 @@ import type { Card } from "../types";
 
 const VERIFIED = "2026-11-22";
 
-const CAPITAL_ONE_PARTNERS = [
-  "Air Canada Aeroplan",
-  "Air France-KLM Flying Blue",
-  "Avianca LifeMiles",
-  "British Airways Executive Club",
-  "Cathay Pacific Asia Miles",
-  "Emirates Skywards",
-  "Etihad Guest",
-  "EVA Air Infinity MileageLands",
-  "Finnair Plus",
-  "Qantas Frequent Flyer",
-  "Singapore KrisFlyer",
-  "TAP Miles&Go",
-  "Turkish Miles&Smiles",
-  "Virgin Red",
-  "Accor Live Limitless",
-  "Choice Privileges",
-  "Wyndham Rewards",
-];
 
-const THANKYOU_PARTNERS = [
-  "American AAdvantage",
-  "Air France-KLM Flying Blue",
-  "Avianca LifeMiles",
-  "Cathay Pacific Asia Miles",
-  "Emirates Skywards",
-  "Etihad Guest",
-  "EVA Air Infinity MileageLands",
-  "JetBlue TrueBlue",
-  "Qantas Frequent Flyer",
-  "Qatar Privilege Club",
-  "Singapore KrisFlyer",
-  "Turkish Miles&Smiles",
-  "Virgin Atlantic Flying Club",
-  "Choice Privileges",
-  "Wyndham Rewards",
-  "Accor Live Limitless",
-];
 
 export const otherCards: Card[] = [
   // ---------------------------------------------------------------- Capital One
@@ -122,7 +89,7 @@ export const otherCards: Card[] = [
       "Solo travelers who book through Capital One Travel and want a simple premium card with 2x on everything.",
     foreignTransactionFee: false,
     authorizedUserFee: "$0; lounge access is $125 per authorized user each year (since Feb 1, 2026)",
-    transferPartners: CAPITAL_ONE_PARTNERS,
+    transferPartners: transferPartnerNames("capital-one", "capital-one-venture-x"),
     art: { from: "#4a4f57", to: "#16181c", text: "light", finish: "metal" },
     url: "https://www.capitalone.com/credit-cards/venture-x/",
     lastVerified: VERIFIED,
@@ -199,7 +166,7 @@ export const otherCards: Card[] = [
     bestFor: "Business owners with high spending who want flat 2x transferable miles and lounge access.",
     foreignTransactionFee: false,
     authorizedUserFee: "$0 per employee card; lounge access is $125 per authorized user each year (up to 4)",
-    transferPartners: CAPITAL_ONE_PARTNERS,
+    transferPartners: transferPartnerNames("capital-one", "capital-one-venture-x-business"),
     art: { from: "#33363b", to: "#0b0c0e", text: "light", finish: "metal" },
     url: "https://www.capitalone.com/small-business/credit-cards/venture-x-business/",
     lastVerified: VERIFIED,
@@ -241,7 +208,7 @@ export const otherCards: Card[] = [
     bestFor: "People who want flat-rate travel rewards with transfer partners and a low annual fee.",
     foreignTransactionFee: false,
     authorizedUserFee: "$0",
-    transferPartners: CAPITAL_ONE_PARTNERS,
+    transferPartners: transferPartnerNames("capital-one", "capital-one-venture"),
     art: { from: "#24456e", to: "#0d1c30", text: "light", finish: "plastic" },
     url: "https://www.capitalone.com/credit-cards/venture/",
     lastVerified: VERIFIED,
@@ -375,7 +342,7 @@ export const otherCards: Card[] = [
     bestFor: "ThankYou collectors and American Airlines flyers who will use the Citi Travel hotel credit.",
     foreignTransactionFee: false,
     authorizedUserFee: "$75 per authorized user each year",
-    transferPartners: THANKYOU_PARTNERS,
+    transferPartners: transferPartnerNames("citi-typ", "citi-strata-elite"),
     art: { from: "#2a3352", to: "#0a0e1c", text: "light", finish: "metal" },
     url: "https://www.citi.com/credit-cards/citi-strata-elite-credit-card",
     lastVerified: VERIFIED,
@@ -421,7 +388,7 @@ export const otherCards: Card[] = [
     bestFor: "Mid-tier travelers who want transferable points on dining, groceries, gas and travel.",
     foreignTransactionFee: false,
     authorizedUserFee: "$0",
-    transferPartners: THANKYOU_PARTNERS,
+    transferPartners: transferPartnerNames("citi-typ", "citi-strata-premier"),
     art: { from: "#2f5a92", to: "#13284a", text: "light", finish: "plastic" },
     url: "https://www.citi.com/credit-cards/citi-strata-premier-credit-card",
     lastVerified: VERIFIED,
@@ -637,16 +604,7 @@ export const otherCards: Card[] = [
     bestFor: "Travelers who book hotels and flights directly and want transferable points for a low fee.",
     foreignTransactionFee: false,
     authorizedUserFee: "$0",
-    transferPartners: [
-      "Air France-KLM Flying Blue",
-      "Avianca LifeMiles",
-      "British Airways Executive Club",
-      "Aer Lingus AerClub",
-      "Iberia Plus",
-      "Virgin Atlantic Flying Club",
-      "JetBlue TrueBlue",
-      "Choice Privileges",
-    ],
+    transferPartners: transferPartnerNames("wells-fargo", "wells-fargo-autograph-journey"),
     art: { from: "#2e2b36", to: "#100f14", text: "light", finish: "plastic" },
     url: "https://creditcards.wellsfargo.com/autograph-journey-visa-credit-card/",
     lastVerified: VERIFIED,

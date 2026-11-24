@@ -909,8 +909,9 @@ test("links go only to pages that exist; pending sections are hidden until their
   // Once a pending route exists, take it off PENDING_ROUTES so its links (tiles, flows, sweet-spots buttons) show.
   for (const r of PENDING_ROUTES) assert.ok(!pageExists(r), `${r} exists now: remove it from PENDING_ROUTES in shared/lib/site-routes.ts`);
   for (const t of TOOLS) assert.ok(pageExists(t.href), `tool tile ${t.href}`);
-  assert.equal(routeLive("/points/sweet-spots?region=Japan"), false);
-  assert.equal(routeLive("/pointsy"), true);
+  // Every section has landed: links to Points & Miles and the next-card page are live.
+  assert.equal(routeLive("/points/sweet-spots?region=Japan"), true);
+  assert.ok(pageExists("/points/sweet-spots") && pageExists("/next-card"));
 });
 
 test("start flows: 2–5 one-tap questions, each ending on pages that exist", () => {

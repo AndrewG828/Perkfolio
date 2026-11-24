@@ -10,6 +10,7 @@ import { bigAirports, loungeCountByAirport, loungesAt } from "@/shared/lib/loung
 import { loungeNetworks } from "@/shared/data/networks";
 import { AirportSearch } from "@/frontend/features/lounges/airport-search";
 import { WalletLoungeSummary } from "@/frontend/features/lounges/wallet-lounge-summary";
+import { PointsTeaser } from "@/frontend/features/points/points-teaser";
 
 const FEATURES = [
   {
@@ -149,6 +150,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <PointsTeaser />
 
       {/* Features */}
       <section className="bg-canvas py-16 md:py-20">

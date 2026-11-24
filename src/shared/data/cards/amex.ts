@@ -1,30 +1,12 @@
 import type { Card } from "../types";
+import { transferPartnerNames } from "../points/card-partners";
+
+// `transferPartners` comes from the verified Points & Miles partner list (transferPartnerNames), so don't list
+// partners by hand: update the research and run `npm run points:import`.
 
 // American Express card data. Terms verified against issuer pages and 2026 coverage
 // (One Mile at a Time, Upgraded Points, Doctor of Credit, Frequent Miler, etc.).
 // Welcome offers at Amex are frequently "as high as" / targeted; the public headline offer is listed.
-
-const MR_TRANSFER_PARTNERS = [
-  "Delta SkyMiles",
-  "Air Canada Aeroplan",
-  "British Airways Avios",
-  "Air France-KLM Flying Blue",
-  "Virgin Atlantic Flying Club",
-  "ANA Mileage Club",
-  "Singapore KrisFlyer",
-  "Emirates Skywards",
-  "Etihad Guest",
-  "Qantas Frequent Flyer",
-  "Cathay Pacific Asia Miles",
-  "Avianca LifeMiles",
-  "Iberia Plus",
-  "Aer Lingus AerClub",
-  "Qatar Privilege Club",
-  "JetBlue TrueBlue",
-  "Hilton Honors",
-  "Marriott Bonvoy",
-  "Choice Privileges",
-];
 
 const PLATINUM_LOUNGES: Card["loungeAccess"] = [
   {
@@ -203,7 +185,7 @@ export const amexCards: Card[] = [
     bestFor: "Frequent flyers who want lounge access and will actively use a long list of lifestyle credits.",
     foreignTransactionFee: false,
     authorizedUserFee: "$195 per additional Platinum card",
-    transferPartners: MR_TRANSFER_PARTNERS,
+    transferPartners: transferPartnerNames("amex-mr", "amex-platinum"),
     art: { from: "#eef0f2", to: "#9aa1a9", text: "dark", finish: "metal" },
     url: "https://www.americanexpress.com/us/credit-cards/card/platinum/",
     lastVerified: "2026-11-22",
@@ -281,7 +263,7 @@ export const amexCards: Card[] = [
     bestFor: "Big spenders on dining and groceries who collect transferable points.",
     foreignTransactionFee: false,
     authorizedUserFee: "$35 per additional Gold card",
-    transferPartners: MR_TRANSFER_PARTNERS,
+    transferPartners: transferPartnerNames("amex-mr", "amex-gold"),
     art: { from: "#f6e0a4", to: "#b88a3b", text: "dark", finish: "metal" },
     url: "https://www.americanexpress.com/us/credit-cards/card/gold-card/",
     lastVerified: "2026-11-22",
@@ -326,7 +308,7 @@ export const amexCards: Card[] = [
     bestFor: "Existing holders who spend widely on travel, transit and dining.",
     foreignTransactionFee: false,
     authorizedUserFee: "$0",
-    transferPartners: MR_TRANSFER_PARTNERS,
+    transferPartners: transferPartnerNames("amex-mr", "amex-green"),
     art: { from: "#6f9a77", to: "#2c5638", text: "light", finish: "plastic" },
     url: "https://www.americanexpress.com/us/credit-cards/card/green/",
     lastVerified: "2026-11-22",
@@ -903,7 +885,7 @@ export const amexCards: Card[] = [
     tagline: "The business version of the Platinum: full lounge access, 5x travel and a stack of business credits.",
     bestFor: "Business owners with large spend who will use the Dell, Adobe, Indeed and travel credits.",
     foreignTransactionFee: false,
-    transferPartners: MR_TRANSFER_PARTNERS,
+    transferPartners: transferPartnerNames("amex-mr", "amex-business-platinum"),
     art: { from: "#dfe2e6", to: "#6c737c", text: "dark", finish: "metal" },
     url: "https://www.americanexpress.com/us/credit-cards/business/business-credit-cards/american-express-business-platinum-credit-card-amex/",
     lastVerified: "2026-11-22",
@@ -974,7 +956,7 @@ export const amexCards: Card[] = [
     tagline: "Automatic 4x in your top two business spending categories each month.",
     bestFor: "Small businesses with heavy advertising, software or restaurant spend.",
     foreignTransactionFee: false,
-    transferPartners: MR_TRANSFER_PARTNERS,
+    transferPartners: transferPartnerNames("amex-mr", "amex-business-gold"),
     art: { from: "#f1d28c", to: "#a5782a", text: "dark", finish: "metal" },
     url: "https://www.americanexpress.com/us/credit-cards/business/business-credit-cards/american-express-business-gold-card-amex/",
     lastVerified: "2026-11-22",

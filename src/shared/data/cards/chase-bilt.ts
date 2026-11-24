@@ -1,4 +1,8 @@
 import type { Card } from "../types";
+import { transferPartnerNames } from "../points/card-partners";
+
+// `transferPartners` comes from the verified Points & Miles partner list (transferPartnerNames), so don't list
+// partners by hand: update the research and run `npm run points:import`.
 
 // Chase (incl. co-brands) and Bilt card data.
 // Researched November 2026 from issuer pages and The Points Guy, NerdWallet, One Mile at a Time,
@@ -6,46 +10,7 @@ import type { Card } from "../types";
 
 const LAST_VERIFIED = "2026-11-22";
 
-const CHASE_UR_PARTNERS = [
-  "Aer Lingus AerClub",
-  "Air Canada Aeroplan",
-  "Air France-KLM Flying Blue",
-  "British Airways Executive Club",
-  "Cathay Pacific Asia Miles",
-  "Iberia Plus",
-  "JetBlue TrueBlue",
-  "Qantas Frequent Flyer",
-  "Singapore KrisFlyer",
-  "Southwest Rapid Rewards",
-  "United MileagePlus",
-  "Virgin Atlantic Flying Club",
-  "World of Hyatt",
-  "IHG One Rewards",
-  "Marriott Bonvoy",
-  "Wyndham Rewards",
-];
 
-const BILT_PARTNERS = [
-  "World of Hyatt",
-  "United MileagePlus",
-  "American AAdvantage",
-  "Air Canada Aeroplan",
-  "Air France-KLM Flying Blue",
-  "Alaska Atmos Rewards",
-  "British Airways Executive Club",
-  "Cathay Pacific Asia Miles",
-  "Emirates Skywards",
-  "Japan Airlines Mileage Bank",
-  "JetBlue TrueBlue",
-  "Qatar Airways Privilege Club",
-  "Southwest Rapid Rewards",
-  "Turkish Miles&Smiles",
-  "Virgin Atlantic Flying Club",
-  "Marriott Bonvoy",
-  "Hilton Honors",
-  "IHG One Rewards",
-  "Accor Live Limitless",
-];
 
 const BILT_HOUSING_EARN =
   "Housing-only option: 0.5x–1.25x on rent/mortgage based on non-housing spend vs. housing payment; alternatively use Bilt Cash to unlock up to 1x on housing. No fee to pay rent/mortgage through Bilt.";
@@ -220,7 +185,7 @@ export const chaseBiltCards: Card[] = [
     bestFor: "Frequent travelers who will actually use The Edit, dining, StubHub, DoorDash and Lyft credits and value Sapphire Lounges",
     foreignTransactionFee: false,
     authorizedUserFee: "$195 per authorized user",
-    transferPartners: CHASE_UR_PARTNERS,
+    transferPartners: transferPartnerNames("chase-ur", "chase-sapphire-reserve"),
     art: { from: "#13233f", to: "#05070c", text: "light", finish: "metal" },
     url: "https://creditcards.chase.com/rewards-credit-cards/sapphire/reserve",
     lastVerified: LAST_VERIFIED,
@@ -354,7 +319,7 @@ export const chaseBiltCards: Card[] = [
     bestFor: "Business owners with heavy travel and digital ad spend who can meet the $30k welcome-offer spend",
     foreignTransactionFee: false,
     authorizedUserFee: "Employee cards at no additional cost",
-    transferPartners: CHASE_UR_PARTNERS,
+    transferPartners: transferPartnerNames("chase-ur", "chase-sapphire-reserve-business"),
     art: { from: "#1a2338", to: "#0a0c12", text: "light", finish: "metal" },
     url: "https://creditcards.chase.com/business-credit-cards/sapphire/reserve",
     lastVerified: LAST_VERIFIED,
@@ -429,7 +394,7 @@ export const chaseBiltCards: Card[] = [
     bestFor: "Travelers who want transferable points and strong travel insurance without a premium annual fee",
     foreignTransactionFee: false,
     authorizedUserFee: "$0",
-    transferPartners: CHASE_UR_PARTNERS,
+    transferPartners: transferPartnerNames("chase-ur", "chase-sapphire-preferred"),
     art: { from: "#2a5aa8", to: "#0e2550", text: "light", finish: "metal" },
     url: "https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred",
     lastVerified: LAST_VERIFIED,
@@ -545,7 +510,7 @@ export const chaseBiltCards: Card[] = [
     bestFor: "Small businesses with travel, shipping, telecom and online advertising spend",
     foreignTransactionFee: false,
     authorizedUserFee: "Employee cards at no additional cost",
-    transferPartners: CHASE_UR_PARTNERS,
+    transferPartners: transferPartnerNames("chase-ur", "chase-ink-business-preferred"),
     art: { from: "#3a4a5e", to: "#141a24", text: "light", finish: "metal" },
     url: "https://creditcards.chase.com/business-credit-cards/ink/business-preferred",
     lastVerified: LAST_VERIFIED,
@@ -890,7 +855,7 @@ export const chaseBiltCards: Card[] = [
     tagline: "Bilt's no-fee entry card that earns points on rent or mortgage with no transaction fee.",
     bestFor: "Renters and homeowners who want housing rewards without an annual fee",
     foreignTransactionFee: false,
-    transferPartners: BILT_PARTNERS,
+    transferPartners: transferPartnerNames("bilt", "bilt-blue"),
     art: { from: "#3d63f2", to: "#132b8a", text: "light" },
     url: "https://www.bilt.com/card",
     lastVerified: LAST_VERIFIED,
@@ -942,7 +907,7 @@ export const chaseBiltCards: Card[] = [
     bestFor: "Renters and homeowners with big dining or grocery spend",
     foreignTransactionFee: false,
     authorizedUserFee: "$50 per authorized user",
-    transferPartners: BILT_PARTNERS,
+    transferPartners: transferPartnerNames("bilt", "bilt-obsidian"),
     art: { from: "#2c2c33", to: "#050506", text: "light", finish: "metal" },
     url: "https://www.bilt.com/card",
     lastVerified: LAST_VERIFIED,
@@ -1008,7 +973,7 @@ export const chaseBiltCards: Card[] = [
     bestFor: "High spenders who pay rent or a mortgage and want a premium flat-rate transferable-points card",
     foreignTransactionFee: false,
     authorizedUserFee: "$95 per authorized user",
-    transferPartners: BILT_PARTNERS,
+    transferPartners: transferPartnerNames("bilt", "bilt-palladium"),
     art: { from: "#e2e3e7", to: "#8e9098", text: "dark", finish: "metal" },
     url: "https://www.bilt.com/card/palladium",
     lastVerified: LAST_VERIFIED,
