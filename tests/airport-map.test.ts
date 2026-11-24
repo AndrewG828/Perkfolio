@@ -56,3 +56,27 @@ test("build() projects OSM data and tags gates with their terminal", () => {
   assert.equal(out.gates[0].t, "Concourse A");
   assert.equal(out.terminals.length, 1);
 });
+
+test("route geometry: a walk between concourses crosses where they meet, not through the hubs", () => {
+  // Made-up CLT: concourse D along y=0 (D1..D10), concourse E heading north from D's far end (E1 nearest D10).
+  const clt: AirportMapData = {
+    code: "CLT",
+    origin: [35.21, -80.94],
+    terminals: [],
+    runways: [],
+    gates: [
+      ...Array.from({ length: 10 }, (_, n) => ({ ref: `D${n + 1}`, x: n * 100, y: 0, t: "Concourse D" })),
+      ...Array.from({ length: 10 }, (_, n) => ({ ref: `E${n + 1}`, x: 1000, y: 100 + n * 100, t: "Concourse E" })),
+    ],
+    attribution: "test",
+  };
+  const cltNav = airportNav.CLT;
+  const lounge = loungesAt("CLT").find((l) => l.id === "admirals-club-clt-d")!;
+  const origin = { kind: "gate" as const, zone: "E", gate: parseGate("E10")! };
+  const route = routeTo(cltNav, origin, lounge)!;
+  const geo = routeGeometry(clt, cltNav, origin, route, lounge);
+  assert.deepEqual(geo.segments.map((s) => s.mode), ["walk"]);
+  const pts = geo.segments[0].pts.map((p) => p.join(","));
+  assert.ok(pts.includes("1000,100"), "leaves E at E1");
+  assert.ok(pts.includes("900,0"), "enters D at D10");
+});

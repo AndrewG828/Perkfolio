@@ -27,10 +27,11 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 function zoneHasTerminal(zone: NavZone, terminalName: string | null): boolean {
   if (!terminalName) return false;
   const t = norm(terminalName);
-  // Also match a building named for just the concourse ("Concourse B" for "Terminal 1, Concourse B").
+  // Also match a building named for just the concourse ("Concourse B" for "Terminal 1, Concourse B"), or one with
+  // the airport's name in front ("Washington-Dulles International Airport, Main Terminal").
   return [zone.name, ...(zone.terminals ?? [])]
     .map(norm)
-    .some((z) => z === t || z.startsWith(t) || t.startsWith(z) || (t.length >= 9 && z.endsWith(t)));
+    .some((z) => z === t || z.startsWith(t) || t.startsWith(z) || (Math.min(t.length, z.length) >= 9 && (z.endsWith(t) || t.endsWith(z))));
 }
 
 const centroid = (pts: Pt[]): Pt | null =>
@@ -84,9 +85,26 @@ interface Stop {
   number?: number;
 }
 
+const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const pathLength = (pts: Pt[]) => pts.slice(1).reduce((s, p, i) => s + dist(pts[i], p), 0);
+
+/** Moving average over ±2 points, run twice: cancels the odd/even zig-zag between the two sides of a concourse. */
+function smooth(pts: Pt[]): Pt[] {
+  let out = pts;
+  for (let pass = 0; pass < 2; pass++) {
+    const src = out;
+    out = src.map((p, i) => {
+      if (i === 0 || i === src.length - 1) return p;
+      const win = src.slice(Math.max(0, i - 2), Math.min(src.length, i + 3));
+      return [win.reduce((s, q) => s + q[0], 0) / win.length, win.reduce((s, q) => s + q[1], 0) / win.length] as Pt;
+    });
+  }
+  return out;
+}
+
 /**
  * A walk inside one zone: along the gates numbered between the two ends (smoothed so it runs down the middle of the
- * concourse instead of zig-zagging between odd and even sides), or straight when we can't tell.
+ * concourse), or straight when we can't tell or when the numbering wanders off (gates split across piers).
  */
 function walkPath(data: AirportMapData, zone: NavZone, from: Stop, to: Stop): Pt[] {
   if (from.number === undefined || to.number === undefined || from.prefix !== to.prefix) return [from.pt, to.pt];
@@ -99,10 +117,9 @@ function walkPath(data: AirportMapData, zone: NavZone, from: Stop, to: Stop): Pt
     .map(({ g }) => [g.x, g.y] as Pt);
   const pts: Pt[] = [from.pt, ...between, to.pt];
   if (pts.length < 4) return pts;
-  const smooth = pts.map((p, i) =>
-    i === 0 || i === pts.length - 1 ? p : ([(pts[i - 1][0] + p[0] + pts[i + 1][0]) / 3, (pts[i - 1][1] + p[1] + pts[i + 1][1]) / 3] as Pt),
-  );
-  return smooth;
+  const path = smooth(pts);
+  const direct = dist(from.pt, to.pt);
+  return pathLength(path) > direct * 1.25 + 40 ? [from.pt, to.pt] : path;
 }
 
 /** Where a specific gate is (e.g. "B18" in zone B), disambiguating same-numbered gates by terminal. */
@@ -133,12 +150,14 @@ export interface RouteGeometry {
   end: Pt | null;
 }
 
+function stopAt(g: MapGate): Stop {
+  const p = looseGate(g.ref);
+  return { pt: [g.x, g.y], prefix: p?.prefix, number: p?.number };
+}
+
 function hubStop(data: AirportMapData, zone: NavZone): Stop | null {
   const hub = hubGate(data, zone);
-  if (hub) {
-    const p = looseGate(hub.ref);
-    return { pt: [hub.x, hub.y], prefix: p?.prefix, number: p?.number };
-  }
+  if (hub) return stopAt(hub);
   const a = zoneAnchor(data, zone);
   return a ? { pt: a } : null;
 }
@@ -150,13 +169,35 @@ function gateStop(data: AirportMapData, zone: NavZone, label: string | null | un
   return pt ? { pt, prefix: p?.prefix, number: p?.number } : null;
 }
 
-/** The route as map segments: walk to the train along the concourse, ride, walk to the lounge. */
+/**
+ * Where a walk from one zone into the next crosses over: the closest pair of gates between them (the ends of two
+ * connected concourses), or the gate nearest a zone that has no gates of its own (a main terminal or atrium).
+ */
+function crossing(data: AirportMapData, a: NavZone, b: NavZone): [Stop, Stop] | null {
+  const ga = gatesInZone(data, a);
+  const gb = gatesInZone(data, b);
+  if (ga.length && gb.length) {
+    let best: [MapGate, MapGate] = [ga[0], gb[0]];
+    for (const x of ga) for (const y of gb) if (Math.hypot(x.x - y.x, x.y - y.y) < Math.hypot(best[0].x - best[1].x, best[0].y - best[1].y)) best = [x, y];
+    return [stopAt(best[0]), stopAt(best[1])];
+  }
+  const nearest = (gates: MapGate[], to: Pt) => stopAt(gates.reduce((p, q) => (dist([p.x, p.y], to) <= dist([q.x, q.y], to) ? p : q)));
+  const aa = zoneAnchor(data, a);
+  const ab = zoneAnchor(data, b);
+  if (!aa || !ab) return null;
+  if (ga.length) return [nearest(ga, ab), { pt: ab }];
+  if (gb.length) return [{ pt: aa }, nearest(gb, aa)];
+  return [{ pt: aa }, { pt: ab }];
+}
+
+/**
+ * The route as map segments. Rides (train/bus) and landside hops go hub to hub; walks between zones cross where the
+ * zones meet; inside each zone the path follows the gates from where you enter to where you leave.
+ */
 export function routeGeometry(data: AirportMapData, nav: AirportNav, origin: Origin, route: Route, lounge: Lounge): RouteGeometry {
   const zone = (id: string) => nav.zones.find((z) => z.id === id)!;
-  const hubs = route.zones.map((id) => hubStop(data, zone(id)));
-  const destZone = zone(route.zones[route.zones.length - 1]);
-  const endStop = gateStop(data, destZone, gateOf(lounge)) ?? hubs[hubs.length - 1];
-  const startStop = (origin.kind === "gate" ? gateStop(data, zone(origin.zone), origin.gate?.label) : null) ?? hubs[0];
+  const zones = route.zones.map(zone);
+  const n = zones.length;
   const segments: RouteGeometry["segments"] = [];
   const same = (a: Pt, b: Pt) => a[0] === b[0] && a[1] === b[1];
   const push = (mode: SegmentMode, pts: Pt[]) => {
@@ -166,19 +207,29 @@ export function routeGeometry(data: AirportMapData, nav: AirportNav, origin: Ori
     else segments.push({ mode, pts: [...pts] });
   };
 
-  if (startStop && endStop) {
-    if (route.zones.length <= 1) {
-      push("walk", walkPath(data, destZone, startStop, endStop));
-    } else {
-      if (hubs[0]) push("walk", walkPath(data, zone(route.zones[0]), startStop, hubs[0]));
-      for (let i = 0; i < route.zones.length - 1; i++) {
-        const key = linkKey(route.zones[i], route.zones[i + 1]);
-        const link = route.links.includes(key) ? nav.links.find((l) => linkKey(l.a, l.b) === key) : undefined;
-        if (hubs[i] && hubs[i + 1]) push(link ? link.mode : "landside", [hubs[i]!.pt, hubs[i + 1]!.pt]);
-      }
-      const lastHub = hubs[hubs.length - 1];
-      if (lastHub) push("walk", walkPath(data, destZone, lastHub, endStop));
-    }
+  const entry: (Stop | null)[] = zones.map(() => null);
+  const exit: (Stop | null)[] = zones.map(() => null);
+  const modes: SegmentMode[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const key = linkKey(route.zones[i], route.zones[i + 1]);
+    const link = route.links.includes(key) ? nav.links.find((l) => linkKey(l.a, l.b) === key) : undefined;
+    const mode: SegmentMode = link ? link.mode : "landside";
+    modes.push(mode);
+    const cross = mode === "walk" ? crossing(data, zones[i], zones[i + 1]) : null;
+    exit[i] = cross ? cross[0] : hubStop(data, zones[i]);
+    entry[i + 1] = cross ? cross[1] : hubStop(data, zones[i + 1]);
+  }
+  const startStop = (origin.kind === "gate" ? gateStop(data, zones[0], origin.gate?.label) : null) ?? exit[0] ?? hubStop(data, zones[0]);
+  const endStop = gateStop(data, zones[n - 1], gateOf(lounge)) ?? entry[n - 1] ?? hubStop(data, zones[n - 1]);
+  entry[0] = startStop;
+  exit[n - 1] = endStop;
+
+  for (let i = 0; i < n; i++) {
+    const a = entry[i];
+    const b = exit[i];
+    if (a && b) push("walk", walkPath(data, zones[i], a, b));
+    const next = entry[i + 1];
+    if (i < n - 1 && b && next) push(modes[i], [b.pt, next.pt]);
   }
   return { segments, start: startStop?.pt ?? null, end: endStop?.pt ?? null };
 }
