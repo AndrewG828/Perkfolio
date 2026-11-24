@@ -11,10 +11,14 @@ export interface LoungeAccessGrant {
   via: LoungeNetwork;
 }
 
+/** A note that says a lounge is out of Priority Pass ("Not in Priority Pass", "left Priority Pass"). */
+const NOT_PRIORITY_PASS = /\b(?:not (?:in|part of)|no longer (?:in|part of)|left|leaving|out of)\s+(?:the\s+)?priority pass\b/i;
+
 /** Networks a lounge can be entered through (e.g. a Plaza Premium lounge that also takes Priority Pass). */
 export function networksFor(l: Lounge): LoungeNetwork[] {
   const n: LoungeNetwork[] = [l.network];
-  if (l.network !== "priority-pass" && /priority pass/i.test(l.notes ?? "")) n.push("priority-pass");
+  const notes = l.notes ?? "";
+  if (l.network !== "priority-pass" && /priority pass/i.test(notes) && !NOT_PRIORITY_PASS.test(notes)) n.push("priority-pass");
   return n;
 }
 

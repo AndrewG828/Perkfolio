@@ -17,6 +17,7 @@ import {
 import { useHydrated } from "@/frontend/state/wallet-store";
 import { AccessPicker, useAccessSelection } from "./access-picker";
 import { AirportSearch } from "./airport-search";
+import { GuestCostFinder } from "./guest-cost";
 
 /** Lounge finder home: search, the big airports with your access at each, and every airport we cover. */
 export function LoungeFinder() {
@@ -39,10 +40,23 @@ export function LoungeFinder() {
 
   return (
     <div className="bg-canvas">
-      <div className="container-page grid gap-8 py-10 lg:grid-cols-[320px_1fr]">
-        <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">
-          <AccessPicker access={access} />
-          <div className="panel p-5">
+      {/*
+        Two columns on large screens: the sidebar (access, guests, networks) and the main column (search, big airports,
+        directory). On phones both wrappers dissolve (display: contents) so their panels interleave by `order`: search
+        first, then your access, the big airports, the guest calculator, networks and the directory.
+      */}
+      <div className="container-page grid grid-cols-1 gap-8 py-10 lg:grid-cols-[320px_1fr]">
+        <div className="contents lg:sticky lg:top-28 lg:block lg:space-y-5 lg:self-start">
+          <div className="order-2">
+            <AccessPicker access={access} />
+          </div>
+          <div className="order-4">
+            <GuestCostFinder
+              cardIds={access.mode === "all" ? "all" : access.selected.map((c) => c.id)}
+              ready={access.mode !== "wallet" || hydrated}
+            />
+          </div>
+          <div className="panel order-5 p-5">
             <h2 className="text-sm font-semibold text-ink">Lounge networks</h2>
             <ul className="mt-3 space-y-2 text-sm">
               {(Object.keys(loungeNetworks) as LoungeNetwork[])
@@ -56,10 +70,10 @@ export function LoungeFinder() {
                 ))}
             </ul>
           </div>
-        </aside>
+        </div>
 
-        <div className="min-w-0 space-y-8">
-          <div className="panel relative p-5">
+        <div className="contents lg:block lg:min-w-0 lg:space-y-8">
+          <div className="panel relative order-1 min-w-0 p-5">
             <p className="mb-2 text-sm font-semibold text-ink">Find an airport</p>
             <AirportSearch carry={access.carry} />
             {checking && (
@@ -70,7 +84,7 @@ export function LoungeFinder() {
             )}
           </div>
 
-          <section>
+          <section className="order-3 min-w-0">
             <h2 className="mb-1 text-lg font-semibold text-navy">Big airports</h2>
             <p className="mb-4 text-sm text-ink-2">Each has a terminal map showing where every lounge is.</p>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -112,7 +126,9 @@ export function LoungeFinder() {
             </div>
           </section>
 
-          <AirportDirectory openAt={openAt} checking={checking} carry={access.carry} />
+          <div className="order-6 min-w-0">
+            <AirportDirectory openAt={openAt} checking={checking} carry={access.carry} />
+          </div>
         </div>
       </div>
     </div>

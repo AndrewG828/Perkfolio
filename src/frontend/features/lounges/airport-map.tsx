@@ -216,7 +216,8 @@ export function AirportMap({
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
+    // A box measured while hidden or collapsed reads 0 wide or tall: keep the last real size (no Infinity scales).
+    const ro = new ResizeObserver(([e]) => e.contentRect.width > 0 && e.contentRect.height > 0 && setSize({ w: e.contentRect.width, h: e.contentRect.height }));
     ro.observe(el);
     return () => ro.disconnect();
   }, [data, ready]);

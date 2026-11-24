@@ -19,7 +19,7 @@ export const loungeNetworks: Record<LoungeNetwork, NetworkInfo> = {
     label: "American Express Lounge",
     short: "Amex Intl",
     color: "#006fcf",
-    description: "Amex-branded lounges outside the U.S. (e.g. India, Mexico, Argentina).",
+    description: "Amex partner lounges abroad that aren't Centurion Lounges (e.g. Stockholm Arlanda, São Paulo Guarulhos).",
   },
   "delta-sky-club": {
     label: "Delta Sky Club",
@@ -67,7 +67,7 @@ export const loungeNetworks: Record<LoungeNetwork, NetworkInfo> = {
     label: "Lufthansa Lounge",
     short: "Lufthansa",
     color: "#05164d",
-    description: "Lufthansa lounges; Amex Platinum access when flying Lufthansa Group.",
+    description: "Lufthansa lounges. No card here currently includes access: Amex's current lounge terms have no Lufthansa section.",
   },
   "united-club": {
     label: "United Club",
@@ -92,5 +92,18 @@ export const loungeNetworks: Record<LoungeNetwork, NetworkInfo> = {
     short: "Citi",
     color: "#056dae",
     description: "Citi-branded lounges.",
+  },
+  "air-canada-maple-leaf": {
+    label: "Air Canada Maple Leaf Lounge",
+    short: "Maple Leaf",
+    color: "#a6192e",
+    description:
+      "Air Canada's Maple Leaf Lounges and Air Canada Cafés in Canada, the U.S. and Europe. Card access needs a departing or connecting flight operated by a Star Alliance airline.",
+  },
+  "star-alliance-lounges": {
+    label: "Star Alliance lounges",
+    short: "Star Alliance",
+    color: "#5b6770",
+    description: "Lounges run by Star Alliance member and affiliated airlines, each with its own access and guest rules.",
   },
 };
