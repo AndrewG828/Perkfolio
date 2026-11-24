@@ -6,6 +6,7 @@ import { annualizedCreditValue, cards, categoryLabels, getCard, rateLabel } from
 import { loungeNetworks } from "@/shared/data/networks";
 import { CardArt } from "@/frontend/components/card-art";
 import { WalletButton } from "@/frontend/components/wallet-button";
+import { EligibilityPanel } from "@/frontend/features/cards/eligibility-panel";
 import { frequencyLabel, frequencyShort } from "@/shared/lib/periods";
 import { usd } from "@/shared/lib/format";
 
@@ -58,6 +59,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
               {card.welcomeOfferValue > 0 && (
                 <p className="mt-1 text-sm text-ink-2">Worth about {usd(card.welcomeOfferValue)} by our valuation.</p>
               )}
+              <EligibilityPanel cardId={card.id} />
             </div>
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
               {[
