@@ -61,6 +61,14 @@ export function textWidth(text: string, size: number, weight: number, caps = fal
 const overlaps = (a: Box, b: Box, pad = 2) =>
   a.left < b.left + b.w + pad && b.left < a.left + a.w + pad && a.top < b.top + b.h + pad && b.top < a.top + a.h + pad;
 
+/** Distance from p to the segment a–b (screen pixels). */
+export function segmentDistance(p: [number, number], a: [number, number], b: [number, number]): number {
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+  const len2 = dx * dx + dy * dy;
+  const t = len2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+}
+
 /** Small boxes along a screen-space polyline, so labels keep off the route. */
 export function lineBoxes(pts: [number, number][], step = 9, half = 4): Box[] {
   const out: Box[] = [];
@@ -112,7 +120,7 @@ export function placeLabels(items: LabelItem[], obstacles: (Box & { id?: string 
     let leader = false;
     if (!spot && it.force) {
       // Further out, with a leader line back to the marker.
-      const far = [16, 34].flatMap((extra) =>
+      const far = [16, 34, 52].flatMap((extra) =>
         FAR.map(([c, s]) => {
           const [px, py] = [it.x + c * (gap + extra), it.y + s * (gap + extra)];
           return { left: c > 0.3 ? px : c < -0.3 ? px - w : px - w / 2, top: s > 0.3 ? py : s < -0.3 ? py - h : py - h / 2, w, h };
@@ -121,8 +129,12 @@ export function placeLabels(items: LabelItem[], obstacles: (Box & { id?: string 
       spot = far.find(free);
       leader = Boolean(spot);
       if (!spot) {
-        // Best effort: the spot that covers the fewest other things.
-        const cost = (b: Box) => (inside(b) ? 0 : 1000) + placed.filter((p) => overlaps(p, b)).length * 10 + obstacles.filter((o) => blocks(o) && overlaps(o, b, 0)).length;
+        // Best effort: the spot that covers the fewest other things, above all other labels and pins.
+        const weight = (o: Box & { id?: string }) => (o.id?.startsWith("pin:") || o.id === "you" ? 10 : 1);
+        const cost = (b: Box) =>
+          (inside(b) ? 0 : 1000) +
+          placed.filter((p) => overlaps(p, b)).length * 10 +
+          obstacles.filter((o) => blocks(o) && overlaps(o, b, 0)).reduce((s, o) => s + weight(o), 0);
         spot = [...spots, ...far].reduce((a, b) => (cost(b) < cost(a) ? b : a));
         leader = !spots.includes(spot);
       }

@@ -106,17 +106,22 @@ The repository's upsert only writes if the stored version equals `base`; the new
   route on top. Geometry comes from OpenStreetMap: `npm run maps:build` (scripts/build-airport-maps.ts, using
   `shared/lib/osm-airport.ts`) writes `public/airport-maps/<CODE>.json`. If an airport has no file, the browser builds
   it from overpass-api.de and caches it in localStorage. Routes stay inside the buildings: `shared/lib/walkable.ts`
-  rasterizes the terminal outlines into a ~3 m grid (wall clearance, A* that keeps to the middle of corridors, string
-  pulling), and `shared/lib/airport-map.ts` splits it into zones (nearest zone gates/building by walking; a building
-  named for several, like IAD's "Concourse A & B", belongs to each), puts every zone middle, pin and the You marker
-  inside a building, and walks each leg through the doors between consecutive zones. Zones a walkway joins that OSM
-  doesn't (ORD's B–C tunnel) get one fixed dotted connector per pair, only ever on a nav walk link. Trains are dashed
-  hops between zone middles, cut short where the walk would double back along them; buses (facade to facade) and trips
-  outside security are arcs. A gate OSM lacks is placed between its numbered neighbours, else You goes to the zone's
-  middle, labelled with the zone. The page builds all this in idle-time steps (`prepareMapStep`), never in a render.
-  Without outlines it falls back to following the gates; `tests/airport-routes.test.ts` routes every pre-built map
-  from every OSM gate (start zone, connectors, outlines, no doubling back). Credit "© OpenStreetMap contributors
-  (ODbL)" wherever the map shows.
+  rasterizes the terminal outlines into a ~3 m grid with each cell's room from the real outline (A* that keeps to the
+  middle of corridors, string pulling that keeps most of that room), and `shared/lib/airport-map.ts` splits it into
+  zones (nearest zone gates/building by walking; a building named for several, like IAD's "Concourse A & B", belongs
+  to each; a zone without gate rules, like Heathrow's terminals, takes the gates in its own buildings), puts every
+  zone middle, pin and the You marker well inside a building (gate pins ~9 m in from the wall), and walks each leg
+  through the doors between consecutive zones. Zones a walkway joins that OSM doesn't (ORD's B–C tunnel) are drawn one
+  way per pair: a fixed dotted connector, only ever on a nav walk link, or through the buildings; a walk over a gap
+  between buildings OSM draws apart is dotted too. Trains are dashed hops between zone middles; buses (facade to
+  facade, on the airfield side) and trips outside security (on the landside) are arcs that keep off other buildings,
+  and a trip outside security leaves from the zone with the exits (JFK T4's hall). Every ride is boarded and left
+  where the walks meet it, so it never runs past the lounge or back past your gate. A gate OSM lacks is
+  placed between its numbered neighbours (same side first), else You goes to the zone's middle, labelled with the
+  zone. The page builds all this, crossings included, in idle-time steps of a few ms (`prepareMapStep`), never in a
+  render. Without outlines it falls back to following the gates; `tests/airport-routes.test.ts` routes every
+  pre-built map from every OSM gate and lounge gate (start zone, connectors, outlines, walls, no doubling back on any
+  ride, pins by their gates). Credit "© OpenStreetMap contributors (ODbL)" wherever the map shows.
 - Other storage: compare selection is in sessionStorage `perkfolio:compare:v1`; banner dismissal is
   `perkfolio:banner-dismissed`.
 - Anything reading `new Date()` or localStorage must render after hydration (`useHydrated()`), or prerendering

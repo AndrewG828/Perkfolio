@@ -6,7 +6,7 @@ import type { Lounge } from "@/shared/data/types";
 import type { AirportNav } from "@/shared/data/airport-nav";
 import { loungeNetworks } from "@/shared/data/networks";
 import type { LoungeAccessGrant } from "@/shared/lib/lounge-access";
-import type { Origin, Route } from "@/shared/lib/wayfinding";
+import { zoneForLounge, type Origin, type Route } from "@/shared/lib/wayfinding";
 import { build, overpassQuery } from "@/shared/lib/osm-airport";
 import {
   bounds,
@@ -21,7 +21,7 @@ import {
 } from "@/shared/lib/airport-map";
 import { terminalRings } from "@/shared/lib/walkable";
 import { cn } from "@/shared/lib/format";
-import { CAPS_TRACKING, lineBoxes, placeLabels, shortLoungeName, shortZoneName, type Box, type LabelItem } from "./map-labels";
+import { CAPS_TRACKING, lineBoxes, placeLabels, segmentDistance, shortLoungeName, shortZoneName, type Box, type LabelItem } from "./map-labels";
 
 type View = { x: number; y: number; w: number; h: number };
 
@@ -60,17 +60,23 @@ function loadMap(code: string) {
   return cache.get(code)!;
 }
 
-/** Runs `fn` when the browser is idle (or soon, where there's no requestIdleCallback); returns a cancel function. */
-function whenIdle(fn: () => void): () => void {
+/**
+ * Runs `fn` when the browser is idle (or soon, where there's no requestIdleCallback), passing how many milliseconds
+ * it may take before it should yield; returns a cancel function.
+ */
+function whenIdle(fn: (budget: () => number) => void): () => void {
   const w = window as Window & {
-    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    requestIdleCallback?: (cb: (deadline: { timeRemaining: () => number }) => void, opts?: { timeout: number }) => number;
     cancelIdleCallback?: (id: number) => void;
   };
   if (w.requestIdleCallback && w.cancelIdleCallback) {
-    const id = w.requestIdleCallback(fn, { timeout: 250 });
+    const id = w.requestIdleCallback((deadline) => fn(() => Math.min(deadline.timeRemaining(), 12)), { timeout: 250 });
     return () => w.cancelIdleCallback!(id);
   }
-  const id = window.setTimeout(fn, 16);
+  const id = window.setTimeout(() => {
+    const t0 = performance.now();
+    fn(() => 12 - (performance.now() - t0));
+  }, 16);
   return () => window.clearTimeout(id);
 }
 
@@ -84,6 +90,8 @@ const SEGMENT_STYLE: Record<SegmentMode, { dash?: (w: number) => string; color: 
   landside: { color: "var(--color-warn)", dash: (w) => `0.1 ${1.7 * w}` },
   // A walk the map has no building for (a tunnel or bridge): a dotted line in the route's color.
   connector: { color: ROUTE, dash: (w) => `0.1 ${1.6 * w}` },
+  // A walk over a gap between buildings the map draws apart: dotted too.
+  seam: { color: ROUTE, dash: (w) => `0.1 ${1.6 * w}` },
 };
 /** The zoom buttons' corner (px), kept clear of the route and labels. */
 const CONTROLS = { w: 52, h: 124 };
@@ -166,15 +174,18 @@ export function AirportMap({
     };
   }, [code]);
 
-  // The walkable grid, zones and pins take ~50–150 ms to work out the first time: do it in a few pieces when the
-  // browser is idle, not in a render. Later visits to the same airport find it cached.
+  // The walkable grid, zones, pins and crossings take ~150–350 ms to work out the first time: do it in pieces of a
+  // few milliseconds when the browser is idle, not in a render. Later visits to the same airport find it cached.
   const ready = Boolean(data && (prepared === data || isMapPrepared(data, nav)));
   useEffect(() => {
     if (!data || isMapPrepared(data, nav)) return;
     let cancel = () => {};
-    const step = () => {
-      if (prepareMapStep(data, nav)) setPrepared(data);
-      else cancel = whenIdle(step);
+    // A few pieces per idle period, while it has time to spare (each piece takes a few milliseconds).
+    const step = (budget: () => number) => {
+      do {
+        if (prepareMapStep(data, nav)) return setPrepared(data);
+      } while (budget() > 4);
+      cancel = whenIdle(step);
     };
     cancel = whenIdle(step);
     return () => cancel();
@@ -293,7 +304,13 @@ export function AirportMap({
   const startGate = origin?.kind === "gate" ? origin.gate : undefined;
   // When the gate isn't on the map the marker is at the zone's middle: say so, and don't label it with the gate.
   const gateMissing = Boolean(startGate && geo?.startAt === "zone");
-  const youLabel = origin?.kind === "gate" ? (startGate && !gateMissing ? startGate.label : zoneName(origin.zone)) : "Security";
+  // "Gate 3" rather than a bare number; from security, where you come out (the zone's middle), not the checkpoint.
+  const youLabel =
+    origin?.kind === "gate"
+      ? startGate && !gateMissing
+        ? `${startGate.prefix ? "" : "Gate "}${startGate.label}`
+        : zoneName(origin.zone)
+      : "After security";
   const startNote =
     startGate && origin?.kind === "gate"
       ? gateMissing
@@ -303,7 +320,9 @@ export function AirportMap({
           : null
       : null;
   const isOpen = (l: Lounge) => (grants.get(l.id)?.length ?? 0) > 0;
-  const pinRadius = (l: Lounge) => (target?.id === l.id ? 11 : 8.5);
+  // Zoomed far out (a long route on a phone), smaller pins and no gate dots, so the concourses stay readable.
+  const far = scale < 0.3;
+  const pinRadius = (l: Lounge) => (target?.id === l.id ? (far ? 9 : 11) : far ? 6 : 8.5);
 
   // Route lines scale with the zoom (about 6 m wide), between 3 and 6 px, so they don't hide narrow walkways.
   const lineW = Math.min(6, Math.max(3, 6 * scale));
@@ -322,36 +341,38 @@ export function AirportMap({
   }
   for (const s of geo?.segments ?? []) obstacles.push(...lineBoxes(s.pts.map(toScreen)));
   // Gate dots, so labels don't sit on them.
-  data.gates.forEach((g, i) => {
-    const [sx, sy] = toScreen([g.x, g.y]);
-    if (inView(sx, sy)) obstacles.push({ id: `gate:${i}`, left: sx - 2.5, top: sy - 2.5, w: 5, h: 5 });
-  });
+  if (!far)
+    data.gates.forEach((g, i) => {
+      const [sx, sy] = toScreen([g.x, g.y]);
+      if (inView(sx, sy)) obstacles.push({ id: `gate:${i}`, left: sx - 2.5, top: sy - 2.5, w: 5, h: 5 });
+    });
   // The zoom buttons in the top-right corner.
   obstacles.push({ left: size.w - CONTROLS.w, top: 0, w: CONTROLS.w, h: CONTROLS.h });
   const labelItems: LabelItem[] = [];
   const targetPin = target ? pins.find((p) => p.lounge.id === target.id) : undefined;
   if (targetPin) {
     const [x, y] = toScreen(targetPin.p);
-    labelItems.push({ id: `pin:${targetPin.lounge.id}`, text: shortLoungeName(targetPin.lounge.name), x, y, r: 11, size: 13, weight: 700, force: true });
+    labelItems.push({ id: `pin:${targetPin.lounge.id}`, text: shortLoungeName(targetPin.lounge.name), x, y, r: pinRadius(targetPin.lounge), size: 13, weight: 700, force: true });
   }
   if (geo?.start) {
     const [x, y] = toScreen(geo.start);
     labelItems.push({ id: "you", text: `You · ${youLabel}`, x, y, r: 9, size: 12, weight: 700, force: true });
   }
-  // Zone names when zoomed out (gate numbers take over when zoomed in), at the zone's middle or another roomy spot:
-  // before the other lounges' names, which the pins' tooltips carry anyway.
-  if (scale < 1.1) {
-    for (const m of markers) {
-      const [x, y] = toScreen(m.p);
-      const alts = m.alt.map((a) => toScreen(a)).map(([ax, ay]) => ({ x: ax, y: ay }));
-      labelItems.push({ id: `zone:${m.zone.id}`, text: shortZoneName(m.zone.name).toUpperCase(), x, y, r: 0, size: 10.5, weight: 700, caps: true, spots: ["center"], alts, over: "gate:" });
-    }
+  // Zone names, at the zone's middle or another roomy spot in it (on it, or just above or below), at every zoom: the
+  // destination's first, then the route's, before the other lounges' names (which the pins' tooltips carry anyway).
+  const onRoute = new Set(route?.zones ?? []);
+  const destZone = target ? zoneForLounge(nav, target)?.id : undefined;
+  const zoneRank = (id: string) => (id === destZone ? 0 : onRoute.has(id) ? 1 : 2);
+  for (const m of [...markers].sort((a, b) => zoneRank(a.zone.id) - zoneRank(b.zone.id))) {
+    const [x, y] = toScreen(m.p);
+    const alts = m.alt.map((a) => toScreen(a)).map(([ax, ay]) => ({ x: ax, y: ay }));
+    labelItems.push({ id: `zone:${m.zone.id}`, text: shortZoneName(m.zone.name).toUpperCase(), x, y, r: 6, size: 10.5, weight: 700, caps: true, spots: ["center", "above", "below"], alts, over: "gate:" });
   }
   if (scale > 0.18) {
     const rest = pins.filter((p) => p.lounge.id !== target?.id).sort((a, b) => Number(isOpen(b.lounge)) - Number(isOpen(a.lounge)));
     for (const { lounge, p } of rest) {
       const [x, y] = toScreen(p);
-      labelItems.push({ id: `pin:${lounge.id}`, text: shortLoungeName(lounge.name), x, y, r: 8.5, size: 11, weight: 600 });
+      labelItems.push({ id: `pin:${lounge.id}`, text: shortLoungeName(lounge.name), x, y, r: pinRadius(lounge), size: 11, weight: 600 });
     }
   }
   if (showGateLabels) {
@@ -402,14 +423,21 @@ export function AirportMap({
   // The destination's pin goes on top of the others.
   const pinOrder = targetPin ? [...pins.filter((p) => p !== targetPin), targetPin] : pins;
   const hasMode = (m: SegmentMode) => Boolean(geo?.segments.some((s) => s.mode === m));
-  // You're at a lounge's door (your gate is its gate): ring its pin rather than hide it under the You marker.
-  const youOnPin = Boolean(
-    geo?.start &&
-      pins.some(({ p }) => {
-        const [a, b] = [toScreen(p), toScreen(geo.start!)];
-        return Math.hypot(a[0] - b[0], a[1] - b[1]) < 14;
-      }),
-  );
+  // You're at a lounge's door (your gate is its gate, so you're on the same spot): ring its pin rather than hide it
+  // under the You marker. By where they are, not how close they look when zoomed out.
+  const youOnPin = Boolean(geo?.start && pins.some(({ p }) => Math.hypot(p[0] - geo.start![0], p[1] - geo.start![1]) < 6));
+  // Where you get on and off trains and buses (and the stops in between), as small station marks.
+  const stations = (geo?.segments ?? [])
+    .filter((s) => s.mode === "train" || s.mode === "bus")
+    .flatMap((s) => s.pts.map((p, i) => ({ p, end: i === 0 || i === s.pts.length - 1 })).filter((x) => x.end || s.mode === "train"))
+    .filter(({ p }) => !geo?.start || Math.hypot(p[0] - geo.start[0], p[1] - geo.start[1]) > px(12));
+  // Other lounges' pins the route passes under get a white ring, so the line visibly runs beneath them rather than
+  // reading as a stop.
+  const routeScreen = (geo?.segments ?? []).map((s) => s.pts.map(toScreen));
+  const underRoute = (p: Pt, r: number) => {
+    const [x, y] = toScreen(p);
+    return routeScreen.some((pts) => pts.slice(1).some((b, i) => segmentDistance([x, y], pts[i], b) < r + lineW / 2 + 1));
+  };
 
   return (
     <div className="space-y-2">
@@ -436,12 +464,13 @@ export function AirportMap({
           {outlines.map((d, i) => (
             <path key={`tf${i}`} d={d} fill={BUILDING} stroke={BUILDING} strokeWidth={3} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
           ))}
-          {data.gates.map((g, i) => (
-            <g key={`g${i}`}>
-              <circle cx={g.x} cy={g.y} r={px(2.2)} fill="#a3adb9" />
-              {showGateLabels && renderLabel(`gate:${i}`, "#717c88", 2)}
-            </g>
-          ))}
+          {!far &&
+            data.gates.map((g, i) => (
+              <g key={`g${i}`}>
+                <circle cx={g.x} cy={g.y} r={px(2.2)} fill="#a3adb9" />
+                {showGateLabels && renderLabel(`gate:${i}`, "#717c88", 2)}
+              </g>
+            ))}
           {markers.map((m) => (
             <g key={`z${m.zone.id}`} aria-hidden="true">
               {renderLabel(`zone:${m.zone.id}`, "#6b7787")}
@@ -467,6 +496,18 @@ export function AirportMap({
               </g>
             );
           })}
+          {stations.map(({ p, end }, i) => (
+            <circle
+              key={`st${i}`}
+              cx={p[0]}
+              cy={p[1]}
+              r={px(end ? lineW * 0.75 + 1.5 : lineW * 0.5 + 0.5)}
+              fill="#fff"
+              stroke={ROUTE}
+              strokeWidth={end ? 2 : 1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
           {arrows.map(({ p, deg }, i) => (
             <path
               key={`a${i}`}
@@ -500,11 +541,13 @@ export function AirportMap({
                 onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onPick(l)}
               >
                 <title>{`${l.name} (${loungeNetworks[l.network].label})${checking ? (ok ? " — you can get in" : " — not with these cards") : ""}`}</title>
-                {isTarget && (
+                {isTarget ? (
                   <>
                     <circle cx={p[0]} cy={p[1]} r={px(19)} fill="var(--color-brand)" opacity={0.16} />
                     <circle cx={p[0]} cy={p[1]} r={px(14.5)} fill="none" stroke="var(--color-brand)" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
                   </>
+                ) : (
+                  underRoute(p, pinRadius(l)) && <circle cx={p[0]} cy={p[1]} r={px(pinRadius(l) + 3.5)} fill="#fff" />
                 )}
                 <circle cx={p[0]} cy={p[1]} r={px(pinRadius(l))} fill={filled ? color : "#fff"} stroke={filled ? "#fff" : "#8a8d91"} strokeWidth={2} vectorEffect="non-scaling-stroke" />
                 {filled && <circle cx={p[0]} cy={p[1]} r={px(3)} fill="#fff" />}
@@ -546,11 +589,13 @@ export function AirportMap({
         <span className="flex items-center gap-1.5">
           <span className="h-1 w-5 rounded bg-brand" /> Walk
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-1 w-5 rounded bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_10px)]" /> Train or bus
+        <span className={cn("flex items-center gap-1.5", !hasMode("train") && !hasMode("bus") && "hidden")}>
+          <span className="h-1 w-5 rounded bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_10px)]" />{" "}
+          {hasMode("train") && hasMode("bus") ? "Train or bus" : hasMode("bus") ? "Bus" : "Train"}
         </span>
-        <span className={cn("flex items-center gap-1.5", !hasMode("connector") && "hidden")}>
-          <span className="h-1.5 w-5 rounded bg-[radial-gradient(circle,var(--color-brand)_1.6px,transparent_1.8px)] bg-[length:6px_6px] bg-center" /> Tunnel or bridge
+        <span className={cn("flex items-center gap-1.5", !hasMode("connector") && !hasMode("seam") && "hidden")}>
+          <span className="h-1.5 w-5 rounded bg-[radial-gradient(circle,var(--color-brand)_1.6px,transparent_1.8px)] bg-[length:6px_6px] bg-center" />{" "}
+          {hasMode("connector") ? "Tunnel or bridge" : "Walkway not on the map"}
         </span>
         <span className={cn("flex items-center gap-1.5", !hasMode("landside") && "hidden")}>
           <span className="h-1 w-5 rounded bg-[repeating-linear-gradient(90deg,var(--color-warn)_0_2px,transparent_2px_7px)]" /> Outside security

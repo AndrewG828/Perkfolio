@@ -107,3 +107,24 @@ test("smoothing keeps off the walls even when the path starts against one", () =
     if (p[0] > 50 && p[0] < 100) assert.ok(g.clear[cellAt(g, p)] >= 6, `${p.map(Math.round)} grazes the pillar (${g.clear[cellAt(g, p)]} m clear)`);
   }
 });
+
+test("paths keep to the middle of a wide corridor, round the bend too, not along its inside wall", () => {
+  // A 60 m wide L: from the end of one arm to the end of the other, the shortest way hugs the inner corner.
+  const wide: Pt[] = [[0, 0], [400, 0], [400, 60], [60, 60], [60, 400], [0, 400], [0, 0]];
+  const g = walkGrid(map([[wide]]))!;
+  const a: Pt = [380, 30];
+  const b: Pt = [30, 380];
+  const pts = smoothCells(g, cellPath(g, cellAt(g, a), cellAt(g, b))!, a, b);
+  for (const p of samples(pts)) {
+    if (Math.hypot(p[0] - a[0], p[1] - a[1]) < 20 || Math.hypot(p[0] - b[0], p[1] - b[1]) < 20) continue;
+    assert.ok(g.room[cellAt(g, p)] >= 8, `${p.map(Math.round)} is ${g.room[cellAt(g, p)]} m from the wall`);
+  }
+});
+
+test("room is measured from the real outline: none outside it, about the distance to the wall inside", () => {
+  const g = walkGrid(map([[L]]))!;
+  assert.equal(g.room[cellAt(g, [-2, 100])], 0); // in the walkable ring around the building, outside its outline
+  assert.ok(Math.abs(g.room[cellAt(g, [20, 100])] - 20) <= 3, `${g.room[cellAt(g, [20, 100])]}`); // the arm's middle
+  assert.ok(g.cost[cellAt(g, [20, 100])] < g.cost[cellAt(g, [4, 100])], "the middle costs less than the wall");
+});
+
