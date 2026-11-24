@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { CalendarClock, ChevronDown, PlaneTakeoff, Search, TriangleAlert } from "lucide-react";
-import { ENTRY_REQUIREMENTS, type Destination, type EntryRequirement } from "@/shared/data/travel/types";
+import { CalendarClock, ChevronDown, Hourglass, Info, PlaneTakeoff, Search, TriangleAlert } from "lucide-react";
+import { ENTRY_REQUIREMENTS, type Confidence, type Destination, type EntryRequirement } from "@/shared/data/travel/types";
 import { entryRequirements } from "@/shared/data/travel/entry-requirements";
-import { feeText, formatIsoDate, latestIso, noteList } from "@/shared/lib/travel-format";
+import { feeText, formatIsoDate, hostOf, noteList, readableDates } from "@/shared/lib/travel-format";
 import { fold } from "@/shared/lib/airports";
+import { PLACE_NOTES, searchDestinations, usPlaceFor } from "@/shared/lib/entry-search";
 import { cn } from "@/shared/lib/format";
-import { ExternalA, SeedNotice, SourceLinks } from "./ui";
+import { DataNotice, ExternalA, SourceLinks } from "./ui";
 
 export const REQUIREMENT_INFO: Record<EntryRequirement, { label: string; blurb: string; badge: string; dot: string }> = {
   "visa-free": {
@@ -51,7 +52,23 @@ const SHORT: Record<EntryRequirement, string> = {
   "visa-required": "Visa required",
 };
 
-const STATE_DEPT = "https://travel.state.gov/content/travel/en/international-travel.html";
+/** "Japan is visa-free", "Kenya needs an e-Visa": what a filter hides, in a few words. */
+const NEEDS: Record<EntryRequirement, string> = {
+  "visa-free": "is visa-free",
+  eta: "needs a travel authorization (ETA)",
+  evisa: "needs an e-Visa",
+  "visa-on-arrival": "gives visas on arrival",
+  "visa-required": "needs a visa",
+};
+
+/** The State Department's travel advisories index: the one page of theirs confirmed after its 2026 move. */
+const ADVISORIES = "https://travel.state.gov/en/international-travel/travel-advisories.html";
+
+const CONFIDENCE: Record<Confidence, string> = {
+  high: "From the destination government's own rules",
+  medium: "From secondary sources (travel outlets, GOV.UK's advice or a visa dataset), not the destination's own site",
+  low: "Thinly sourced",
+};
 
 export function RequirementBadge({ requirement }: { requirement: EntryRequirement }) {
   const info = REQUIREMENT_INFO[requirement];
@@ -63,22 +80,78 @@ export function RequirementBadge({ requirement }: { requirement: EntryRequiremen
   );
 }
 
-const stayText = (s: Destination["maxStay"]) => (s === null || s === "" ? "Set by your visa" : typeof s === "number" ? `${s} days` : s);
+/** Max stay in words; null stays unknown. */
+const stayText = (s: Destination["maxStay"]) =>
+  s === null || s === "" ? "Not confirmed" : typeof s === "number" ? `${s} days` : readableDates(s);
+
+/** Prose from the data, with ISO dates written out like the page's headings. */
+const prose = (s: string) => readableDates(s);
+
+/** A fee as published, or where to find it when it isn't confirmed. */
+const feeOrCheck = (fee: number | string | null) => (fee === null || fee === "" ? "Check the official site" : feeText(fee));
 
 const isRequirement = (v: string | null): v is EntryRequirement => ENTRY_REQUIREMENTS.includes(v as EntryRequirement);
 
 /** Row key and anchor: the ISO code, or the name for a group of countries ("Schengen Area" → "schengen-area"). */
 const keyOf = (d: Destination) => d.iso2 ?? fold(d.country).replace(/[^a-z0-9]+/g, "-");
 
+/** Country names for ISO codes (a group's members), from the browser; codes when it can't name them. */
+const regionNames = (() => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" });
+  } catch {
+    return null;
+  }
+})();
+const countryName = (code: string) => {
+  try {
+    return regionNames?.of(code) ?? code;
+  } catch {
+    return code;
+  }
+};
+
+/** What the official-source link points at, in words. */
+function officialLabel(d: Destination): string {
+  const host = hostOf(d.officialSource);
+  if (host === "travel.state.gov") return `State Department travel advisories (find ${d.members ? "each country you'll visit" : d.country})`;
+  if (host === "gov.uk") return "GOV.UK: check if you need a UK visa";
+  if (host === "canada.ca") return "Canada.ca: visiting Canada";
+  return `Official source (${host})`;
+}
+
+/** The "Before you go" summary for a row: what to get, and any form or insurance on top. */
+function beforeText(d: Destination): string {
+  const a = d.authorization;
+  const fee = a && a.fee !== null && feeText(a.fee).length <= 24 ? ` · ${feeText(a.fee)}` : "";
+  const main = a
+    ? `${a.name}${fee}`
+    : d.requirement === "visa-required"
+      ? "A visa from the embassy or consulate"
+      : d.requirement === "visa-on-arrival"
+        ? "Get the visa on arrival"
+        : d.upcoming
+          ? "No visa or authorization for now; see what's planned"
+          : d.schengen
+            ? "No visa or authorization for now; ETIAS is planned for the Schengen Area"
+            : "No visa or authorization";
+  const extras = [d.arrivalForm?.required && "an arrival form", d.requiredInsurance && "required insurance"].filter(Boolean);
+  return extras.length ? `${main}, plus ${extras.join(" and ")}` : main;
+}
+
 /** Entry requirements for U.S. passport holders: search, filter by requirement, recent changes and transit rules. */
 export function EntryRequirements() {
   const params = useSearchParams();
-  const [q, setQ] = useState(() => params.get("q") ?? "");
+  const [q, setQuery] = useState(() => params.get("q") ?? "");
   const [req, setReq] = useState<EntryRequirement | "all">(() => {
     const r = params.get("req");
     return isRequirement(r) ? r : "all";
   });
-  const { destinations, recentChanges, transitRules } = entryRequirements;
+  const { destinations, recentChanges, plannedChanges, transitRules, verifiedAt } = entryRequirements;
+  const setQ = (v: string) => {
+    setQuery(v);
+    setAllSide(false);
+  };
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -90,16 +163,34 @@ export function EntryRequirements() {
     window.history.replaceState(null, "", `${window.location.pathname}${s ? `?${s}` : ""}`);
   }, [q, req]);
 
-  const matching = useMemo(() => {
-    const query = fold(q.trim());
-    return [...destinations]
-      .filter((d) => !query || fold(d.country).includes(query) || d.iso2?.toLowerCase() === query)
-      .sort((a, b) => a.country.localeCompare(b.country));
-  }, [q, destinations]);
+  // Names people type ("UK", "Turkey", "Dubai") find their country, and a country inside a group (Slovenia, in the
+  // Schengen Area) finds the group.
+  const { matching, via } = useMemo(() => searchDestinations(destinations, q, keyOf, countryName), [q, destinations]);
   const counts = ENTRY_REQUIREMENTS.reduce<Record<string, number>>((m, r) => ({ ...m, [r]: matching.filter((d) => d.requirement === r).length }), {});
   const shown = matching.filter((d) => req === "all" || d.requirement === req);
-  const asOf = latestIso(destinations.map((d) => d.asOf));
-  const changes = [...recentChanges].sort((a, b) => (a.date < b.date ? 1 : -1));
+  // Nothing shows: the filter hides what the search found, or the search names a U.S. place, or nothing matches.
+  const hiddenByFilter = shown.length === 0 && matching.length > 0;
+  const usPlace = matching.length === 0 && q.trim() ? usPlaceFor(q) : null;
+  // A search for a few countries narrows the side panels to them too (Thailand's own change and transit rule), with a
+  // way back to the full lists.
+  const [allSide, setAllSide] = useState(false);
+  const focus = q.trim() && shown.length > 0 && shown.length <= 3 && !allSide ? shown : null;
+  const about = (country: string, text = "") => {
+    if (!focus) return true;
+    const names = focus.flatMap((d) => [d.country, ...(d.schengen ? ["Schengen Area"] : [])]);
+    return names.some((n) => fold(country).includes(fold(n)) || fold(text).includes(fold(n)));
+  };
+  const changes = [...recentChanges].sort((a, b) => (a.date < b.date ? 1 : -1)).filter((c) => about(c.country));
+  const transit = transitRules.filter((t) => about(t.country, t.rule));
+  const planned = plannedChanges.filter((c) => about(c.country));
+  const narrowed = focus !== null && (changes.length < recentChanges.length || transit.length < transitRules.length);
+  const showAll = () => setAllSide(true);
+  // Member rows point to the Schengen Area entry: search for it, so it opens on its own.
+  const openGroup = (name: string) => {
+    setReq("all");
+    setQ(name);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   // Rows open on demand; a search that narrows to one country opens it (until it's closed by hand).
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
@@ -119,14 +210,16 @@ export function EntryRequirements() {
         <div role="note" className="panel flex gap-4 border-l-4 border-l-warn p-5">
           <TriangleAlert className="mt-0.5 h-6 w-6 shrink-0 text-warn" aria-hidden />
           <div className="space-y-1.5">
-            <h2 className="font-semibold text-navy">Rules change. Confirm before you travel.</h2>
+            <h2 className="font-semibold text-navy">Rules change. Confirm with the official source before you travel.</h2>
             <p className="text-sm leading-relaxed text-ink-2">
-              Entry requirements can change with little notice. Before every trip, check the U.S. State Department&apos;s page
-              for your destination (linked in each country&apos;s details) and the destination government&apos;s own site. This guide
-              covers U.S. passport holders visiting as tourists for short stays.
+              Entry requirements can change with little notice. Before every trip, look up your destination on the U.S. State
+              Department&apos;s travel advisories pages (the &ldquo;Entry, exit and visa requirements&rdquo; section) and check the
+              destination government&apos;s own site. Only the UK entry here comes straight from its government&apos;s rules; the
+              others rest on secondary sources, so treat them as a starting point. This guide covers U.S. passport holders
+              visiting as tourists for short stays.
             </p>
-            <ExternalA href={STATE_DEPT} className="text-sm">
-              travel.state.gov country information
+            <ExternalA href={ADVISORIES} className="text-sm">
+              State Department travel advisories
             </ExternalA>
           </div>
         </div>
@@ -155,13 +248,30 @@ export function EntryRequirements() {
                   <FilterChip key={r} on={req === r} onClick={() => setReq(r)} label={SHORT[r]} count={counts[r]} dot={REQUIREMENT_INFO[r].dot} />
                 ))}
               </div>
-              <SeedNotice datasets={["entryRequirements"]} />
+              <DataNotice datasets={["entryRequirements"]} />
             </section>
 
             <p className="text-sm text-ink-2" aria-live="polite">
-              {shown.length === 0
-                ? "No destination matches. We're adding more countries as we verify them."
-                : `${shown.length} destination${shown.length === 1 ? "" : "s"}${asOf ? ` · checked ${formatIsoDate(asOf)}` : ""}`}
+              {hiddenByFilter ? (
+                <>
+                  {matching.length === 1
+                    ? `${matching[0].country} ${NEEDS[matching[0].requirement]}, so the ${SHORT[req as EntryRequirement]} filter hides it.`
+                    : `${matching.length} destinations match your search, but the ${SHORT[req as EntryRequirement]} filter hides them all.`}{" "}
+                  <button type="button" onClick={() => setReq("all")} className="font-semibold text-brand hover:underline">
+                    Show all requirements
+                  </button>
+                </>
+              ) : shown.length > 0 ? (
+                `${shown.length} destination${shown.length === 1 ? "" : "s"} · research verified ${formatIsoDate(verifiedAt)}`
+              ) : usPlace ? (
+                usPlace.kind === "country" ? (
+                  "This guide is for U.S. citizens going abroad, so the United States itself isn't listed."
+                ) : (
+                  `${usPlace.name} ${usPlace.kind === "territory" ? "is a U.S. territory" : "is in the United States"}, so it isn't listed: this guide is for U.S. citizens going abroad.`
+                )
+              ) : (
+                "No destination matches. We're adding more countries as we verify them."
+              )}
             </p>
 
             {ENTRY_REQUIREMENTS.map((r) => {
@@ -199,7 +309,14 @@ export function EntryRequirements() {
                         </tr>
                       </thead>
                       {group.map((d) => (
-                        <DestinationRows key={keyOf(d)} d={d} open={isOpen(keyOf(d))} onToggle={() => toggle(keyOf(d))} />
+                        <DestinationRows
+                          key={keyOf(d)}
+                          d={d}
+                          via={via.get(keyOf(d))}
+                          open={isOpen(keyOf(d))}
+                          onToggle={() => toggle(keyOf(d))}
+                          onOpenGroup={openGroup}
+                        />
                       ))}
                     </table>
                   </div>
@@ -208,7 +325,35 @@ export function EntryRequirements() {
             })}
           </div>
 
-          <aside className="space-y-5 lg:sticky lg:top-28 lg:self-start">
+          <aside className="min-w-0 space-y-5">
+            {narrowed && (
+              <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-ink-2" aria-live="polite">
+                Showing changes and connections for your search.
+                <button type="button" onClick={showAll} className="font-semibold text-brand hover:underline">
+                  Show all
+                </button>
+              </p>
+            )}
+            {planned.length > 0 && (
+              <section className="panel p-5" aria-labelledby="planned-title">
+                <h2 id="planned-title" className="flex items-center gap-2 font-semibold text-navy">
+                  <Hourglass className="h-4 w-4 text-brand" aria-hidden /> Coming up
+                </h2>
+                <ul className="mt-3 space-y-4">
+                  {planned.map((c) => (
+                    <li key={`${c.country}-${c.change}`}>
+                      <p className="text-sm font-semibold text-ink">{c.country}</p>
+                      <p className="text-sm leading-relaxed text-ink-2">{prose(c.change)}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-ink-3">
+                        <span className="font-semibold text-ink-2">Status ({formatIsoDate(c.asOf)}):</span> {prose(c.status)}
+                      </p>
+                      <SourceLinks sources={c.sources} max={2} className="mt-1 text-xs" />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {changes.length > 0 && (
             <section className="panel p-5" aria-labelledby="changes-title">
               <h2 id="changes-title" className="flex items-center gap-2 font-semibold text-navy">
                 <CalendarClock className="h-4 w-4 text-brand" aria-hidden /> Recent changes
@@ -221,27 +366,37 @@ export function EntryRequirements() {
                       <time dateTime={c.date}>{formatIsoDate(c.date)}</time>
                     </p>
                     <p className="text-sm font-semibold text-ink">{c.country}</p>
-                    <p className="text-sm leading-relaxed text-ink-2">{c.change}</p>
-                    <SourceLinks sources={c.sources} className="mt-1 text-xs" />
+                    <p className="text-sm leading-relaxed text-ink-2">{prose(c.change)}</p>
+                    <SourceLinks sources={c.sources} max={2} className="mt-1 text-xs" />
                   </li>
                 ))}
               </ol>
             </section>
+            )}
+            {transit.length > 0 && (
             <section className="panel p-5" aria-labelledby="transit-title">
               <h2 id="transit-title" className="flex items-center gap-2 font-semibold text-navy">
                 <PlaneTakeoff className="h-4 w-4 text-brand" aria-hidden /> Connecting flights
               </h2>
-              <p className="mt-1 text-sm text-ink-2">Airside transit rules: staying in the airport between flights.</p>
+              <p className="mt-1 text-sm text-ink-2">Changing planes, staying airside, and stopovers that leave the airport.</p>
               <ul className="mt-3 divide-y divide-line">
-                {transitRules.map((t) => (
-                  <li key={t.country} className="py-3 first:pt-1 last:pb-0">
-                    <p className="text-sm font-semibold text-ink">{t.country}</p>
-                    <p className="text-sm leading-relaxed text-ink-2">{t.rule}</p>
-                    <SourceLinks sources={t.sources} className="mt-1 text-xs" />
+                {transit.map((t) => (
+                  <li key={t.country} className="py-2 first:pt-1 last:pb-0">
+                    <details className="group" open={focus !== null && t.country.includes(focus[0].country) ? true : undefined}>
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-1 text-sm font-semibold text-ink [&::-webkit-details-marker]:hidden">
+                        {t.country}
+                        <ChevronDown className="h-4 w-4 shrink-0 text-brand transition-transform group-open:rotate-180" aria-hidden />
+                      </summary>
+                      <p className="mt-1 text-sm leading-relaxed text-ink-2">{prose(t.rule)}</p>
+                      {t.confidence && <p className="mt-1.5 text-xs text-ink-3">{CONFIDENCE[t.confidence]}.</p>}
+                      {t.evidence && <p className="mt-1 text-xs leading-relaxed text-ink-3">How this was checked: {prose(t.evidence.replace(/\.$/, ""))}.</p>}
+                      <SourceLinks sources={t.sources} max={3} className="mt-1 text-xs" />
+                    </details>
                   </li>
                 ))}
               </ul>
             </section>
+            )}
           </aside>
         </div>
       </div>
@@ -264,24 +419,65 @@ function FilterChip({ on, onClick, label, count, dot }: { on: boolean; onClick: 
   );
 }
 
-function DestinationRows({ d, open, onToggle }: { d: Destination; open: boolean; onToggle: () => void }) {
-  const notes = noteList(d.notes);
+function Detail({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
+  return (
+    <div className={cn("min-w-0", wide && "sm:col-span-2")}>
+      <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">{label}</p>
+      <div className="mt-0.5 space-y-1 text-ink">{children}</div>
+    </div>
+  );
+}
+
+/** One line of facts, skipping the empty ones: "Valid 2 years · Allow up to 3 working days". */
+const facts = (...parts: (string | null | undefined | false)[]) => parts.filter(Boolean).join(" · ");
+
+function DestinationRows({
+  d,
+  via,
+  open,
+  onToggle,
+  onOpenGroup,
+}: {
+  d: Destination;
+  via?: string;
+  open: boolean;
+  onToggle: () => void;
+  /** Show a group's entry (the Schengen Area, for a member country). */
+  onOpenGroup: (name: string) => void;
+}) {
+  // Member rows say "see the Schengen Area entry" in their own block below, with a link.
+  const notes = noteList(d.notes)
+    .filter((n) => !(d.schengen && /^Schengen rules apply; see the Schengen Area entry\.?$/.test(n)))
+    .map(prose);
   const detailsId = `destination-${keyOf(d)}-details`;
-  const before = d.authorization
-    ? `${d.authorization.name}${d.authorization.fee !== null ? ` · ${feeText(d.authorization.fee)}` : ""}`
-    : d.requirement === "visa-required"
-      ? "A visa from the embassy or consulate"
-      : "No visa or authorization";
+  const before = beforeText(d);
+  const a = d.authorization;
+  const form = d.arrivalForm;
+  const ins = d.requiredInsurance;
+  const up = d.upcoming;
   return (
     <tbody id={`destination-${keyOf(d)}`} className="scroll-mt-28 border-b border-line last:border-b-0">
       <tr className={cn("cursor-pointer align-top transition-colors hover:bg-sky/40", open && "bg-sky/40")} onClick={onToggle}>
         <th scope="row" className="py-3 pr-3 pl-4 text-left font-normal sm:pl-5">
           <span className="font-semibold text-ink">{d.country}</span>
+          {via && <span className="block text-xs text-ink-3">Includes {via}</span>}
+          {via && PLACE_NOTES[via] && (
+            <span className="mt-1 flex items-start gap-1 text-xs leading-snug font-medium text-[#7a4106]">
+              <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+              {PLACE_NOTES[via]}
+            </span>
+          )}
+          {d.caution && (
+            <span className="mt-1 flex items-start gap-1 text-xs leading-snug font-semibold text-danger">
+              <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+              {d.caution}
+            </span>
+          )}
           <span className="mt-0.5 block text-xs text-ink-2 sm:hidden">
             {stayText(d.maxStay)} · {before}
           </span>
         </th>
-        <td className="hidden px-3 py-3 text-ink sm:table-cell">{stayText(d.maxStay)}</td>
+        <td className={cn("hidden px-3 py-3 sm:table-cell", d.maxStay === null ? "text-ink-3" : "text-ink")}>{stayText(d.maxStay)}</td>
         <td className="hidden px-3 py-3 text-ink-2 sm:table-cell">{before}</td>
         <td className="py-2 pr-3 pl-2 text-right sm:pr-4">
           <button
@@ -302,25 +498,84 @@ function DestinationRows({ d, open, onToggle }: { d: Destination; open: boolean;
       </tr>
       <tr id={detailsId} hidden={!open}>
         <td colSpan={4} className="bg-canvas/60 px-4 pt-1 pb-4 sm:px-5">
-          <div className="grid gap-x-6 gap-y-3 pt-3 text-sm sm:grid-cols-2">
-            <div>
-              <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Before you go</p>
-              {d.authorization ? (
-                <p className="mt-0.5 text-ink">
-                  {d.authorization.name}
-                  {d.authorization.fee !== null && <span className="text-ink-2"> · {feeText(d.authorization.fee)}</span>}
-                  <span className="block">
-                    <ExternalA href={d.authorization.url}>Apply on the official site</ExternalA>
-                  </span>
-                </p>
+          <div className="grid gap-x-6 gap-y-4 pt-3 text-sm sm:grid-cols-2">
+            <Detail label="Before you go">
+              {a ? (
+                <>
+                  <p>{a.name}</p>
+                  <p className="text-ink-2">
+                    <span className="text-ink-3">Fee:</span> {feeOrCheck(a.fee)}
+                  </p>
+                  {(a.validity || a.processing || a.howToApply) && (
+                    <p className="text-ink-2">{prose(facts(a.validity && `Valid: ${a.validity}`, a.processing, a.howToApply))}</p>
+                  )}
+                  {a.feeNote && <p className="text-xs leading-relaxed text-ink-3">On the fee: {prose(a.feeNote)}</p>}
+                  <p className="flex flex-wrap gap-x-3">
+                    {a.url ? (
+                      <ExternalA href={a.url}>Official site</ExternalA>
+                    ) : (
+                      <span className="text-ink-3">Official site not confirmed yet: start from the State Department page below.</span>
+                    )}
+                    {a.applyUrl && <ExternalA href={a.applyUrl}>Application form</ExternalA>}
+                  </p>
+                </>
               ) : (
-                <p className="mt-0.5 text-ink">{before}</p>
+                <p>{before}</p>
               )}
-            </div>
-            <div>
-              <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Passport</p>
-              <p className="mt-0.5 text-ink">{d.passportValidity ?? "Check the official page"}</p>
-            </div>
+            </Detail>
+            <Detail label="Stay and passport">
+              <p>
+                <span className="text-ink-3">Max stay:</span> {d.maxStay === null ? "Not confirmed: check the official source" : stayText(d.maxStay)}
+              </p>
+              <p>
+                <span className="text-ink-3">Passport:</span> {d.passportValidity ?? "Not confirmed: check the official source"}
+              </p>
+            </Detail>
+            {form && (
+              <Detail label="Arrival form">
+                <p>
+                  {form.name} <span className="text-ink-2">· {form.required ? "required" : "optional"}</span>
+                </p>
+                <p className="text-ink-2">{prose(facts(form.window, `Fee: ${form.fee ?? "check the official site"}`))}</p>
+                {form.url ? (
+                  <ExternalA href={form.url}>Official form</ExternalA>
+                ) : (
+                  <p className="text-ink-3">Official site not confirmed yet. Use only the government&apos;s own site.</p>
+                )}
+              </Detail>
+            )}
+            {ins && (
+              <Detail label={`Required insurance, since ${formatIsoDate(ins.from)}`}>
+                <p>{ins.name}</p>
+                <p className="text-ink-2">
+                  <span className="text-ink-3">Price:</span> {ins.fee ? prose(ins.fee) : "Not confirmed: check the official site"}
+                </p>
+                <p className="text-xs leading-relaxed text-ink-2">{prose(ins.note)}</p>
+                <p className="flex flex-wrap gap-x-3">
+                  <ExternalA href={ins.url}>Official insurance portal</ExternalA>
+                  {ins.zanzibarUrl && <ExternalA href={ins.zanzibarUrl}>Arriving in Zanzibar</ExternalA>}
+                </p>
+              </Detail>
+            )}
+            {up && (
+              <Detail label="Coming up" wide>
+                <p>{up.name}</p>
+                <p className="text-xs leading-relaxed text-ink-2">{prose(up.status)}</p>
+                {(up.fee || up.validity) && <p className="text-xs text-ink-2">{prose(facts(up.fee && `Planned fee: ${up.fee}`, up.validity))}</p>}
+                {up.url && <ExternalA href={up.url}>Official site</ExternalA>}
+              </Detail>
+            )}
+            {d.schengen && (
+              <Detail label="Schengen rules" wide>
+                <p className="text-ink-2">
+                  Days here count toward the Schengen Area&apos;s shared 90-day limit. The EU&apos;s Entry/Exit System registers
+                  you at the border, and ETIAS is planned.{" "}
+                  <button type="button" onClick={() => onOpenGroup("Schengen Area")} className="font-semibold text-brand hover:underline">
+                    See the Schengen Area entry
+                  </button>
+                </p>
+              </Detail>
+            )}
             {notes.length > 0 && (
               <ul className="space-y-1.5 leading-relaxed text-ink-2 sm:col-span-2">
                 {notes.map((n) => (
@@ -331,13 +586,27 @@ function DestinationRows({ d, open, onToggle }: { d: Destination; open: boolean;
                 ))}
               </ul>
             )}
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-3 sm:col-span-2">
-              <RequirementBadge requirement={d.requirement} />
-              <span>As of {formatIsoDate(d.asOf)}</span>
-              <ExternalA href={d.officialSource} className="text-xs">
-                State Department page for {d.country}
-              </ExternalA>
-            </p>
+            <div className="space-y-1.5 text-xs text-ink-3 sm:col-span-2">
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <RequirementBadge requirement={d.requirement} />
+                <span>Sources as of {formatIsoDate(d.asOf)}</span>
+                {d.confidence && <span>{CONFIDENCE[d.confidence]}</span>}
+              </p>
+              <p className="flex flex-wrap gap-x-2 gap-y-1">
+                <span>Confirm on:</span>
+                <ExternalA href={d.officialSource} className="text-xs">
+                  {officialLabel(d)}
+                </ExternalA>
+              </p>
+              {d.evidence && (
+                <details>
+                  <summary className="cursor-pointer font-medium text-brand">How this was checked</summary>
+                  <p className="mt-1 leading-relaxed">{prose(d.evidence)}</p>
+                  <SourceLinks sources={d.sources} className="mt-1" />
+                </details>
+              )}
+              {!d.evidence && <SourceLinks sources={d.sources} max={3} />}
+            </div>
           </div>
         </td>
       </tr>

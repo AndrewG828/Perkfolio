@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, ArrowUpDown, Clock, Info, Plus, RotateCcw, Route, Sparkles, TriangleAlert, X } from "lucide-react";
-import { MAX_ROUTE_POINTS, formatRoute, parseRoute, summarizeRoute, type WorldAirport } from "@/shared/lib/airports";
+import { MAX_ROUTE_POINTS, formatRoute, parseRoute, parseRouteParam, sameAirportLegs, summarizeRoute, type WorldAirport } from "@/shared/lib/airports";
 import { formatDuration } from "@/shared/lib/geo";
 import { regionFor, sweetSpotsHref } from "@/shared/data/travel/regions";
+import { routeLive } from "@/shared/lib/site-routes";
 import { whole } from "@/shared/lib/travel-format";
 import { cn } from "@/shared/lib/format";
 import { useWorldAirports } from "@/frontend/state/airports";
@@ -35,6 +36,8 @@ function slotsFrom(codes: string[]): Slot[] {
 export function DistanceCalculator() {
   const params = useSearchParams();
   const [slots, setSlots] = useState<Slot[]>(() => slotsFrom(parseRoute(params.get("route"))));
+  // A shared link with more stops than fit keeps its origin and destination; say which stops were left out.
+  const [dropped, setDropped] = useState<string[]>(() => parseRouteParam(params.get("route")).dropped);
   const { status, airports, byCode, retry } = useWorldAirports();
   const loading = status === "idle" || status === "loading";
 
@@ -60,17 +63,30 @@ export function DistanceCalculator() {
     [byCode, routeParam],
   );
   const unknown = byCode ? codes.filter((c) => !byCode.has(c)) : [];
-  const summary = resolved.length >= 2 ? summarizeRoute(resolved) : null;
+  // Two airports in a row that are the same aren't a flight (JFK-JFK).
+  const repeats = sameAirportLegs(slots.map((s) => s.code));
+  // Only a route whose every airport is known adds up: a skipped code would quietly change the trip.
+  const summary = resolved.length >= 2 && unknown.length === 0 && repeats.length === 0 ? summarizeRoute(resolved) : null;
   const dest = resolved.length >= 2 ? resolved[resolved.length - 1] : null;
-  const region = dest ? regionFor(dest.country, dest.lat, dest.lon) : null;
+  // The sweet-spots link waits for the Points & Miles section's page.
+  const region = dest && routeLive("/points/sweet-spots") ? regionFor(dest.country, dest.lat, dest.lon) : null;
 
   const setCode = (key: number, a: WorldAirport | null) =>
     setSlots((ss) => ss.map((s) => (s.key === key ? { ...s, code: a?.code ?? null } : s)));
-  const addStop = () =>
-    setSlots((ss) => (ss.length - 2 >= MAX_STOPS ? ss : [...ss.slice(0, -1), slot(null), ss[ss.length - 1]]));
+  // A new stop takes the keyboard focus: the button that added it moves down into the new row.
+  const [focusKey, setFocusKey] = useState<number | null>(null);
+  const addStop = () => {
+    if (slots.length - 2 >= MAX_STOPS) return;
+    const added = slot(null);
+    setSlots((ss) => [...ss.slice(0, -1), added, ss[ss.length - 1]]);
+    setFocusKey(added.key);
+  };
   const removeStop = (key: number) => setSlots((ss) => ss.filter((s) => s.key !== key));
   const reverse = () => setSlots((ss) => [...ss].reverse());
-  const load = (route: string) => setSlots(slotsFrom(parseRoute(route)));
+  const load = (route: string) => {
+    setDropped([]);
+    setSlots(slotsFrom(parseRoute(route)));
+  };
 
   return (
     <div className="bg-canvas">
@@ -87,7 +103,7 @@ export function DistanceCalculator() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSlots(slotsFrom([]))}
+                  onClick={() => load("")}
                   className="btn-ghost px-2.5 py-1.5 text-xs"
                   aria-label="Clear the route"
                 >
@@ -96,6 +112,15 @@ export function DistanceCalculator() {
               </div>
             </div>
 
+            {dropped.length > 0 && (
+              <p className="flex items-start gap-2 rounded-md bg-[#fdf4ea] px-3 py-2 text-xs leading-relaxed text-[#7a4106]" role="status">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span>
+                  The link had more than 3 stops, so {dropped.join(", ")} {dropped.length === 1 ? "was" : "were"} left out. The origin
+                  and destination are kept.
+                </span>
+              </p>
+            )}
             <ol className="space-y-3">
               {slots.map((s, i) => {
                 const isFirst = i === 0;
@@ -110,6 +135,7 @@ export function DistanceCalculator() {
                       onChange={(a) => setCode(s.key, a)}
                       airports={airports}
                       loading={loading}
+                      focusOnMount={s.key === focusKey}
                       trailing={
                         !isFirst && !isLast ? (
                           <button
@@ -125,6 +151,9 @@ export function DistanceCalculator() {
                     />
                     {s.code && byCode && !byCode.has(s.code) && (
                       <p className="mt-1 text-xs font-medium text-danger">We couldn&apos;t find an airport with the code {s.code}.</p>
+                    )}
+                    {repeats.includes(i) && (
+                      <p className="mt-1 text-xs font-medium text-danger">Same airport as the one before: pick where this flight goes.</p>
                     )}
                     {i === slots.length - 2 && (
                       <button
@@ -172,18 +201,20 @@ export function DistanceCalculator() {
             </div>
           )}
 
-          <Summary summary={summary} loading={loading && codes.length >= 2} unknown={unknown} />
+          <Summary summary={summary} loading={loading && codes.length >= 2} unknown={unknown} repeats={repeats.map((i) => slots[i].code ?? "")} />
 
           <section className="panel p-3 sm:p-4" aria-label="Route map">
             {airports ? (
-              <RouteMap points={resolved} airports={airports} />
+              <RouteMap points={resolved} airports={airports} connect={summary !== null} />
             ) : (
               <div className="aspect-[1.55] w-full animate-pulse rounded-md bg-[#eef5fc] sm:aspect-[2.15]" />
             )}
             <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-ink-3">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-[3px] w-5 rounded bg-brand" aria-hidden /> Great-circle route
-              </span>
+              {summary && (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-[3px] w-5 rounded bg-brand" aria-hidden /> Great-circle route
+                </span>
+              )}
               {summary?.extra && (
                 <span className="inline-flex items-center gap-1.5">
                   <span className="w-5 border-t-2 border-dashed border-ink-3" aria-hidden /> Nonstop
@@ -254,10 +285,13 @@ function Summary({
   summary,
   loading,
   unknown,
+  repeats,
 }: {
   summary: ReturnType<typeof summarizeRoute> | null;
   loading: boolean;
   unknown: string[];
+  /** Airports that repeat right after themselves (JFK-JFK). */
+  repeats: string[];
 }) {
   if (!summary) {
     return (
@@ -270,11 +304,13 @@ function Summary({
               <Route className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="font-semibold text-navy">Where are you flying?</h2>
+              <h2 className="font-semibold text-navy">{unknown.length || repeats.length ? "Check your route" : "Where are you flying?"}</h2>
               <p className="text-sm text-ink-2">
                 {unknown.length
-                  ? `Check the code${unknown.length > 1 ? "s" : ""} ${unknown.join(", ")}.`
-                  : "Pick an origin and a destination, then add up to three stops to see how much farther they take you."}
+                  ? `We couldn't find ${unknown.join(", ")}, so there's nothing to add up yet. Fix or remove ${unknown.length > 1 ? "those codes" : "that code"}.`
+                  : repeats.length
+                    ? `${repeats[0]} to ${repeats[0]} isn't a flight. Pick a different airport for that leg.`
+                    : "Pick an origin and a destination, then add up to three stops to see how much farther they take you."}
               </p>
             </div>
           </div>

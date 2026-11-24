@@ -1,5 +1,5 @@
 import type { Card } from "@/shared/data/types";
-import type { HotelChain, Valuation } from "@/shared/data/travel/types";
+import type { BrandException, HotelChain, Valuation } from "@/shared/data/travel/types";
 
 /** Points and value for a paid hotel stay: hotel points (base rate, brand exceptions, elite bonus) plus card points. */
 
@@ -32,10 +32,22 @@ export function programName(program: string): string {
   return PROGRAM_NAMES[program] ?? program.replace(/(^|-)([a-z])/g, (_, dash: string, c: string) => `${dash ? " " : ""}${c.toUpperCase()}`);
 }
 
+/**
+ * Whether a card earns cash back: its currency starts with "Cash" ("Cash back (Reward Dollars)", "Cash rewards").
+ * Bilt Points "(plus Bilt Cash)" are points, valued as Bilt Points.
+ */
+export const earnsCashBack = (card: Pick<Card, "rewardsCurrency">) => /^\s*cash\b/i.test(card.rewardsCurrency);
+
+/**
+ * What a stay earns on the card, by name: the currency without the card data's aside ("Bilt Points (plus Bilt Cash)"
+ * → "Bilt Points": the calculator counts no Bilt Cash).
+ */
+export const currencyName = (card: Pick<Card, "rewardsCurrency">) => card.rewardsCurrency.replace(/\s*\([^)]*\)\s*$/, "").trim();
+
 /** Valuation id for what a card earns, or null when it's cash back or a currency we don't value separately. */
 export function currencyIdForCard(card: Pick<Card, "rewardsCurrency">): string | null {
   const c = card.rewardsCurrency;
-  if (/cash/i.test(c)) return null;
+  if (earnsCashBack(card)) return null;
   const ids: [RegExp, string][] = [
     [/membership rewards/i, "amex-mr"],
     [/ultimate rewards/i, "chase-ur"],
@@ -47,6 +59,13 @@ export function currencyIdForCard(card: Pick<Card, "rewardsCurrency">): string |
     [/hilton/i, "hilton-honors"],
     [/hyatt/i, "world-of-hyatt"],
     [/\bihg\b/i, "ihg-one-rewards"],
+    [/skymiles/i, "delta-skymiles"],
+    [/aadvantage/i, "american-aadvantage"],
+    [/mileageplus/i, "united-mileageplus"],
+    [/rapid rewards/i, "southwest-rapid-rewards"],
+    [/atmos/i, "atmos-rewards"],
+    [/trueblue/i, "jetblue-trueblue"],
+    [/aeroplan/i, "air-canada-aeroplan"],
   ];
   return ids.find(([re]) => re.test(c))?.[1] ?? null;
 }
@@ -54,20 +73,30 @@ export function currencyIdForCard(card: Pick<Card, "rewardsCurrency">): string |
 export const medianCents = (valuations: Valuation[], id: string | null) =>
   id ? (valuations.find((v) => v.id === id)?.median ?? null) : null;
 
+/** The lower-earning brand group a brand belongs to, if any. */
+export function brandExceptionFor(chain: HotelChain, brand: string | null | undefined): BrandException | undefined {
+  const b = brand?.trim().toLowerCase();
+  return b ? chain.brandExceptions.find((e) => e.brands.some((x) => x.toLowerCase() === b)) : undefined;
+}
+
 /** Base points per dollar at a brand (a lower-earning exception, or the program's base rate; null if unconfirmed). */
 export function earnRateFor(chain: HotelChain, brand: string | null | undefined): number | null {
-  const b = brand?.trim().toLowerCase();
-  const exception = b ? chain.brandExceptions.find((e) => e.brands.some((x) => x.toLowerCase() === b)) : undefined;
-  return exception?.perDollar ?? chain.basePerDollar;
+  return brandExceptionFor(chain, brand)?.perDollar ?? chain.basePerDollar;
 }
 
-export function elitePercentFor(chain: HotelChain, tier: string | null | undefined): number {
+/** A tier's bonus in percent: 0 without a tier (or for a tier we don't have), null when its bonus isn't confirmed. */
+export function elitePercentFor(chain: HotelChain, tier: string | null | undefined): number | null {
   if (!tier) return 0;
-  return chain.eliteBonuses.find((e) => e.tier.toLowerCase() === tier.trim().toLowerCase())?.percent ?? 0;
+  const found = chain.eliteBonuses.find((e) => e.tier.toLowerCase() === tier.trim().toLowerCase());
+  return found ? found.percent : 0;
 }
 
-/** Whether taxes earn hotel points, from the program's eligible-spend wording (they usually don't). */
-export function taxesEarnPoints(chain: HotelChain): boolean {
+/**
+ * Whether taxes earn hotel points: the chain's `taxesEarn` when set (false, or null when it isn't confirmed),
+ * otherwise read from its eligible-spend wording (they usually don't).
+ */
+export function taxesEarnPoints(chain: HotelChain): boolean | null {
+  if (chain.taxesEarn !== undefined) return chain.taxesEarn;
   const s = chain.eligibleSpend;
   return /\b(includ\w*|plus|and)\s+(room\s+)?tax/i.test(s) && !/\b(before|exclud\w*|not including|less)\s+(room\s+)?tax/i.test(s);
 }
@@ -107,24 +136,40 @@ export function chainCards(chain: HotelChain, lookup: (id: string) => Card | und
       currencyId,
       fallbackCents: card?.pointValueCents ?? null,
       cashBack: false,
-      currencyLabel: currencyId === pid ? `${programName(chain.program)} points` : (card?.rewardsCurrency ?? "points"),
+      currencyLabel: currencyId === pid ? `${programName(chain.program)} points` : card ? currencyName(card) : "points",
       group: "chain" as const,
     };
   });
 }
 
-/** A card from the wallet, earning its own currency at its hotel rate. */
-export function walletCard(card: Card, hotelRate: number): StayCard {
-  const cashBack = /cash/i.test(card.rewardsCurrency);
+/** Hotel programs' ids ("marriott-bonvoy"), to tell a hotel chain's co-branded card from a general card. */
+const HOTEL_PROGRAMS = new Set(Object.keys(PROGRAM_NAMES));
+
+/**
+ * What a card earns per dollar at a chain, given its hotel rate (calculator-rates.ts). A co-branded card of another
+ * hotel chain earns its bonus only at its own chain, so elsewhere it earns its base rate: a World of Hyatt card earns
+ * 4x at Hyatt but 1x at a Marriott, and the Hilton Aspire's 14x is for Hilton stays only.
+ */
+export function hotelRateAt(card: Pick<Card, "rewardsCurrency" | "baseRate">, chain: HotelChain, hotelRate: number): number {
+  const own = currencyIdForCard(card);
+  return own !== null && HOTEL_PROGRAMS.has(own) && own !== programId(chain.program) ? card.baseRate : hotelRate;
+}
+
+/**
+ * A card from the wallet (or a shared link), earning its own currency at its hotel rate; with `chain`, at the rate it
+ * earns at that chain (see hotelRateAt).
+ */
+export function walletCard(card: Card, hotelRate: number, chain?: HotelChain): StayCard {
+  const cashBack = earnsCashBack(card);
   return {
     key: card.id,
     name: card.name,
     cardId: card.id,
-    perDollar: hotelRate,
+    perDollar: chain ? hotelRateAt(card, chain, hotelRate) : hotelRate,
     currencyId: currencyIdForCard(card),
     fallbackCents: card.pointValueCents,
     cashBack,
-    currencyLabel: cashBack ? "cash back" : card.rewardsCurrency,
+    currencyLabel: cashBack ? "cash back" : currencyName(card),
     group: "wallet",
   };
 }
@@ -148,11 +193,18 @@ export interface StayResult {
   total: number;
   /** What earns hotel points. */
   eligible: number;
+  /** Whether taxes earned: false, or null when that isn't confirmed (then only the room rate counts). */
+  taxesEarn: boolean | null;
   /** Base rate used; null when the program's rate isn't confirmed (hotel points are then unknown). */
   perDollar: number | null;
   basePoints: number | null;
-  elitePercent: number;
+  /** The tier's bonus; null when it isn't confirmed (no bonus is counted, and `eliteUnknown` says so). */
+  elitePercent: number | null;
   eliteBonus: number | null;
+  /** A tier was picked whose bonus isn't confirmed. */
+  eliteUnknown: boolean;
+  /** The brand pays elite members no bonus points (e.g. StudioRes). */
+  noEliteAtBrand: boolean;
   hotelPoints: number | null;
   /** True when hotel points are unknown, so values cover card points only (still fine for ranking cards). */
   partial: boolean;
@@ -178,12 +230,17 @@ export function stayPoints(input: StayInput): StayResult {
   const room = clean(input.nightlyRate) * nights;
   const taxes = (room * clean(input.taxPercent)) / 100;
   const total = room + taxes;
-  const eligible = taxesEarnPoints(chain) ? total : room;
+  const taxesEarn = taxesEarnPoints(chain);
+  const eligible = taxesEarn === true ? total : room;
+  const exception = brandExceptionFor(chain, input.brand);
   const perDollar = earnRateFor(chain, input.brand);
   const partial = perDollar === null;
   const basePoints = perDollar === null ? null : Math.round(eligible * perDollar);
-  const elitePercent = elitePercentFor(chain, input.tier);
-  const eliteBonus = basePoints === null ? null : Math.round((basePoints * elitePercent) / 100);
+  const noEliteAtBrand = exception?.eliteBonus === false;
+  const tierPercent = elitePercentFor(chain, input.tier);
+  const elitePercent = noEliteAtBrand ? 0 : tierPercent;
+  const eliteUnknown = elitePercent === null;
+  const eliteBonus = basePoints === null || elitePercent === null ? null : Math.round((basePoints * elitePercent) / 100);
   const hotelPoints = basePoints === null ? null : basePoints + (eliteBonus ?? 0);
 
   const pid = programId(chain.program);
@@ -200,10 +257,13 @@ export function stayPoints(input: StayInput): StayResult {
     taxes,
     total,
     eligible,
+    taxesEarn,
     perDollar,
     basePoints,
     elitePercent,
     eliteBonus,
+    eliteUnknown,
+    noEliteAtBrand,
     hotelPoints,
     partial,
     cardPoints,

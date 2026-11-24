@@ -7,7 +7,7 @@ import { ArrowLeft, ArrowRight, Armchair, Check, CircleCheck, Coins, CreditCard,
 import type { Card } from "@/shared/data/types";
 import { getCard } from "@/shared/data/cards";
 import {
-  START_FLOWS,
+  LIVE_FLOWS,
   activeQuestions,
   answersFrom,
   feeCheck,
@@ -15,6 +15,7 @@ import {
   flowHref,
   isAnswered,
   nextQuestion,
+  resultsFor,
   suggestCards,
   type Answers,
   type FlowId,
@@ -168,7 +169,7 @@ function FlowPicker({ headingRef }: { headingRef: RefObject<HTMLHeadingElement |
         </h2>
         <p className="mt-1 text-ink-2">Pick one, then two to four quick taps.</p>
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {START_FLOWS.map((f) => {
+          {LIVE_FLOWS.map((f) => {
             const Icon = FLOW_ICONS[f.id];
             return (
               <li key={f.id} className="flex">
@@ -259,7 +260,7 @@ function Results({
   ctx: StartContext;
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
-  const results = flow.results(answers, ctx);
+  const results = resultsFor(flow, answers, ctx);
   const fee = flow.id === "fee" ? feeCheck(answers.card, answers.usage) : null;
   const picks = flow.id === "card" ? suggestCards(answers.spend, answers.fee, answers.travel).map(getCard).filter((c): c is Card => Boolean(c)) : [];
   return (

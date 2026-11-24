@@ -22,7 +22,11 @@ function useWidth<T extends HTMLElement>() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    // A hidden or collapsed box measures 0 wide: keep the last real width rather than dividing by zero.
+    const ro = new ResizeObserver(([entry]) => {
+      const w = Math.round(entry.contentRect.width);
+      if (w > 0) setWidth(w);
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -46,22 +50,31 @@ function routeLine(points: LatLon[]) {
 /**
  * Equirectangular map of a route: graticule, every airport as a faint dot (the continents emerge from them), the
  * great-circle legs, and a dashed nonstop arc for comparison. The view re-centers on the route, so routes across the
- * Pacific aren't cut at the date line.
+ * Pacific aren't cut at the date line. With `connect` false (a route with an unknown or repeated airport) only the
+ * airports are marked, so no partial route looks like a real one.
  */
-export function RouteMap({ points, airports }: { points: WorldAirport[]; airports: WorldAirport[] | null }) {
+export function RouteMap({
+  points,
+  airports,
+  connect = true,
+}: {
+  points: WorldAirport[];
+  airports: WorldAirport[] | null;
+  connect?: boolean;
+}) {
   const [ref, measured] = useWidth<HTMLDivElement>();
-  const width = measured ?? 800;
+  const width = measured && measured > 0 ? measured : 800;
   const aspect = width < 560 ? 1.55 : 2.15;
   const height = Math.round(width / aspect);
 
   const legs = useMemo(() => routeLine(points), [points]);
   const nonstop = useMemo(() => {
-    if (points.length < 3) return null;
+    if (!connect || points.length < 3) return null;
     const a = points[0];
     const b = points[points.length - 1];
     if (a.code === b.code) return null;
     return routeLine([a, b]);
-  }, [points]);
+  }, [points, connect]);
   const view: MapView = useMemo(() => {
     // Fit the route and the dashed nonstop arc (which can run far north of the route, e.g. near the pole).
     const samples = legs.lats.map((lat, i) => ({ lat, lon: legs.lons[i] }));
@@ -88,7 +101,7 @@ export function RouteMap({ points, airports }: { points: WorldAirport[]; airport
   const step = view.height > 100 ? 30 : view.height > 45 ? 15 : view.height > 20 ? 10 : 5;
   const grid = graticulePath(view, step);
   const equator = -view.y >= 0 && -(view.y + view.height) <= 0;
-  const routePath = linePath(view, legs.lats, legs.lons);
+  const routePath = connect ? linePath(view, legs.lats, legs.lons) : "";
 
   // Where each route airport sits (its sample on the unwrapped line, so markers follow the line across the date line),
   // and which way its label goes: away from the lines leaving the airport, so the code never sits on the route.
@@ -102,6 +115,8 @@ export function RouteMap({ points, airports }: { points: WorldAirport[]; airport
     return points.map((a, i) => {
       const at = legs.at[i];
       const here = xy(at);
+      // Without lines there's nothing to keep the label off: put it above.
+      if (!connect) return { a, x: here.x, y: here.y, dx: 0, dy: -1 };
       let vx = 0;
       let vy = 0;
       for (const j of [at - 3, at + 3]) {
@@ -115,9 +130,24 @@ export function RouteMap({ points, airports }: { points: WorldAirport[]; airport
       // Lines leaving in opposite directions (a stop on a straight route) cancel out: put the label above.
       return { a, x: here.x, y: here.y, dx: len > 0.35 ? -vx / len : 0, dy: len > 0.35 ? -vy / len : -1 };
     });
-  }, [points, legs, view]);
+  }, [points, legs, view, connect]);
 
-  const label = points.length ? `Map of the route ${points.map((p) => p.code).join(" to ")}` : "World map";
+  // A nonstop arc over the pole runs flat along the top of an equirectangular map: say where it goes.
+  const polar = useMemo(() => {
+    if (!nonstop) return null;
+    let i = 0;
+    for (let j = 1; j < nonstop.lats.length; j++) if (Math.abs(nonstop.lats[j]) > Math.abs(nonstop.lats[i])) i = j;
+    const lat = nonstop.lats[i];
+    if (Math.abs(lat) < 72) return null;
+    const shift = lineShift(view, nonstop.lons);
+    return { x: (nonstop.lons[i] + shift - view.lon0) * view.k, y: -lat, north: lat > 0 };
+  }, [nonstop, view]);
+
+  const label = !points.length
+    ? "World map"
+    : connect
+      ? `Map of the route ${points.map((p) => p.code).join(" to ")}`
+      : `Map of ${points.map((p) => p.code).join(", ")}, without a route until every airport is found`;
   const seen = new Set<string>();
 
   return (
@@ -153,6 +183,21 @@ export function RouteMap({ points, airports }: { points: WorldAirport[]; airport
             strokeDasharray="5 5"
             vectorEffect="non-scaling-stroke"
           />
+        )}
+        {polar && (
+          <text
+            x={Math.min(Math.max(polar.x, view.x + 60 * s), view.x + view.width - 60 * s)}
+            y={polar.north ? Math.max(polar.y, view.y) + 15 * s : Math.min(polar.y, view.y + view.height) - 8 * s}
+            textAnchor="middle"
+            fontSize={11 * s}
+            fontWeight={600}
+            fill="#53565a"
+            stroke="#eef5fc"
+            strokeWidth={3 * s}
+            paintOrder="stroke"
+          >
+            {polar.north ? "Nonstop flies over the Arctic" : "Nonstop flies near Antarctica"}
+          </text>
         )}
         {routePath && (
           <>

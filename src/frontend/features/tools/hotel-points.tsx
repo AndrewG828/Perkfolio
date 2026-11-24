@@ -5,17 +5,17 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { BedDouble, CreditCard, Info, Minus, Plus } from "lucide-react";
 import type { Card } from "@/shared/data/types";
-import type { HotelChain } from "@/shared/data/travel/types";
+import type { BrandException, HotelChain } from "@/shared/data/travel/types";
 import { hotelEarning } from "@/shared/data/travel/hotel-earning";
 import { valuations } from "@/shared/data/travel/valuations";
 import { getCard } from "@/shared/data/cards";
 import { rateFor } from "@/shared/data/calculator-rates";
 import { chainCards, programId, programName, stayPoints, taxesEarnPoints, walletCard, type StayCard } from "@/shared/lib/hotel-points";
-import { formatIsoDate, noteList, whole } from "@/shared/lib/travel-format";
+import { formatIsoDate, formatIsoMonth, noteList, whole } from "@/shared/lib/travel-format";
 import { cn, usd } from "@/shared/lib/format";
 import { CardArt } from "@/frontend/components/card-art";
 import { useHydrated, useWallet } from "@/frontend/state/wallet-store";
-import { SeedNotice, SourceLinks } from "./ui";
+import { DataNotice, SourceLinks } from "./ui";
 
 const chains = hotelEarning.chains;
 const chainById = (id: string | null) => chains.find((c) => programId(c.program) === id) ?? chains[0];
@@ -28,6 +28,26 @@ const num = (v: string | null, fallback: number, min: number, max: number) => {
 const pts = (n: number) => whole(n);
 const cents = (c: number) => `${Number(c.toFixed(2))}¢`;
 
+/** Lower-earning brands grouped by what they earn, for the brand picker. */
+function brandGroups(chain: HotelChain): { label: string; brands: string[] }[] {
+  const groups = new Map<string, string[]>();
+  for (const e of chain.brandExceptions) {
+    const label = `Earn ${e.perDollar} pts per $${e.eliteBonus === false ? ", no elite bonus" : ""}`;
+    groups.set(label, [...(groups.get(label) ?? []), ...e.brands]);
+  }
+  return [...groups].map(([label, brands]) => ({ label, brands }));
+}
+
+/** A brand without its qualifier: "StudioRes (no elite bonus points)" → "StudioRes". */
+const brandName = (brand: string) => brand.replace(/\s*\(.*\)\s*$/, "");
+
+const tierLabel = (percent: number | null) => (percent === null ? "bonus not confirmed" : `+${percent}%`);
+/** "a Hilton Honors", "an IHG One Rewards". */
+const withArticle = (name: string) => `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
+const MAX_RATE = 100_000;
+const exceptionText = (e: BrandException) =>
+  `${e.brands.join(", ")}: ${e.perDollar} points per dollar${e.eliteBonus === false ? ", with no elite bonus" : ""}.`;
+
 /** Hotel points calculator: a paid stay's hotel points, card points and their value, with the inputs in the URL. */
 export function HotelPointsCalculator() {
   const params = useSearchParams();
@@ -36,7 +56,7 @@ export function HotelPointsCalculator() {
   const [chainId, setChainId] = useState(() => programId(chainById(params.get("program")).program));
   const chain = chainById(chainId);
   const [brand, setBrand] = useState(() => params.get("brand") ?? "");
-  const [rate, setRate] = useState(() => num(params.get("rate"), 250, 0, 100_000));
+  const [rate, setRate] = useState(() => num(params.get("rate"), 250, 0, MAX_RATE));
   const [nights, setNights] = useState(() => num(params.get("nights"), 3, 1, 60));
   const [tax, setTax] = useState(() => num(params.get("tax"), 15, 0, 60));
   const [tier, setTier] = useState(() => params.get("tier") ?? "");
@@ -48,17 +68,19 @@ export function HotelPointsCalculator() {
     const owned = (hydrated ? wallet.cards : [])
       .map(getCard)
       .filter((c): c is Card => Boolean(c) && !keys.has(c!.id))
-      .map((c) => walletCard(c, rateFor(c, "hotels", false)));
+      .map((c) => walletCard(c, rateFor(c, "hotels", false), chain));
     // A card from a shared link that isn't in this visitor's wallet still shows, so the link reproduces the result.
     const linked = getCard(cardKey);
     const other =
-      linked && !keys.has(linked.id) && !owned.some((c) => c.key === linked.id) ? [walletCard(linked, rateFor(linked, "hotels", false))] : [];
+      linked && !keys.has(linked.id) && !owned.some((c) => c.key === linked.id) ? [walletCard(linked, rateFor(linked, "hotels", false), chain)] : [];
     return { listed, owned, other, all: [...listed, ...owned, ...other] };
   }, [chain, wallet.cards, hydrated, cardKey]);
   const card: StayCard | null = options.all.find((c) => c.key === cardKey) ?? null;
 
   const brandOk = !brand || chain.brandExceptions.some((e) => e.brands.includes(brand));
   const tierOk = !tier || chain.eliteBonuses.some((e) => e.tier === tier);
+  // A tier from a shared link that this program doesn't have: say so rather than quietly dropping the bonus.
+  const unknownTier = tier && !tierOk ? tier : null;
   const result = stayPoints({
     chain,
     brand: brandOk ? brand : null,
@@ -93,6 +115,7 @@ export function HotelPointsCalculator() {
   const exception = brandOk && brand ? chain.brandExceptions.find((e) => e.brands.includes(brand)) : null;
   const notes = noteList(chain.notes);
   const val = valuations.valuations.find((v) => v.id === programId(program));
+  const taxes = taxesEarnPoints(chain);
 
   return (
     <div className="bg-canvas">
@@ -128,12 +151,10 @@ export function HotelPointsCalculator() {
 
           <Field label="Brand" htmlFor="hotel-brand">
             <select id="hotel-brand" className="input" value={brandOk ? brand : ""} onChange={(e) => setBrand(e.target.value)}>
-              <option value="">
-                Most {program} brands{chain.basePerDollar === null ? "" : ` · ${chain.basePerDollar} pts per $`}
-              </option>
-              {chain.brandExceptions.map((e) => (
-                <optgroup key={e.brands.join()} label={`Earn ${e.perDollar} pts per $`}>
-                  {e.brands.map((b) => (
+              <option value="">Most brands{chain.basePerDollar === null ? "" : ` · ${chain.basePerDollar} pts per $`}</option>
+              {brandGroups(chain).map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.brands.map((b) => (
                     <option key={b} value={b}>
                       {b}
                     </option>
@@ -158,7 +179,8 @@ export function HotelPointsCalculator() {
                   className="input pl-6 tabular-nums"
                   value={rate || ""}
                   placeholder="0"
-                  onChange={(e) => setRate(Math.max(0, Number(e.target.value) || 0))}
+                  max={MAX_RATE}
+                  onChange={(e) => setRate(Math.min(MAX_RATE, Math.max(0, Number(e.target.value) || 0)))}
                 />
               </span>
             </Field>
@@ -224,7 +246,7 @@ export function HotelPointsCalculator() {
               <option value="">Member (no elite bonus)</option>
               {chain.eliteBonuses.map((e) => (
                 <option key={e.tier} value={e.tier}>
-                  {e.tier} · +{e.percent}%
+                  {e.tier} · {tierLabel(e.percent)}
                 </option>
               ))}
             </select>
@@ -274,39 +296,61 @@ export function HotelPointsCalculator() {
 
         <div className="min-w-0 space-y-6">
           <section className="panel overflow-hidden" aria-labelledby="stay-result-title" aria-live="polite">
-            <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line bg-gradient-to-b from-sky/60 to-white p-5 sm:p-6">
-              <div>
-                <p id="stay-result-title" className="eyebrow">
-                  This stay earns
-                </p>
-                <p className="mt-1 text-4xl font-semibold tracking-tight text-navy tabular-nums">
-                  {result.partial && !result.sameCurrency ? "—" : pts(result.totalPoints)}{" "}
-                  <span className="text-lg font-medium text-ink-2">{program} points</span>
-                </p>
-                {result.partial && (
-                  <p className="mt-1 text-sm text-warn">
-                    {program}&apos;s base earning rate isn&apos;t confirmed yet, so this counts card points only.
+            <div className="border-b border-line bg-gradient-to-b from-sky/60 to-white p-5 sm:p-6">
+              <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+                <div className="min-w-0">
+                  <p id="stay-result-title" className="eyebrow">
+                    This stay earns
                   </p>
-                )}
-                {card && !result.sameCurrency && result.cardPoints > 0 && (
-                  <p className="mt-1 text-lg font-semibold text-navy tabular-nums">
-                    + {card.cashBack ? usd(result.cardValue ?? 0, { cents: true }) : pts(result.cardPoints)}{" "}
-                    <span className="text-base font-medium text-ink-2">{card.cashBack ? "cash back" : card.currencyLabel}</span>
+                  <p className="mt-1 text-4xl font-semibold tracking-tight text-navy tabular-nums">
+                    {result.partial && !result.sameCurrency ? "—" : pts(result.totalPoints)}{" "}
+                    <span className="text-lg font-medium text-ink-2">{program} points</span>
                   </p>
-                )}
+                  {card && !result.sameCurrency && result.cardPoints > 0 && (
+                    <p className="mt-1 text-lg font-semibold text-navy tabular-nums">
+                      + {card.cashBack ? usd(result.cardValue ?? 0, { cents: true }) : pts(result.cardPoints)}{" "}
+                      <span className="text-base font-medium text-ink-2">{card.cashBack ? "cash back" : card.currencyLabel}</span>
+                    </p>
+                  )}
+                </div>
+                <div className="w-full sm:ml-auto sm:w-auto sm:text-right">
+                  <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Estimated value</p>
+                  <p className="text-3xl font-semibold text-success tabular-nums">
+                    {result.totalValue === null ? "—" : usd(result.totalValue)}
+                  </p>
+                  <p className="text-sm text-ink-2 tabular-nums">
+                    {result.total === 0
+                      ? "Nothing charged, so nothing earned"
+                      : result.returnPercent === null
+                        ? "No valuation yet"
+                        : `${result.returnPercent.toFixed(1)}% back on ${usd(result.total)}`}
+                  </p>
+                </div>
               </div>
-              <div className="text-left sm:text-right">
-                <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Estimated value</p>
-                <p className="text-3xl font-semibold text-success tabular-nums">
-                  {result.totalValue === null ? "—" : usd(result.totalValue)}
-                </p>
-                <p className="text-sm text-ink-2 tabular-nums">
-                  {result.returnPercent === null ? "No valuation yet" : `${result.returnPercent.toFixed(1)}% back on ${usd(result.total)}`}
-                </p>
-              </div>
+              {(result.partial ||
+                result.eliteUnknown ||
+                unknownTier ||
+                (result.noEliteAtBrand && tierOk && tier) ||
+                (result.taxesEarn === null && result.taxes > 0)) && (
+                <div className="mt-3 space-y-1 border-t border-line/70 pt-3 text-sm">
+                  {result.partial && (
+                    <p className="text-warn">{program}&apos;s base earning rate isn&apos;t confirmed yet, so this counts card points only.</p>
+                  )}
+                  {result.eliteUnknown && <p className="text-warn">The {tier} bonus isn&apos;t confirmed yet, so no elite bonus is counted.</p>}
+                  {unknownTier && (
+                    <p className="text-warn">
+                      We don&apos;t have {withArticle(program)} bonus for &ldquo;{unknownTier}&rdquo;, so no elite bonus is counted.
+                    </p>
+                  )}
+                  {result.noEliteAtBrand && tierOk && tier && <p className="text-ink-2">{brandName(brand)} pays elite members no bonus points.</p>}
+                  {result.taxesEarn === null && result.taxes > 0 && (
+                    <p className="text-ink-2">Whether taxes earn {program} points isn&apos;t confirmed, so only the room rate is counted.</p>
+                  )}
+                </div>
+              )}
             </div>
 
-            <Breakdown result={result} program={program} card={card} perDollar={result.perDollar} exception={exception?.brands ?? null} tier={tierOk ? tier : ""} nights={nights} />
+            <Breakdown result={result} program={program} card={card} perDollar={result.perDollar} exception={exception && brand ? brandName(brand) : null} tier={tierOk ? tier : ""} nights={nights} />
           </section>
 
           {options.all.length > 1 && (
@@ -330,36 +374,49 @@ export function HotelPointsCalculator() {
                 {chain.basePerDollar === null
                   ? "The base earning rate isn't confirmed yet."
                   : `${chain.basePerDollar} base points per dollar at most brands.`}{" "}
-                {taxesEarnPoints(chain) ? "Taxes earn points too." : "Taxes don't earn hotel points, but your card still earns on them."}
-              </li>
-              <li>
-                <span className="font-medium text-ink">What earns:</span> {chain.eligibleSpend}
+                {taxes === true
+                  ? "Taxes earn points too."
+                  : taxes === false
+                    ? "Taxes don't earn hotel points, but your card still earns on them."
+                    : "Whether taxes earn hotel points isn't confirmed, so the calculator counts the room rate only. Your card earns on the whole bill."}
               </li>
               {chain.brandExceptions.map((e) => (
-                <li key={e.brands.join()}>
-                  {e.brands.join(", ")}: {e.perDollar} points per dollar.
-                </li>
+                <li key={e.brands.join()}>{exceptionText(e)}</li>
               ))}
               {chain.eliteBonuses.length > 0 && (
-                <li>Elite bonuses apply to base points: {chain.eliteBonuses.map((e) => `${e.tier} +${e.percent}%`).join(", ")}.</li>
+                <li>Elite bonuses apply to base points: {chain.eliteBonuses.map((e) => `${e.tier} ${tierLabel(e.percent)}`).join(", ")}.</li>
               )}
-              {notes.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
             </ul>
-            <p className="text-xs text-ink-3">
+            <details>
+              <summary className="cursor-pointer font-medium text-brand">What earns points, in full</summary>
+              <p className="mt-2 leading-relaxed">{chain.eligibleSpend}</p>
+            </details>
+            {notes.length > 0 && (
+              <details>
+                <summary className="cursor-pointer font-medium text-brand">How sure these figures are</summary>
+                {notes.map((n) => (
+                  <p key={n} className="mt-2 leading-relaxed">
+                    {n}
+                  </p>
+                ))}
+              </details>
+            )}
+            <p className="text-xs leading-relaxed text-ink-3">
               Points valued at the median of published valuations
-              {val ? ` (${val.low === val.high ? cents(val.median) : `${cents(val.low)}–${cents(val.high)}`} each for ${program})` : ""}. Checked{" "}
-              {formatIsoDate(chain.asOf)}.{" "}
-              <SourceLinks sources={chain.sources} />
+              {val
+                ? ` (${val.low === val.high ? cents(val.median) : `${cents(val.low)}–${cents(val.high)}`} each for ${program}: ${val.values
+                    .map((v) => `${v.source} ${cents(v.cents)}`)
+                    .join(", ")}; ${formatIsoMonth(val.values[0]?.asOf ?? "")} tables)`
+                : ""}
+              . Earning rules checked {formatIsoDate(chain.asOf)}. <SourceLinks sources={chain.sources} max={4} />
             </p>
-            <SeedNotice datasets={["hotelEarning", "valuations"]} />
+            <DataNotice datasets={["hotelEarning", "valuations"]} />
           </section>
 
           <p className="flex gap-2 text-xs leading-relaxed text-ink-3">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-            Book direct with the hotel or its app: stays booked through most online travel agencies earn no hotel points and
-            don&apos;t count toward status. Promotions and elite welcome gifts aren&apos;t included.
+            Book direct with the hotel or its app: stays booked through online travel agencies generally earn no hotel points,
+            and at Marriott elite benefits don&apos;t apply to them. Promotions and elite welcome gifts aren&apos;t included.
           </p>
         </div>
       </div>
@@ -381,7 +438,10 @@ function CardComparison({
   wallet: string[];
 }) {
   const sorted = [...rows].sort((a, b) => (b.value.totalValue ?? -1) - (a.value.totalValue ?? -1));
-  const top = sorted[0]?.value.totalValue ?? 0;
+  const top = sorted[0]?.value.totalValue ?? null;
+  // Every card tied for the top value is best (five Marriott cards can tie), unless they all tie.
+  const isBest = (v: number | null) => top !== null && top > 0 && v !== null && Math.abs(v - top) < 0.005;
+  const allTie = sorted.every((r) => isBest(r.value.totalValue));
   return (
     <section className="panel overflow-hidden" aria-labelledby="pay-with-title">
       <div className="px-5 pt-5 pb-3">
@@ -406,9 +466,10 @@ function CardComparison({
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
-          {sorted.map(({ card, value }, i) => {
+          {sorted.map(({ card, value }) => {
             const art = card.cardId ? getCard(card.cardId) : undefined;
             const on = card.key === selected;
+            const best = !allTie && isBest(value.totalValue);
             return (
               <tr key={card.key} className={cn(on && "bg-sky/50")}>
                 <th scope="row" className="py-2.5 pr-3 pl-4 text-left font-normal sm:pl-5">
@@ -426,9 +487,9 @@ function CardComparison({
                       </span>
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className={cn("block truncate font-semibold", on ? "text-brand" : "text-ink")}>{card.name}</span>
-                      <span className="block truncate text-xs text-ink-3">
-                        {i === 0 && value.totalValue !== null && value.totalValue >= top ? "Best for this stay · " : ""}
+                      <span className={cn("block leading-snug font-semibold", on ? "text-brand" : "text-ink")}>{card.name}</span>
+                      <span className="block text-xs leading-snug text-ink-3">
+                        {best && <span className="font-semibold text-success">Best for this stay · </span>}
                         {card.group === "chain" ? "Co-branded card" : wallet.includes(card.key) ? "In your wallet" : "From the link"}
                       </span>
                     </span>
@@ -437,7 +498,7 @@ function CardComparison({
                 <td className="hidden px-3 py-2.5 text-right text-ink-2 tabular-nums sm:table-cell">
                   {card.cashBack ? `${card.perDollar}% back` : `${card.perDollar}x`}
                 </td>
-                <td className={cn("py-2.5 pr-4 pl-2 text-right font-semibold tabular-nums sm:pr-5", i === 0 ? "text-success" : "text-navy")}>
+                <td className={cn("py-2.5 pr-4 pl-2 text-right font-semibold tabular-nums sm:pr-5", best ? "text-success" : "text-navy")}>
                   {value.totalValue === null ? "—" : usd(value.totalValue)}
                 </td>
               </tr>
@@ -473,7 +534,8 @@ function Breakdown({
   program: string;
   card: StayCard | null;
   perDollar: number | null;
-  exception: string[] | null;
+  /** The lower-earning brand picked, if any. */
+  exception: string | null;
   tier: string;
   nights: number;
 }) {
@@ -518,7 +580,12 @@ function Breakdown({
                 <>Base: {program}&apos;s earning rate isn&apos;t confirmed yet</>
               ) : (
                 <>
-                  Base: {usd(result.eligible, { cents: result.eligible % 1 !== 0 })} × {perDollar} per ${exception ? ` (${exception.join(", ")})` : ""}
+                  Base: {usd(result.eligible, { cents: result.eligible % 1 !== 0 })} × {perDollar} per ${exception ? ` (${exception})` : ""}
+                  {result.taxesEarn !== true && result.taxes > 0 && (
+                    <span className="block text-xs text-ink-3">
+                      {result.taxesEarn === null ? "Room rate only: whether taxes earn isn't confirmed" : "Room rate only: taxes don't earn"}
+                    </span>
+                  )}
                 </>
               )}
             </th>
@@ -526,7 +593,13 @@ function Breakdown({
           </tr>
           <tr>
             <th scope="row" className="py-2.5 pr-3 text-left font-normal text-ink-2">
-              {tier ? `${tier} bonus, +${result.elitePercent}% of base` : "Elite bonus (no status selected)"}
+              {!tier
+                ? "Elite bonus (no status selected)"
+                : result.noEliteAtBrand
+                  ? `${tier}: no elite bonus at this brand`
+                  : result.eliteUnknown
+                    ? `${tier} bonus: not confirmed, so not counted`
+                    : `${tier} bonus, +${result.elitePercent}% of base`}
             </th>
             <td className="py-2.5 text-right font-medium text-ink tabular-nums">{result.eliteBonus ? `+${pts(result.eliteBonus)}` : "—"}</td>
           </tr>

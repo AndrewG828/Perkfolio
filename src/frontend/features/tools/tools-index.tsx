@@ -30,7 +30,7 @@ export function ToolsIndex() {
           </span>
         </Link>
 
-        {TOOL_GROUPS.map((g) => (
+        {TOOL_GROUPS.filter((g) => TOOLS.some((t) => t.group === g.id)).map((g) => (
           <section key={g.id} aria-labelledby={`tools-${g.id}`}>
             <div className="mb-5 max-w-2xl">
               <h2 id={`tools-${g.id}`} className="text-2xl font-semibold tracking-tight text-navy">

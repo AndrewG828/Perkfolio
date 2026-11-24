@@ -5,7 +5,7 @@ import { BaggageLookup } from "@/frontend/features/tools/baggage-lookup";
 
 export const metadata: Metadata = {
   title: "Baggage fee lookup",
-  description: "Find any airline's official baggage page, compare U.S. checked-bag fees, and see how bags work on award tickets.",
+  description: "Find an airline's official baggage page, compare U.S. checked-bag fees, and see how bags work on award tickets.",
 };
 
 export default function BaggagePage() {

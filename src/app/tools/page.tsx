@@ -5,7 +5,7 @@ import { ToolsIndex } from "@/frontend/features/tools/tools-index";
 export const metadata: Metadata = {
   title: "Tools",
   description:
-    "Every Perkfolio tool: lounge finder, flight distance, entry requirements, baggage fees, hotel points, award sweet spots, card picker and more.",
+    "Every Perkfolio tool: lounge finder, flight distance, entry requirements, baggage fees, hotel points, card picker and more.",
 };
 
 export default function ToolsPage() {

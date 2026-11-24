@@ -82,7 +82,9 @@ export type LoungeNetwork =
   | "united-club"
   | "admirals-club"
   | "alaska-lounge"
-  | "citi-strata"; // placeholder if Citi launches branded lounges
+  | "citi-strata" // reserved for Citi-branded lounges (none yet)
+  | "air-canada-maple-leaf" // Maple Leaf Lounges and Air Canada Cafés
+  | "star-alliance-lounges"; // Star Alliance member and affiliated airlines' lounges
 
 export interface LoungeAccess {
   network: LoungeNetwork;

@@ -5,7 +5,7 @@ import { StartWizard } from "@/frontend/features/start/start-wizard";
 
 export const metadata: Metadata = {
   title: "Start here",
-  description: "A few one-tap questions about your points, cards or trip, then the right Perkfolio tools with your answers filled in.",
+  description: "A few one-tap questions about your trip or your cards, then the right Perkfolio tools with your answers filled in.",
 };
 
 export default function StartPage() {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { PlaneLanding, PlaneTakeoff, CircleDot } from "lucide-react";
-import { searchAirports, type WorldAirport } from "@/shared/lib/airports";
+import { fold, metroNamesFor, searchAirports, type WorldAirport } from "@/shared/lib/airports";
 import { cn } from "@/shared/lib/format";
 
 const regionNames = typeof Intl !== "undefined" && "DisplayNames" in Intl ? new Intl.DisplayNames(["en"], { type: "region" }) : null;
@@ -31,6 +31,7 @@ export function AirportInput({
   loading,
   trailing,
   placeholder = "Code, city or airport",
+  focusOnMount = false,
 }: {
   label: string;
   kind: keyof typeof ICONS;
@@ -41,6 +42,8 @@ export function AirportInput({
   /** Extra control at the end of the row (e.g. remove stop). */
   trailing?: ReactNode;
   placeholder?: string;
+  /** Take the keyboard focus when it appears (a stop just added). */
+  focusOnMount?: boolean;
 }) {
   const id = useId();
   const inputId = `${id}-input`;
@@ -49,9 +52,15 @@ export function AirportInput({
   const [editing, setEditing] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const Icon = ICONS[kind];
 
   const matches = useMemo(() => (editing && airports ? searchAirports(airports, text, 8) : []), [editing, airports, text]);
+  // Airports found through a metro area ("Milan") show it first, so Malpensa doesn't read as a stray "Ferno".
+  const metro = useMemo(() => (editing ? metroNamesFor(text) : new Map<string, string>()), [editing, text]);
+  useEffect(() => {
+    if (focusOnMount) inputRef.current?.focus();
+  }, [focusOnMount]);
   const open = editing && matches.length > 0;
   const shown = editing ? text : value ? `${value.code} · ${value.city || value.name}` : "";
 
@@ -73,7 +82,7 @@ export function AirportInput({
   };
 
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative scroll-mt-24">
       <label htmlFor={inputId} className="mb-1.5 block text-xs font-semibold tracking-wide text-ink-2 uppercase">
         {label}
       </label>
@@ -95,7 +104,11 @@ export function AirportInput({
             aria-controls={listId}
             aria-activedescendant={open ? `${id}-opt-${active}` : undefined}
             aria-describedby={value ? `${id}-detail` : undefined}
-            onFocus={(e) => e.currentTarget.select()}
+            onFocus={(e) => {
+              e.currentTarget.select();
+              // On phones, bring the field up near the top so its list of matches isn't hidden behind the keyboard.
+              if (window.matchMedia("(max-width: 1023px)").matches) rootRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+            }}
             onChange={(e) => {
               setText(e.target.value);
               setEditing(true);
@@ -142,7 +155,7 @@ export function AirportInput({
         role="listbox"
         aria-label={`${label} airports`}
         className={cn(
-          "absolute inset-x-0 top-full z-30 mt-1 max-h-80 overflow-y-auto rounded-md border border-line bg-white py-1 shadow-[var(--shadow-lift)]",
+          "absolute inset-x-0 top-full z-30 mt-1 max-h-[min(20rem,45dvh)] overflow-y-auto rounded-md border border-line bg-white py-1 shadow-[var(--shadow-lift)]",
           !open && "hidden",
         )}
       >
@@ -161,8 +174,9 @@ export function AirportInput({
           >
             <span className="w-10 shrink-0 font-semibold text-navy">{a.code}</span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-ink">{a.city || a.name}</span>
+              <span className="block truncate text-ink">{metro.get(a.code) ?? (a.city || a.name)}</span>
               <span className="block truncate text-xs text-ink-3">
+                {metro.has(a.code) && a.city && fold(a.city) !== fold(metro.get(a.code)!) ? `${a.city} · ` : ""}
                 {a.name} · {a.country}
               </span>
             </span>

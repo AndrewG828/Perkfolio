@@ -65,16 +65,90 @@ const HUBS = new Set(
 );
 
 /**
- * Airports matching what someone typed: an exact code first, then city and name matches, then anything that contains
- * every word. Ties go to busy hubs, then the file's order (bigger airports first).
+ * Places people search by that OurAirports files under other city names ("Tokyo" for Narita, "New York" for Newark,
+ * "Hawaii"), with their main airports, busiest first.
+ */
+export const METRO_AIRPORTS: Record<string, string[]> = {
+  "new york": ["JFK", "EWR", "LGA"],
+  "new york city": ["JFK", "EWR", "LGA"],
+  nyc: ["JFK", "EWR", "LGA"],
+  tokyo: ["HND", "NRT"],
+  dallas: ["DFW", "DAL"],
+  "dallas fort worth": ["DFW", "DAL"],
+  "bay area": ["SFO", "OAK", "SJC"],
+  "san francisco bay area": ["SFO", "OAK", "SJC"],
+  washington: ["IAD", "DCA", "BWI"],
+  "washington dc": ["IAD", "DCA", "BWI"],
+  dc: ["IAD", "DCA", "BWI"],
+  chicago: ["ORD", "MDW"],
+  houston: ["IAH", "HOU"],
+  "los angeles": ["LAX", "BUR", "LGB", "SNA"],
+  hawaii: ["HNL", "OGG", "KOA", "LIH", "ITO"],
+  oahu: ["HNL"],
+  maui: ["OGG"],
+  "big island": ["KOA", "ITO"],
+  kauai: ["LIH"],
+  london: ["LHR", "LGW", "STN", "LTN", "LCY"],
+  paris: ["CDG", "ORY"],
+  milan: ["MXP", "LIN"],
+  seoul: ["ICN", "GMP"],
+  osaka: ["KIX", "ITM"],
+  shanghai: ["PVG", "SHA"],
+  beijing: ["PEK", "PKX"],
+  bangkok: ["BKK", "DMK"],
+  istanbul: ["IST", "SAW"],
+  "sao paulo": ["GRU", "CGH"],
+  "buenos aires": ["EZE", "AEP"],
+};
+
+/** How a metro area reads on screen, where its search name won't do ("nyc" → "New York"); others are title-cased. */
+const METRO_NAMES: Record<string, string> = {
+  "new york city": "New York",
+  nyc: "New York",
+  "dallas fort worth": "Dallas–Fort Worth",
+  "san francisco bay area": "Bay Area",
+  "washington dc": "Washington, D.C.",
+  dc: "Washington, D.C.",
+  "sao paulo": "São Paulo",
+};
+
+/** METRO_AIRPORTS entries a search names: in full, or by at least 3 letters of the start. */
+function metrosFor(query: string): [string, string[]][] {
+  const plain = fold(query.trim()).replace(/[^a-z0-9]+/g, " ").trim();
+  if (!plain) return [];
+  return Object.entries(METRO_AIRPORTS).filter(([name]) => name === plain || (plain.length >= 3 && name.startsWith(plain)));
+}
+
+/**
+ * For airports a search finds through a metro area, the area's name by airport code ("milan" → MXP and LIN: "Milan"),
+ * to label them by the place searched rather than the town OurAirports files them under (Ferno, Segrate).
+ */
+export function metroNamesFor(query: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [name, codes] of metrosFor(query)) {
+    const shown = METRO_NAMES[name] ?? name.replace(/(^|\s)([a-z])/g, (_, space: string, c: string) => `${space}${c.toUpperCase()}`);
+    for (const c of codes) if (!out.has(c)) out.set(c, shown);
+  }
+  return out;
+}
+
+/**
+ * Airports matching what someone typed: an exact code first, then a metro area's main airports ("Tokyo": Haneda and
+ * Narita), city and name matches, then anything that contains every word. Ties go to busy hubs, then the file's order
+ * (bigger airports first).
  */
 export function searchAirports(list: WorldAirport[], query: string, limit = 8): WorldAirport[] {
   const q = fold(query.trim());
   if (!q) return [];
   const words = q.split(/[\s,]+/).filter(Boolean);
+  // A metro name typed in full, or at least 3 letters of one: its airports, in the listed order.
+  const metro = new Map<string, number>();
+  for (const [, codes] of metrosFor(q)) codes.forEach((c, i) => metro.has(c) || metro.set(c, i));
   const score = (a: WorldAirport): number => {
     const code = a.code.toLowerCase();
     if (code === q) return 0;
+    const m = metro.get(a.code);
+    if (m !== undefined) return 0.5 + m / 100;
     const city = fold(a.city);
     const name = fold(a.name);
     if (city === q) return 1;
@@ -99,15 +173,28 @@ export function searchAirports(list: WorldAirport[], query: string, limit = 8): 
 /** Up to five points: origin, up to three stops, destination. */
 export const MAX_ROUTE_POINTS = 5;
 
-/** "jfk-lhr-sin" → ["JFK", "LHR", "SIN"]. Accepts -, commas, spaces or arrows between codes; drops anything else. */
-export function parseRoute(param: string | null | undefined): string[] {
-  if (!param) return [];
-  return param
+/**
+ * A route parameter's codes, "jfk-lhr-sin" → ["JFK", "LHR", "SIN"] (accepts -, commas, spaces or arrows; drops
+ * anything else). A route with more than three stops keeps its origin, destination and first three stops, and says
+ * which stops it dropped.
+ */
+export function parseRouteParam(param: string | null | undefined): { codes: string[]; dropped: string[] } {
+  if (!param) return { codes: [], dropped: [] };
+  const all = param
     .toUpperCase()
     .split(/[\s,>→–-]+/)
-    .filter((c) => /^[A-Z]{3}$/.test(c))
-    .slice(0, MAX_ROUTE_POINTS);
+    .filter((c) => /^[A-Z]{3}$/.test(c));
+  if (all.length <= MAX_ROUTE_POINTS) return { codes: all, dropped: [] };
+  const stops = MAX_ROUTE_POINTS - 2;
+  return { codes: [all[0], ...all.slice(1, 1 + stops), all[all.length - 1]], dropped: all.slice(1 + stops, -1) };
 }
+
+/** "jfk-lhr-sin" → ["JFK", "LHR", "SIN"], trimmed to an origin, up to three stops and the destination. */
+export const parseRoute = (param: string | null | undefined): string[] => parseRouteParam(param).codes;
+
+/** Legs that start and end at the same airport ("JFK-JFK"), by the index of their second airport. */
+export const sameAirportLegs = (codes: (string | null)[]): number[] =>
+  codes.flatMap((c, i) => (i > 0 && c !== null && c === codes[i - 1] ? [i] : []));
 
 export const formatRoute = (codes: string[]) => codes.join("-");
 

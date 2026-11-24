@@ -1,9 +1,11 @@
 import type { Card } from "@/shared/data/types";
-import { annualizedCreditValue, cards, featuredIds, getCard, isCashBack } from "@/shared/data/cards";
+import { annualizedCreditValue, cards, featuredIds, getCard } from "@/shared/data/cards";
 import { rateFor, type SpendCategory } from "@/shared/data/calculator-rates";
 import { airportByCode, bigAirports, loungeCountByAirport } from "@/shared/lib/lounge-access";
 import { shortCardName } from "@/shared/lib/card-name";
 import { sweetSpotsHref, type SweetSpotRegion } from "@/shared/data/travel/regions";
+import { routeLive } from "@/shared/lib/site-routes";
+import { earnsCashBack } from "@/shared/lib/hotel-points";
 
 /**
  * The "Start here" wizard: five guided flows of one-tap questions that end on the tools that answer them, with
@@ -46,7 +48,10 @@ export interface StartFlow {
   id: FlowId;
   title: string;
   blurb: string;
+  /** The page the flow is built around; the flow is offered only once it's on the site (see site-routes.ts). */
+  requires?: string;
   questions: StartQuestion[];
+  /** Every result, including links to sections that may not be on the site yet; pages use `resultsFor`. */
   results: (a: Answers, ctx: StartContext) => StartResult[];
 }
 
@@ -143,10 +148,10 @@ const USAGE: Record<string, { label: string; share: number }> = {
 
 // --- Helpers used by results -------------------------------------------------------------------------------------
 
-/** Return in percent for a spend category (points × our valuation, or the cash-back rate). */
+/** Return in percent for a spend category (points × our valuation, or the cash-back rate; Bilt Points are points). */
 function returnPct(card: Card, cat: SpendCategory) {
   const rate = rateFor(card, cat, false);
-  return isCashBack(card) ? rate : rate * card.pointValueCents;
+  return earnsCashBack(card) ? rate : rate * card.pointValueCents;
 }
 
 /** Up to three personal cards worth comparing for this spending and fee comfort. */
@@ -187,6 +192,7 @@ export const START_FLOWS: StartFlow[] = [
     id: "points",
     title: "I have points. What can I do?",
     blurb: "See what they're worth, where they transfer and the best awards for them.",
+    requires: "/points",
     questions: [
       { id: "currency", prompt: "Which points do you have the most of?", options: fixed(CURRENCIES) },
       {
@@ -308,7 +314,9 @@ export const START_FLOWS: StartFlow[] = [
   {
     id: "trip",
     title: "I'm planning a trip",
-    blurb: "Lounges, entry rules, award sweet spots and flight distance for your route.",
+    blurb: routeLive("/points/sweet-spots")
+      ? "Lounges, entry rules, award sweet spots and flight distance for your route."
+      : "Lounges, entry rules and flight distance for your route.",
     questions: [
       {
         id: "from",
@@ -409,7 +417,14 @@ export const START_FLOWS: StartFlow[] = [
   },
 ];
 
-export const flowById = (id: string | null | undefined) => START_FLOWS.find((f) => f.id === id) ?? null;
+/** The flows offered on this site: the points flow waits for the Points & Miles pages. */
+export const LIVE_FLOWS: StartFlow[] = START_FLOWS.filter((f) => !f.requires || routeLive(f.requires));
+
+export const flowById = (id: string | null | undefined) => LIVE_FLOWS.find((f) => f.id === id) ?? null;
+
+/** A flow's results that link to pages on the site (a sweet-spots or next-card link waits for its section). */
+export const resultsFor = (flow: StartFlow, a: Answers, ctx: StartContext): StartResult[] =>
+  flow.results(a, ctx).filter((r) => routeLive(r.href));
 
 /** The questions that apply given the answers so far, in order. */
 export function activeQuestions(flow: StartFlow, answers: Answers): StartQuestion[] {
