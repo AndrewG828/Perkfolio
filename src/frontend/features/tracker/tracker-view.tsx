@@ -16,20 +16,28 @@ import { BonusTracker } from "./bonus-tracker";
 import { LimitsPanel } from "./limits-panel";
 import { OpenDateRow } from "./open-date-row";
 import { RemindersPanel } from "./reminders-panel";
+import { TrackerTabs } from "./tracker-tabs";
+import { parseWallet } from "@/shared/lib/wallet-schema";
 
 /** Dollars, with cents only when the amount isn't whole (e.g. $12.95). */
 const money = (n: number) => usd(n, { cents: n % 1 !== 0 });
 
+/** The tracker: tabs for credits (the original dashboard), points, certificates, redemptions and applications. */
 export function TrackerView() {
   const hydrated = useHydrated();
-  if (!hydrated) {
-    return (
+  if (!hydrated) return <TrackerSkeleton />;
+  return <TrackerTabs credits={<TrackerDashboard />} />;
+}
+
+export function TrackerSkeleton() {
+  return (
+    <>
+      <div className="h-[53px] border-b border-line bg-white" />
       <div className="container-page py-16">
         <div className="panel h-64 animate-pulse bg-canvas" />
       </div>
-    );
-  }
-  return <TrackerDashboard />;
+    </>
+  );
 }
 
 /** Rendered only in the browser: reads localStorage and the current date. */
@@ -466,8 +474,9 @@ function BackupButtons({ wallet }: { wallet: WalletState }) {
           const f = e.target.files?.[0];
           if (!f) return;
           try {
-            const parsed = JSON.parse(await f.text()) as WalletState;
-            if (Array.isArray(parsed.cards) && typeof parsed.usage === "object") walletActions.importState(parsed);
+            // Backups come from outside this tab: validate them like any other wallet before using them.
+            const parsed = parseWallet(JSON.parse(await f.text()));
+            if (parsed) walletActions.importState(parsed);
             else alert("That file doesn't look like a Perkfolio backup.");
           } catch {
             alert("Couldn't read that file.");

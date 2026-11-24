@@ -1,18 +1,33 @@
 import type { Metadata } from "next";
 import { cards } from "@/shared/data/cards";
+import { programForCard } from "@/shared/data/strategy/programs";
+import { valuations as outletValuations } from "@/shared/data/strategy/valuations";
 import { PageHero } from "@/frontend/components/page-hero";
+import { formatMonth } from "@/shared/lib/dates";
+import { valuationOf } from "@/shared/lib/trackers";
 
 export const metadata: Metadata = {
   title: "About our data",
   description: "How Perkfolio researches card terms and values points.",
 };
 
+/** "2¢", "0.73¢" */
+const cents = (c: number) => `${Number(c.toFixed(3))}¢`;
+
 export default function AboutPage() {
+  // One row per rewards currency the cards earn: the outlets' median (what welcome offers, balances and the
+  // next-card ranking use) and the card files' own estimate (what the earning tools use).
   const valuations = Array.from(
     cards
       .filter((c) => !/cash/i.test(c.rewardsCurrency))
-      .reduce((m, c) => m.set(c.rewardsCurrency, c.pointValueCents), new Map<string, number>()),
-  ).sort((a, b) => b[1] - a[1]);
+      .reduce((m, c) => {
+        const program = programForCard(c);
+        return m.set(c.rewardsCurrency, { median: program ? valuationOf(program)?.median : undefined, earning: c.pointValueCents });
+      }, new Map<string, { median?: number; earning: number }>()),
+  ).sort((a, b) => (b[1].median ?? b[1].earning) - (a[1].median ?? a[1].earning));
+  const outlets = Object.values(outletValuations.datasets).map((d) => d.outlet);
+  const outletList = `${outlets.slice(0, -1).join(", ")} and ${outlets[outlets.length - 1]}`;
+  const edition = formatMonth(Object.values(outletValuations.datasets)[0]?.edition ?? outletValuations.verified.slice(0, 7));
 
   return (
     <>
@@ -31,10 +46,15 @@ export default function AboutPage() {
           <section id="methodology" className="scroll-mt-28 space-y-3">
             <h2 className="text-2xl font-semibold text-navy">How we value points</h2>
             <p>
-              We use conservative cents-per-point estimates that reflect realistic redemptions (transfer partners for flexible
-              currencies, typical award prices for airline and hotel programs) rather than best-case outliers. Cash-back
-              cards are valued at face value. Statement credits are shown at face value; use the calculator&apos;s utilization
-              slider or the tracker to see what you actually capture.
+              Welcome offers, your points balances, the next-card ranking and redemption comparisons value points at the
+              median of the {edition} cents-per-point figures from {outletList}, or at your own value if you set one on the
+              Points tab. The Points tab shows each outlet&apos;s figure, the range and the month of its table.
+            </p>
+            <p>
+              The earning calculator, Compare and the Which Card? tool use our own estimates, set for realistic redemptions (transfer
+              partners for flexible currencies, typical award prices for airline and hotel programs) rather than best-case
+              ones. The table lists both. Cash-back cards are valued at face value. Statement credits are shown at face value;
+              use the calculator&apos;s utilization slider or the tracker to see what you actually capture.
             </p>
           </section>
           <section className="space-y-3">
@@ -56,15 +76,31 @@ export default function AboutPage() {
         <aside className="panel h-fit overflow-hidden">
           <h2 className="border-b border-line px-5 py-4 font-semibold text-navy">Point valuations</h2>
           <table className="w-full text-sm">
+            <thead className="text-left text-xs text-ink-3">
+              <tr>
+                <th className="px-5 pt-3 pb-1 font-medium">Currency</th>
+                <th className="px-2 pt-3 pb-1 text-right font-medium">
+                  Median <span className="block font-normal">{edition}</span>
+                </th>
+                <th className="py-1 pt-3 pr-5 pl-2 text-right font-medium">
+                  Earning <span className="block font-normal">estimate</span>
+                </th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-line">
-              {valuations.map(([currency, cents]) => (
+              {valuations.map(([currency, v]) => (
                 <tr key={currency}>
                   <td className="px-5 py-3 text-ink">{currency}</td>
-                  <td className="px-5 py-3 text-right font-semibold text-navy">{cents}¢</td>
+                  <td className="px-2 py-3 text-right font-semibold text-navy">{v.median !== undefined ? cents(v.median) : "—"}</td>
+                  <td className="py-3 pr-5 pl-2 text-right text-ink-2">{cents(v.earning)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-ink-3">
+            Median: the middle of {outletList}&apos;s {edition} figures, used for welcome offers, balances and the next-card
+            ranking. Earning estimate: used by the calculator, Compare and the Which Card? tool.
+          </p>
         </aside>
       </div>
     </>
