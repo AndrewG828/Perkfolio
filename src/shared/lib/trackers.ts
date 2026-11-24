@@ -1,7 +1,10 @@
+import { getCard } from "@/shared/data/cards";
 import { expirationPolicies } from "@/shared/data/strategy/expiration";
+import { programForCard, programForName } from "@/shared/data/strategy/programs";
 import { valuations } from "@/shared/data/strategy/valuations";
 import type { ExpirationPolicy, Valuation } from "@/shared/data/strategy/types";
-import type { Certificate, PointsBalance, Redemption } from "./wallet";
+import type { Certificate, PointsBalance, Redemption, WalletState } from "./wallet";
+import { accountHistory } from "./eligibility";
 import { addMonths, daysSince, daysUntil } from "./dates";
 
 /**
@@ -26,6 +29,10 @@ export function expiryTone(daysLeft: number): ExpiryTone {
 
 const valuationById = new Map(valuations.valuations.map((v) => [v.id, v]));
 export const valuationOf = (id: string): Valuation | undefined => valuationById.get(id);
+/** Why a program has no valuation (no outlet lists it), so the UI can ask for the user's own figure. */
+export const missingValuation = (id: string): string | undefined => valuations.missing.find((m) => m.id === id)?.reason;
+/** The outlet edition a figure comes from, e.g. The Points Guy's November 2026 table. */
+export const valuationDataset = (via: string | undefined) => (via ? valuations.datasets[via] : undefined);
 
 /** Cents per point for a program: the user's own figure if they set one, else the median valuation. */
 export function centsFor(id: string | undefined, overrides: Record<string, number> = {}): number | undefined {
@@ -64,6 +71,36 @@ export function portfolioValue(balances: Record<string, PointsBalance>, override
 
 const policyById = new Map(expirationPolicies.programs.map((p) => [p.id, p]));
 export const expirationPolicy = (id: string): ExpirationPolicy | undefined => policyById.get(id);
+/** Why a program has no confirmed policy. */
+export const missingPolicy = (id: string): string | undefined => expirationPolicies.missing.find((m) => m.id === id)?.reason;
+
+/**
+ * The programs the user's own cards earn: open ones, and for each program none of them earns any more, the latest
+ * day the user closed one that did. "Own" means wallet cards and card-history entries, never cards they're an
+ * authorized user on (someone else's account). Cards we don't list count when their name says the program
+ * ("AAdvantage Aviator Red"). Bank currencies last while such a card is open, and co-brand cards stop some
+ * programs' points expiring (`cardExemption`).
+ */
+export interface OwnCards {
+  open: Set<string>;
+  /** Program → the latest closing date (YYYY-MM or YYYY-MM-DD) of an own card that earned it, when none is open. */
+  closed: Map<string, string>;
+}
+
+export function ownCardPrograms(wallet: WalletState): OwnCards {
+  const open = new Set<string>();
+  const closed = new Map<string, string>();
+  for (const r of accountHistory(wallet)) {
+    if (r.authorizedUser) continue;
+    const card = r.cardId ? getCard(r.cardId) : undefined;
+    const program = card ? programForCard(card) : programForName(r.name);
+    if (!program) continue;
+    if (r.open) open.add(program);
+    else if (r.closed && r.closed > (closed.get(program) ?? "")) closed.set(program, r.closed);
+  }
+  for (const id of open) closed.delete(id);
+  return { open, closed };
+}
 
 export interface BalanceStatus {
   policy?: ExpirationPolicy;
@@ -74,10 +111,16 @@ export interface BalanceStatus {
    * - fixed-term: each batch expires on its own schedule (we can't date it);
    * - while-open: safe while a card that earns them is open (one is in the wallet);
    * - at-risk: kept only while a card that earns them is open, and none is in the wallet;
+   * - card-exempt: an inactivity program that doesn't expire points while the member holds its co-brand card
+   *   (World of Hyatt, AAdvantage), and the user has one of their own open;
    * - no-data: no policy on file.
    */
-  kind: "never" | "date" | "needs-activity" | "fixed-term" | "while-open" | "at-risk" | "no-data";
+  kind: "never" | "date" | "needs-activity" | "fixed-term" | "while-open" | "at-risk" | "card-exempt" | "no-data";
   expires?: string;
+  /** The date moved to the day a paused expiry resumes (the last activity is older than the window). */
+  resumes?: boolean;
+  /** The date is the grace period after the user closed their co-brand card (later than the inactivity date). */
+  afterClosing?: boolean;
   daysLeft?: number;
   tone?: ExpiryTone;
   daysSinceUpdate: number;
@@ -89,7 +132,13 @@ export function balanceStatus(
   id: string,
   balance: PointsBalance,
   today: Date,
-  opts: { earningCard: boolean; policy?: ExpirationPolicy },
+  opts: {
+    /** The user has an open card of their own that earns the program (see ownCardPrograms). */
+    earningCard: boolean;
+    /** When they closed their last own card that earned it (YYYY-MM or YYYY-MM-DD), if none is open. */
+    closedCardOn?: string;
+    policy?: ExpirationPolicy;
+  },
 ): BalanceStatus {
   const policy = opts.policy ?? expirationPolicy(id);
   const daysSinceUpdate = daysSince(balance.updated, today);
@@ -103,10 +152,24 @@ export function balanceStatus(
     case "while-account-open":
       return { ...base, kind: opts.earningCard ? "while-open" : "at-risk", ...(opts.earningCard ? {} : { tone: "amber" as const }) };
     case "inactivity": {
+      // Holding the program's co-brand card stops the clock (the policy names the card; a wallet card earning the
+      // program is one).
+      if (policy.cardExemption && opts.earningCard) return { ...base, kind: "card-exempt" };
       if (!balance.lastActivity || !policy.months) return { ...base, kind: "needs-activity" };
-      const expires = addMonths(balance.lastActivity, policy.months);
+      const due = addMonths(balance.lastActivity, policy.months);
+      // After the co-brand card closes, the points last at least `afterClosingMonths` from the closing date (a
+      // month-only date counts from its 1st, the earliest it could be).
+      const grace = policy.cardExemption?.afterClosingMonths;
+      const closedOn = opts.closedCardOn ? (opts.closedCardOn.length >= 10 ? opts.closedCardOn : `${opts.closedCardOn}-01`) : undefined;
+      const afterClosing = grace && closedOn ? addMonths(closedOn, grace) : undefined;
+      if (afterClosing && afterClosing > due) {
+        const daysLeft = daysUntil(afterClosing, today);
+        return { ...base, kind: "date", expires: afterClosing, daysLeft, tone: expiryTone(daysLeft), afterClosing: true };
+      }
+      // Expiry was paused (Aeroplan): a deadline that fell during the pause moves to the day it resumes.
+      const expires = policy.expiryResumes && due < policy.expiryResumes ? policy.expiryResumes : due;
       const daysLeft = daysUntil(expires, today);
-      return { ...base, kind: "date", expires, daysLeft, tone: expiryTone(daysLeft) };
+      return { ...base, kind: "date", expires, daysLeft, tone: expiryTone(daysLeft), ...(expires !== due ? { resumes: true } : {}) };
     }
     default:
       return { ...base, kind: "no-data" };
@@ -191,28 +254,39 @@ export interface RedemptionStats {
   points: number;
   /** Sum of cash price - taxes. */
   savings: number;
-  /** Points-weighted average cents per point. */
+  /** Points-weighted average cents per point, across every redemption. */
   averageCpp: number | null;
-  /** Points-weighted valuation across the redemptions that have one. */
-  valuationCpp: number | null;
-  /** Dollars above (or below, if negative) what those points are worth at their valuations. */
-  vsValuationUsd: number;
+  /**
+   * The redemptions whose program has a valuation (published or the user's own), compared like with like: what
+   * they got per point against what those points are worth. The others (no program, or no published value) are
+   * left out, and `count - valued.count` says how many.
+   */
+  valued: {
+    count: number;
+    points: number;
+    /** Their own points-weighted cents per point. */
+    cpp: number | null;
+    /** Points-weighted valuation across them. */
+    valuationCpp: number | null;
+    /** Dollars above (or below, if negative) what those points are worth at their valuations. */
+    vsValuationUsd: number;
+  };
 }
 
 export function redemptionStats(list: Redemption[], centsOf: (program?: string) => number | undefined): RedemptionStats {
   let points = 0;
   let savings = 0;
-  let valuedPoints = 0;
-  let valuedCents = 0;
-  let vsValuationUsd = 0;
+  const valued = { count: 0, points: 0, savings: 0, cents: 0, vs: 0 };
   for (const r of list) {
     points += r.points;
     savings += cashSaved(r);
     const cents = centsOf(r.program);
     if (cents !== undefined && r.points > 0) {
-      valuedPoints += r.points;
-      valuedCents += r.points * cents;
-      vsValuationUsd += cashSaved(r) - pointsValueUsd(r.points, cents);
+      valued.count++;
+      valued.points += r.points;
+      valued.savings += cashSaved(r);
+      valued.cents += r.points * cents;
+      valued.vs += cashSaved(r) - pointsValueUsd(r.points, cents);
     }
   }
   return {
@@ -220,8 +294,13 @@ export function redemptionStats(list: Redemption[], centsOf: (program?: string) 
     points,
     savings,
     averageCpp: points > 0 ? (savings / points) * 100 : null,
-    valuationCpp: valuedPoints > 0 ? valuedCents / valuedPoints : null,
-    vsValuationUsd,
+    valued: {
+      count: valued.count,
+      points: valued.points,
+      cpp: valued.points > 0 ? (valued.savings / valued.points) * 100 : null,
+      valuationCpp: valued.points > 0 ? valued.cents / valued.points : null,
+      vsValuationUsd: valued.vs,
+    },
   };
 }
 

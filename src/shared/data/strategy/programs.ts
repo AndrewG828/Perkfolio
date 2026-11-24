@@ -110,6 +110,20 @@ export function programForCard(card: Pick<Card, "rewardsCurrency" | "issuer">): 
   return undefined;
 }
 
+/** Co-brand names that don't spell out the program: Barclays' AAdvantage Aviator cards, a "Hyatt" card. */
+const NAME_EARNS: [RegExp, string][] = [
+  [/\bAviator\b/i, "american-aadvantage"],
+  [/\bHyatt\b/i, "world-of-hyatt"],
+];
+
+/**
+ * The program a card we don't list earns, read from the name the user gave it in their card history ("AAdvantage
+ * Aviator Red" → American AAdvantage). Undefined when the name doesn't say.
+ */
+export function programForName(name: string): string | undefined {
+  return (EARNS.find(([re]) => re.test(name)) ?? NAME_EARNS.find(([re]) => re.test(name)))?.[1];
+}
+
 /** Issuers offered in the application editor for cards that aren't in our dataset. */
 export const ISSUERS = [
   "American Express",
@@ -121,6 +135,7 @@ export const ISSUERS = [
   "Wells Fargo",
   "U.S. Bank",
   "Discover",
+  "TD Bank",
   "Bilt",
   "Synchrony",
   "Goldman Sachs",

@@ -68,17 +68,34 @@ export function RedemptionsTab({ wallet, now }: { wallet: WalletState; now: Date
   return (
     <TabFrame>
       <StatRow>
-        <Stat label="Lifetime savings" value={usd(s.savings)} tone={s.savings > 0 ? "success" : undefined} sub={`Cash prices minus taxes, across ${s.count} redemption${s.count === 1 ? "" : "s"}`} />
+        <Stat
+          label="Lifetime savings"
+          value={usd(s.savings)}
+          tone={s.savings > 0 ? "success" : undefined}
+          sub={s.count === 0 ? "Cash prices minus taxes, once you log a redemption" : `Cash prices minus taxes, across ${s.count} redemption${s.count === 1 ? "" : "s"}`}
+        />
         <Stat
           label="Average value"
           value={s.averageCpp === null ? "—" : `${cents(s.averageCpp)} per point`}
-          sub={s.valuationCpp === null ? "Weighted by points used" : `Weighted by points · valuations average ${cents(s.valuationCpp)}`}
+          sub={s.count === 0 ? "Weighted by points, once you log a redemption" : `Weighted by points, across ${s.count === 1 ? "your redemption" : `all ${s.count} redemptions`}`}
         />
         <Stat
           label="Compared with valuations"
-          value={s.valuationCpp === null ? "—" : `${s.vsValuationUsd >= 0 ? "+" : "−"}${usd(Math.abs(s.vsValuationUsd))}`}
-          tone={s.valuationCpp === null ? undefined : s.vsValuationUsd >= 0 ? "success" : "warn"}
-          sub="Value beyond what those points are usually worth"
+          value={
+            s.valued.valuationCpp === null
+              ? "—"
+              : Math.round(s.valued.vsValuationUsd) === 0
+                ? "$0"
+                : `${s.valued.vsValuationUsd > 0 ? "+" : "\u2212"}${usd(Math.abs(s.valued.vsValuationUsd))}`
+          }
+          tone={s.valued.valuationCpp === null ? undefined : s.valued.vsValuationUsd >= 0 ? "success" : "warn"}
+          sub={
+            s.valued.valuationCpp === null || s.valued.cpp === null
+              ? s.count
+                ? "None of these has a valuation yet: add your own in \u201cPoints or cash?\u201d"
+                : "Value beyond what those points are usually worth"
+              : `${s.valued.count === s.count ? (s.count === 1 ? "It got" : "They got") : `${s.valued.count} of ${s.count} have a valuation. Those got`} ${cents(s.valued.cpp)} per point vs ${cents(s.valued.valuationCpp)} valuations`
+          }
         />
       </StatRow>
 
@@ -186,6 +203,9 @@ function RedemptionRow({ r, valuation, today }: { r: Redemption; valuation?: num
             {cents(Math.abs(diff))} vs {cents(valuation!)} valuation
           </span>
         )}
+        {diff === null && cpp !== null && r.program && valuation === undefined && (
+          <span className="text-xs text-ink-3">No published value to compare: add your own in &ldquo;Points or cash?&rdquo;</span>
+        )}
         <p className="text-xs text-ink-3">Saved {money(cashSaved(r))}</p>
         <span className="flex items-center gap-1">
           {confirming ? (
@@ -252,7 +272,7 @@ function RedemptionForm({
           <input className="input" value={d.label} maxLength={WALLET_LIMITS.label} placeholder="e.g. SFO to Tokyo, business" onChange={(e) => set({ label: e.target.value })} />
         </label>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.7fr)_repeat(3,minmax(0,1fr))]">
         <label className="space-y-1 sm:col-span-2 xl:col-span-1">
           <span className="font-medium text-ink">Program</span>
           <ProgramSelect label="Program" placeholder="Choose" value={d.program} onChange={(program) => set({ program })} />

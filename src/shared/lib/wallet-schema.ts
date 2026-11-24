@@ -1,11 +1,12 @@
-import type {
-  BonusProgress,
-  CardApplication,
-  Certificate,
-  CertificateKind,
-  PointsBalance,
-  Redemption,
-  WalletState,
+import {
+  NO_BONUS,
+  type BonusProgress,
+  type CardApplication,
+  type Certificate,
+  type CertificateKind,
+  type PointsBalance,
+  type Redemption,
+  type WalletState,
 } from "./wallet";
 
 /**
@@ -62,6 +63,16 @@ const validPoints = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= WALLET_LIMITS.points;
 const validDate = (v: unknown): v is string => typeof v === "string" && DATE.test(v) && !Number.isNaN(Date.parse(v));
 const validMonth = (v: unknown): v is string => typeof v === "string" && MONTH.test(v);
+/** A real calendar day in the MONTH range (no Feb 30). */
+const validDay = (v: unknown): v is string => {
+  if (typeof v !== "string" || !DATE.test(v) || !MONTH.test(v.slice(0, 7))) return false;
+  const [y, m, d] = v.split("-").map(Number);
+  return d >= 1 && d <= new Date(y, m, 0).getDate();
+};
+/** Application dates: "YYYY-MM", or "YYYY-MM-DD" when the user knows the day (day-based issuer windows need it). */
+const validMonthOrDay = (v: unknown): v is string => validMonth(v) || validDay(v);
+/** `a` can't be before `b`; with only a month on either side, the same month is fine. */
+export const notBefore = (a: string, b: string) => (a.length >= 10 && b.length >= 10 ? a >= b : a.slice(0, 7) >= b.slice(0, 7));
 /** Program / currency ids share the card id format: lowercase kebab-case. */
 export const isProgramId = (v: unknown): v is string => typeof v === "string" && CARD_ID.test(v);
 const validText = (v: unknown, max: number, multiline = false): v is string =>
@@ -114,11 +125,14 @@ const bonus = (v: unknown): BonusProgress | undefined => {
 /** One card application, or undefined if invalid. Also used by the wallet store before saving. */
 export function parseApplication(v: unknown): CardApplication | undefined {
   if (!isRecord(v) || typeof v.id !== "string" || !ITEM_ID.test(v.id)) return undefined;
-  if (!validText(v.issuer, WALLET_LIMITS.issuer) || !validMonth(v.opened) || typeof v.business !== "boolean") return undefined;
+  if (!validText(v.issuer, WALLET_LIMITS.issuer) || !validMonthOrDay(v.opened) || typeof v.business !== "boolean") return undefined;
   if (v.cardId !== undefined && !(typeof v.cardId === "string" && CARD_ID.test(v.cardId))) return undefined;
   if (v.name !== undefined && !validText(v.name, WALLET_LIMITS.label)) return undefined;
-  if (v.closed !== undefined && !(validMonth(v.closed) && v.closed >= v.opened)) return undefined;
-  if (v.bonusEarned !== undefined && !(validMonth(v.bonusEarned) && v.bonusEarned >= v.opened)) return undefined;
+  if (v.closed !== undefined && !(validMonthOrDay(v.closed) && notBefore(v.closed, v.opened))) return undefined;
+  if (v.bonusEarned !== undefined && v.bonusEarned !== NO_BONUS && !(validMonth(v.bonusEarned) && notBefore(v.bonusEarned, v.opened))) {
+    return undefined;
+  }
+  if (v.authorizedUser !== undefined && typeof v.authorizedUser !== "boolean") return undefined;
   return {
     id: v.id,
     issuer: v.issuer,
@@ -128,6 +142,7 @@ export function parseApplication(v: unknown): CardApplication | undefined {
     business: v.business,
     ...(v.closed !== undefined ? { closed: v.closed as string } : {}),
     ...(v.bonusEarned !== undefined ? { bonusEarned: v.bonusEarned as string } : {}),
+    ...(v.authorizedUser === true ? { authorizedUser: true as const } : {}),
   };
 }
 

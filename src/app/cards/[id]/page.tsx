@@ -7,6 +7,7 @@ import { loungeNetworks } from "@/shared/data/networks";
 import { CardArt } from "@/frontend/components/card-art";
 import { WalletButton } from "@/frontend/components/wallet-button";
 import { EligibilityPanel } from "@/frontend/features/cards/eligibility-panel";
+import { PointValueNote, WelcomeValue } from "@/frontend/features/cards/welcome-value";
 import { frequencyLabel, frequencyShort } from "@/shared/lib/periods";
 import { usd } from "@/shared/lib/format";
 
@@ -37,7 +38,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
     <>
       <section className="border-b border-line bg-gradient-to-b from-canvas to-white">
         <div className="container-page py-6">
-          <Link href="/cards" className="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline">
+          <Link href="/cards" className="inline-flex min-h-10 items-center gap-1 text-sm font-medium text-brand hover:underline sm:min-h-0">
             <ChevronLeft className="h-4 w-4" /> All cards
           </Link>
         </div>
@@ -56,9 +57,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
             <div className="panel border-l-4 border-l-brand p-5">
               <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Welcome offer</p>
               <p className="mt-1 text-lg font-semibold text-navy">{card.welcomeOffer}</p>
-              {card.welcomeOfferValue > 0 && (
-                <p className="mt-1 text-sm text-ink-2">Worth about {usd(card.welcomeOfferValue)} by our valuation.</p>
-              )}
+              <WelcomeValue cardId={card.id} />
               <EligibilityPanel cardId={card.id} />
             </div>
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
@@ -107,12 +106,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
                 <p className="font-medium text-ink">All other eligible purchases</p>
               </div>
             </div>
-            <p className="mt-3 text-sm text-ink-3">
-              We value {card.rewardsCurrency} at {card.pointValueCents}¢ each.{" "}
-              <Link href="/about#methodology" className="link">
-                How we value points
-              </Link>
-            </p>
+            <PointValueNote cardId={card.id} />
           </Section>
 
           {card.credits.length > 0 && (

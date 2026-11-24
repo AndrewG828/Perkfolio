@@ -90,10 +90,21 @@ export function CertificatesTab({ wallet, now }: { wallet: WalletState; now: Dat
       <StatRow>
         <Stat label="Unused value" value={usd(t.openValue)} sub={`${t.openCount} certificate${t.openCount === 1 ? "" : "s"} to use`} />
         <Stat
-          label={`Expiring within ${EXPIRY_AMBER_DAYS} days`}
-          value={String(t.soonCount)}
-          tone={t.soonCount ? (open.some((c) => certificateStatus(c, now).tone === "red") ? "danger" : "warn") : undefined}
-          sub={t.soonCount ? `${usd(t.soonValue)} at stake` : t.expiredCount ? `${t.expiredCount} already expired` : "Nothing expiring soon"}
+          label="Expiring or expired"
+          value={String(t.soonCount + t.expiredCount)}
+          tone={
+            t.expiredCount || open.some((c) => certificateStatus(c, now).tone === "red") ? "danger" : t.soonCount ? "warn" : undefined
+          }
+          sub={
+            t.soonCount + t.expiredCount
+              ? [
+                  t.soonCount ? `${t.soonCount} within ${EXPIRY_AMBER_DAYS} days (${usd(t.soonValue)} at stake)` : "",
+                  t.expiredCount ? `${t.expiredCount} already expired` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : `Nothing expiring in the next ${EXPIRY_AMBER_DAYS} days`
+          }
         />
         <Stat label="Used" value={usd(t.usedValue)} tone={t.usedValue ? "success" : undefined} sub={`${t.usedCount} certificate${t.usedCount === 1 ? "" : "s"} redeemed`} />
       </StatRow>
@@ -250,6 +261,16 @@ function CertificateRow({ cert, now }: { cert: Certificate; now: Date }) {
               <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => walletActions.updateCertificate({ ...cert, used: false })}>
                 <RotateCcw className="h-3.5 w-3.5" /> Undo
               </button>
+            ) : tone === "expired" ? (
+              <>
+                {/* An expired certificate can't be used any more: clearing it out comes first. */}
+                <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => setConfirming(true)}>
+                  <Trash2 className="h-3.5 w-3.5" /> Remove
+                </button>
+                <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => walletActions.updateCertificate({ ...cert, used: true })}>
+                  <CheckCircle2 className="h-3.5 w-3.5" /> I used it
+                </button>
+              </>
             ) : (
               <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => walletActions.updateCertificate({ ...cert, used: true })}>
                 <CheckCircle2 className="h-3.5 w-3.5" /> Mark used
@@ -258,9 +279,11 @@ function CertificateRow({ cert, now }: { cert: Certificate; now: Date }) {
             <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setEditing(true)}>
               <Pencil className="h-3.5 w-3.5" /> Edit
             </button>
-            <button className="grid h-8 w-8 place-items-center rounded text-ink-3 hover:bg-canvas hover:text-danger" onClick={() => setConfirming(true)} aria-label={`Remove ${cert.label}`} title="Remove">
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {tone !== "expired" || cert.used ? (
+              <button className="grid h-8 w-8 place-items-center rounded text-ink-3 hover:bg-canvas hover:text-danger" onClick={() => setConfirming(true)} aria-label={`Remove ${cert.label}`} title="Remove">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            ) : null}
           </>
         )}
       </div>

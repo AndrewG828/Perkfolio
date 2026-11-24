@@ -41,7 +41,10 @@ export interface BonusProgress {
   deadline: string;
 }
 
-/** A card account the user opened. Months are "YYYY-MM". */
+/**
+ * A card account the user opened. Dates are "YYYY-MM"; `opened` and `closed` may be "YYYY-MM-DD" when the user knows
+ * the day (issuer rules with day windows, like Citi's 8 days or Amex's 90, need it).
+ */
 export interface CardApplication {
   /** Random id, stable across devices (lists merge by id). */
   id: string;
@@ -54,9 +57,20 @@ export interface CardApplication {
   opened: string;
   business: boolean;
   closed?: string;
-  /** Month the welcome bonus posted. Absent: no bonus earned (or not recorded). */
+  /**
+   * The welcome bonus: the month it posted ("YYYY-MM"), or NO_BONUS when the user says they didn't earn one.
+   * Absent: not recorded, so bonus rules it could affect report "unknown" (unless the card is too old to matter).
+   */
   bonusEarned?: string;
+  /**
+   * The user is an authorized user on someone else's account. Such cards count only where a rule says so (Chase
+   * 5/24 counts them); they never count as the user's own account for product or bonus rules.
+   */
+  authorizedUser?: true;
 }
+
+/** `CardApplication.bonusEarned` when the user says no bonus was earned on the card. */
+export const NO_BONUS = "none";
 
 export interface PointsBalance {
   points: number;

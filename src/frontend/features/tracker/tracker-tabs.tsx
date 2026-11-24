@@ -6,9 +6,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Coins, CreditCard, History, Receipt, Ticket, type LucideIcon } from "lucide-react";
 import { useWallet } from "@/frontend/state/wallet-store";
 import { chase524, historyContext } from "@/shared/lib/eligibility";
-import { balanceStatus, certificateStatus, type ExpiryTone } from "@/shared/lib/trackers";
+import { certificateStatus, type ExpiryTone } from "@/shared/lib/trackers";
 import { cn } from "@/shared/lib/format";
-import { PointsTab, earningPrograms } from "./points-tab";
+import { PointsTab, balanceStatuses } from "./points-tab";
 import { CertificatesTab } from "./certificates-tab";
 import { RedemptionsTab } from "./redemptions-tab";
 import { ApplicationsTab } from "./applications-tab";
@@ -35,12 +35,8 @@ export function TrackerTabs({ credits }: { credits: ReactNode }) {
 
   const badges = useMemo<Badges>(() => {
     const open = (wallet.certificates ?? []).filter((c) => !c.used);
-    const earning = earningPrograms(wallet);
     // Only dated expiries raise the dot (not, say, bank points with no earning card).
-    const balanceTones = Object.entries(wallet.balances ?? {}).map(([id, b]) => {
-      const st = balanceStatus(id, b, now, { earningCard: earning.has(id) });
-      return st.kind === "date" ? st.tone : undefined;
-    });
+    const balanceTones = [...balanceStatuses(wallet, now).values()].map((st) => (st.kind === "date" ? st.tone : undefined));
     const counter = chase524(historyContext(wallet, now));
     return {
       counts: {
@@ -82,19 +78,76 @@ const alertOf = (tones: (ExpiryTone | undefined)[]): Alert =>
 function TabBar({ active, badges }: { active: TrackerTab; badges: Badges }) {
   const navRef = useRef<HTMLElement>(null);
   const activeRef = useRef<HTMLAnchorElement>(null);
-  // On narrow screens the bar scrolls sideways: keep the current tab in view (scrolling only the bar, not the page).
+  const spacerRef = useRef<HTMLSpanElement>(null);
+  // Which edges have more tabs past them: each gets a fade, so the bar reads as "scroll for more".
+  const [more, setMore] = useState({ left: false, right: false });
+  const measure = () => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const max = nav.scrollWidth - nav.clientWidth;
+    setMore({ left: nav.scrollLeft > 2, right: nav.scrollLeft < max - 2 });
+  };
+  /**
+   * On narrow screens the bar scrolls sideways and snaps to tab edges, so the left edge never shows a fragment of a
+   * label ("ates" of "Certificates"). For the end of the bar to be a tab edge too, a spacer after the last tab
+   * makes room to line up the first tab that fits with the rest. Returns the tabs' left edges and right edges.
+   */
+  const layout = () => {
+    const nav = navRef.current;
+    const spacer = spacerRef.current;
+    if (!nav || !spacer) return null;
+    const tabs = [...nav.querySelectorAll<HTMLElement>("[data-tab]")];
+    if (!tabs.length) return null;
+    const origin = tabs[0].offsetLeft;
+    const lefts = tabs.map((t) => t.offsetLeft - origin);
+    const rights = tabs.map((t, i) => lefts[i] + t.offsetWidth);
+    const width = nav.clientWidth;
+    const end = rights[rights.length - 1];
+    const fit = lefts.findIndex((l) => end - l <= width);
+    // The flex gap sits before the spacer too.
+    const gap = parseFloat(getComputedStyle(nav).columnGap) || 0;
+    const room = end <= width ? 0 : Math.ceil(lefts[fit] + width - end - gap);
+    spacer.style.display = room > 0 ? "" : "none";
+    spacer.style.width = `${Math.max(0, room)}px`;
+    return { tabs, lefts, rights, width };
+  };
+  // Show the current tab in full, with as many of the tabs before it as fit (scrolling only the bar, not the page).
   useEffect(() => {
     const nav = navRef.current;
-    const el = activeRef.current;
-    if (!nav || !el) return;
-    const left = el.offsetLeft - nav.offsetLeft;
-    if (left < nav.scrollLeft || left + el.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: Math.max(0, left - 16) });
+    const l = layout();
+    if (nav && l && nav.scrollWidth > nav.clientWidth) {
+      const i = l.tabs.findIndex((t) => t === activeRef.current);
+      const k = i < 0 ? 0 : l.lefts.findIndex((left) => l.rights[i] - left <= l.width);
+      nav.scrollTo({ left: l.lefts[Math.max(0, k)] });
+    }
+    measure();
   }, [active]);
+  useEffect(() => {
+    const onResize = () => {
+      layout();
+      measure();
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   return (
     <div className="relative border-b border-line bg-white">
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-white to-transparent sm:hidden" />
+      {/* The left fade covers the page gutter and a tab's own padding, never its label. */}
+      <span
+        aria-hidden
+        className={cn("pointer-events-none absolute inset-y-0 left-0 z-10 w-7 bg-gradient-to-r from-white to-transparent transition-opacity sm:hidden", more.left ? "opacity-100" : "opacity-0")}
+      />
+      <span
+        aria-hidden
+        className={cn("pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-white from-30% to-transparent transition-opacity sm:hidden", more.right ? "opacity-100" : "opacity-0")}
+      />
       <div className="container-page">
-        <nav ref={navRef} className="-mb-px flex gap-1 overflow-x-auto pr-8 [scrollbar-width:none] sm:pr-0 [&::-webkit-scrollbar]:hidden" aria-label="Tracker sections">
+        <nav
+          ref={navRef}
+          onScroll={measure}
+          className="-mb-px flex snap-x snap-mandatory gap-1 overflow-x-auto [scrollbar-width:none] sm:snap-none [&::-webkit-scrollbar]:hidden"
+          aria-label="Tracker sections"
+        >
           {TABS.map(({ id, label, icon: Icon }) => {
             const on = id === active;
             const badge = badges.counts[id];
@@ -103,11 +156,12 @@ function TabBar({ active, badges }: { active: TrackerTab; badges: Badges }) {
               <Link
                 key={id}
                 ref={on ? activeRef : undefined}
+                data-tab={id}
                 href={trackerHref(id)}
                 scroll={false}
                 aria-current={on ? "page" : undefined}
                 className={cn(
-                  "relative flex shrink-0 items-center gap-2 px-3 py-4 text-sm font-medium whitespace-nowrap transition-colors",
+                  "relative flex shrink-0 snap-start items-center gap-2 px-3 py-4 text-sm font-medium whitespace-nowrap transition-colors",
                   on ? "text-brand" : "text-ink-2 hover:text-brand",
                 )}
               >
@@ -128,6 +182,7 @@ function TabBar({ active, badges }: { active: TrackerTab; badges: Badges }) {
               </Link>
             );
           })}
+          <span ref={spacerRef} aria-hidden className="shrink-0 sm:hidden" />
         </nav>
       </div>
     </div>

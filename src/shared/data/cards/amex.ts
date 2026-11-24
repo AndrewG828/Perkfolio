@@ -297,7 +297,7 @@ export const amexCards: Card[] = [
     annualFee: 150,
     rewardsCurrency: "Membership Rewards points",
     pointValueCents: 1.7,
-    welcomeOffer: "Not available — closed to new applicants since July 2026",
+    welcomeOffer: "Not available — closed to new applicants",
     welcomeOfferValue: 0,
     earnRates: [
       { category: "Travel (flights, hotels, transit, rideshare, tolls, parking)", multiplier: 3 },

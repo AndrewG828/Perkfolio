@@ -63,6 +63,9 @@ export function formatDate(iso: string): string {
   return `${MONTHS[m - 1]} ${d}, ${y}`;
 }
 
+/** "Nov 5, 2026" for a YYYY-MM-DD, "Nov 2026" for a YYYY-MM. */
+export const formatDateOrMonth = (s: string) => (s.length >= 10 ? formatDate(s) : formatMonth(s));
+
 /** "Dec 1" this year, "Dec 1, 2027" otherwise. */
 export function formatShortDate(iso: string, today: Date): string {
   const [y, m, d] = iso.split("-").map(Number);

@@ -8,28 +8,61 @@ import { programForCard, programInfo, programKindLabels, programName, programUni
 import { ProgramSelect } from "@/frontend/components/program-select";
 import { strategyPrefs, useStrategyPrefs } from "@/frontend/state/strategy-prefs";
 import { walletActions, type PointsBalance, type WalletState } from "@/frontend/state/wallet-store";
+import { valuations } from "@/shared/data/strategy/valuations";
+import { expirationPolicies } from "@/shared/data/strategy/expiration";
+import type { ExpirationPolicy } from "@/shared/data/strategy/types";
 import {
+  EXPIRY_AMBER_DAYS,
   STALE_BALANCE_DAYS,
   balanceStatus,
   centsFor,
   expirationPolicy,
+  missingPolicy,
+  missingValuation,
+  ownCardPrograms,
   pointsValueUsd,
-  portfolioValue,
   valuationOf,
   type BalanceStatus,
 } from "@/shared/lib/trackers";
-import { daysSince, formatDate, isoDate } from "@/shared/lib/dates";
+import { daysSince, daysUntil, formatDate, formatMonth, isoDate } from "@/shared/lib/dates";
 import { cn, num, usd } from "@/shared/lib/format";
 import { SourceLinks } from "@/frontend/features/next-card/rule-results";
+import { ExplainChip } from "@/frontend/components/explain-chip";
 import { EmptyState, ExpiryChip, Stat, StatRow, TabFrame, relativeDays } from "./tab-parts";
 
-/** Programs and bank currencies that the wallet's cards earn. */
+/** Programs and bank currencies that the wallet's cards earn (authorized-user cards too): balances worth adding. */
 export function earningPrograms(wallet: WalletState): Set<string> {
   const cards = wallet.cards.map(getCard).filter((c): c is Card => Boolean(c));
   return new Set(cards.map(programForCard).filter((x): x is string => Boolean(x)));
 }
 
-const cents = (c: number) => `${Number(c.toFixed(2))}¢`;
+/**
+ * Each balance's status. Expiry exemptions and "safe while a card is open" go by the user's own cards (wallet and
+ * card history, not cards they're an authorized user on): see ownCardPrograms.
+ */
+export function balanceStatuses(wallet: WalletState, now: Date): Map<string, BalanceStatus> {
+  const own = ownCardPrograms(wallet);
+  return new Map(
+    Object.entries(wallet.balances ?? {}).map(([id, b]) => [id, balanceStatus(id, b, now, { earningCard: own.open.has(id), closedCardOn: own.closed.get(id) })]),
+  );
+}
+
+const cents = (c: number) => `${Number(c.toFixed(3))}¢`;
+const OUTLETS = Object.values(valuations.datasets);
+/** "The Points Guy, Upgraded Points and NerdWallet" */
+const OUTLET_NAMES = OUTLETS.map((d) => d.outlet).join(", ").replace(/, ([^,]*)$/, " and $1");
+const EDITION = OUTLETS[0] ? formatMonth(OUTLETS[0].edition) : "";
+/** "the November 2026 figures from The Points Guy, Upgraded Points and NerdWallet" */
+const FIGURES = `the ${EDITION} figures from ${OUTLET_NAMES}`;
+
+/** A dated change worth flagging next to a balance, within a year either side of today. */
+function changeChip(policy: ExpirationPolicy | undefined, now: Date): { text: string; title: string } | null {
+  const c = policy?.change;
+  if (!c) return null;
+  const days = daysUntil(c.date, now);
+  if (Math.abs(days) > 365) return null;
+  return { text: `${days > 0 ? "Changes" : "Changed"} ${formatDate(c.date)}`, title: c.text };
+}
 
 /** Points balances with estimated value, expiry warnings and a nudge to refresh stale numbers. */
 export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
@@ -37,41 +70,51 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
   const [adding, setAdding] = useState<string | null>(null);
   const balances = wallet.balances ?? {};
   const earning = earningPrograms(wallet);
+  const statuses = balanceStatuses(wallet, now);
   const rows = Object.entries(balances)
     .map(([id, b]) => {
       const c = centsFor(id, prefs.cpp);
-      return { id, b, cents: c, value: c === undefined ? 0 : pointsValueUsd(b.points, c), status: balanceStatus(id, b, now, { earningCard: earning.has(id) }) };
+      return { id, b, cents: c, value: c === undefined ? 0 : pointsValueUsd(b.points, c), status: statuses.get(id)! };
     })
     .sort((a, b) => b.value - a.value || programName(a.id).localeCompare(programName(b.id)));
-  const total = portfolioValue(balances, prefs.cpp);
+  // Points past their expiry date (as far as the last activity entered shows) aren't worth anything any more.
+  const expired = rows.filter((r) => r.status.tone === "expired");
+  const live = rows.filter((r) => r.status.tone !== "expired");
+  const totalUsd = live.reduce((s, r) => s + r.value, 0);
   const dated = rows.filter((r) => r.status.kind === "date" && r.status.tone && r.status.tone !== "ok").sort((a, b) => (a.status.daysLeft ?? 0) - (b.status.daysLeft ?? 0));
   const atRisk = rows.filter((r) => r.status.kind === "at-risk");
   const stale = rows.filter((r) => r.status.stale);
   const overrides = rows.filter((r) => prefs.cpp[r.id] !== undefined).length;
   const suggestions = [...earning].filter((id) => !balances[id] && programInfo(id));
+  const soon = dated.filter((r) => r.status.tone !== "expired").length;
 
   return (
     <TabFrame>
       <StatRow>
         <Stat
           label="Estimated value"
-          value={usd(total.totalUsd)}
+          value={usd(totalUsd)}
           sub={
             rows.length
-              ? `${num(rows.reduce((s, r) => s + r.b.points, 0))} points across ${rows.length} program${rows.length === 1 ? "" : "s"}${overrides ? `, ${overrides} at your own value` : ""}`
+              ? `${num(live.reduce((s, r) => s + r.b.points, 0))} points across ${live.length} program${live.length === 1 ? "" : "s"}${overrides ? `, ${overrides} at your own value` : ""}${expired.length ? `; ${expired.length} expired balance${expired.length === 1 ? "" : "s"} not counted` : ""}`
               : "Add a balance to see what your points are worth"
           }
         />
         <Stat
-          label="Expiring within 90 days"
+          label="Expiring or expired"
           value={String(dated.length)}
           tone={dated.some((r) => r.status.tone !== "amber") ? "danger" : dated.length ? "warn" : undefined}
           sub={
             dated.length
-              ? `${programName(dated[0].id)}: ${dated[0].status.tone === "expired" ? "expired" : "expires"} ${formatDate(dated[0].status.expires!)}`
+              ? [
+                  soon ? `${soon === 1 && !expired.length ? `${programName(dated[0].id)} expires ${formatDate(dated[0].status.expires!)}` : `${soon} within ${EXPIRY_AMBER_DAYS} days`}` : "",
+                  expired.length ? `${expired.length === 1 && !soon ? `${programName(expired[0].id)} expired ${formatDate(expired[0].status.expires!)}` : `${expired.length} already expired`}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
               : atRisk.length
-                ? `${atRisk.length} bank balance${atRisk.length === 1 ? "" : "s"} with no card earning them`
-                : "Nothing expiring soon"
+                ? `${atRisk.length} bank balance${atRisk.length === 1 ? "" : "s"} with no card of yours earning them`
+                : `Nothing expiring in the next ${EXPIRY_AMBER_DAYS} days`
           }
         />
         <Stat
@@ -98,7 +141,9 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-5">
           <div>
             <h2 className="text-lg font-semibold text-navy">Balances</h2>
-            <p className="text-sm text-ink-2">Valued at the median of published valuations, unless you set your own.</p>
+            <p className="text-sm text-ink-2">
+              Valued at the median of {FIGURES}, unless you set your own.
+            </p>
           </div>
           {adding === null && rows.length > 0 && (
             <button className="btn-primary" onClick={() => setAdding("")}>
@@ -138,7 +183,7 @@ export function PointsTab({ wallet, now }: { wallet: WalletState; now: Date }) {
           <div className="flex flex-wrap items-center gap-2 border-t border-line bg-canvas/60 px-5 py-3 text-sm">
             <span className="text-ink-2">Your cards also earn:</span>
             {suggestions.map((id) => (
-              <button key={id} className="chip cursor-pointer hover:border-brand hover:text-brand" onClick={() => setAdding(id)}>
+              <button key={id} className="chip min-h-10 cursor-pointer hover:border-brand hover:text-brand sm:min-h-0" onClick={() => setAdding(id)}>
                 <Plus className="h-3 w-3" /> {programName(id)}
               </button>
             ))}
@@ -211,6 +256,7 @@ function AddBalance({ initial, existing, today, onDone }: { initial: string; exi
           <X className="h-4 w-4" />
         </button>
       </div>
+      <ActivityHint program={program} className="sm:col-span-4" />
       {error && (
         <p className="text-sm font-medium text-danger sm:col-span-4" role="alert">
           {error}
@@ -220,14 +266,41 @@ function AddBalance({ initial, existing, today, onDone }: { initial: string; exi
   );
 }
 
+/**
+ * What counts as activity for a program whose points expire after inactivity, under the "Last activity" field:
+ * for some programs only a flight or a stay does, so a transfer entered as the last activity would give too late a
+ * date.
+ */
+function ActivityHint({ program, className }: { program: string; className?: string }) {
+  const p = program ? expirationPolicy(program) : undefined;
+  if (!p || p.rule !== "inactivity") return null;
+  return (
+    <p className={cn("text-xs leading-relaxed text-ink-3", className)}>
+      <span className="font-medium text-ink-2">What counts as activity for {programName(program)}:</span> {p.activity}
+    </p>
+  );
+}
+
 function expiryLine(s: BalanceStatus): { chip?: { tone: NonNullable<BalanceStatus["tone"]>; text: string }; text: string } {
   const p = s.policy;
   switch (s.kind) {
+    case "card-exempt": {
+      const ex = p?.cardExemption;
+      // AAdvantage's exemption is for primary cardmembers; an authorized user's card doesn't count (see ownCardPrograms).
+      return { text: ex?.primary ? `Doesn't expire while you're the primary cardmember on an open ${ex.card}` : `Doesn't expire while your ${ex?.card ?? "co-brand card"} is open` };
+    }
     case "date": {
       const days = s.daysLeft ?? 0;
+      const why = s.afterClosing
+        ? `${p?.cardExemption?.afterClosingMonths} months after you closed your ${p?.cardExemption?.card}, later than ${p?.months} months after your last activity`
+        : `${p?.months} months after your last activity`;
       return {
         chip: { tone: s.tone ?? "ok", text: `${days < 0 ? "Expired" : "Expires"} ${formatDate(s.expires!)}` },
-        text: days < 0 ? `${p?.months} months after your last activity` : `${relativeDays(days)} · ${p?.months} months after your last activity`,
+        text: s.resumes
+          ? `${days < 0 ? "Expiry resumed then" : `${relativeDays(days)} · expiry resumes then`}, and your last activity was over ${p?.months} months before`
+          : days < 0
+            ? why
+            : `${relativeDays(days)} · ${why}`,
       };
     }
     case "needs-activity":
@@ -237,11 +310,16 @@ function expiryLine(s: BalanceStatus): { chip?: { tone: NonNullable<BalanceStatu
     case "while-open":
       return { text: "Safe while you keep a card that earns them" };
     case "at-risk":
-      return { chip: { tone: "amber", text: "No card earning these" }, text: "These last while you keep a card that earns them open. None is in your wallet." };
+      return {
+        chip: { tone: "amber", text: "No card earning these" },
+        text: "These last while you keep a card of your own that earns them open. Your wallet and card history have none (cards you're an authorized user on don't count).",
+      };
     case "fixed-term":
-      return { text: `Each batch expires ${p?.months} months after it's earned, whatever you do` };
+      // Activity doesn't move the date, but elite status, a paid extension or the program's own timing can: the
+      // policy's caveat says which, shown under this line.
+      return { text: `Each batch expires about ${p?.months} months after it's earned` };
     default:
-      return { text: "No expiry information yet" };
+      return { text: "No confirmed expiration policy yet: check the program's own terms" };
   }
 }
 
@@ -268,6 +346,7 @@ function BalanceRow({
   const info = programInfo(id);
   const unit = programUnit(id);
   const exp = expiryLine(status);
+  const change = changeChip(status.policy, now);
   const checked = daysSince(balance.updated, now);
   const todayIso = isoDate(now);
 
@@ -294,12 +373,34 @@ function BalanceRow({
             <ValueEditor id={id} current={c} own={own} onDone={() => setValuing(false)} />
           ) : (
             <p className="text-ink-2">
-              <span className="font-semibold text-ink">{c === undefined ? "No valuation" : usd(value)}</span>
-              {c !== undefined && <span> at {cents(c)}</span>}
-              {own !== undefined && <span className="ml-1 rounded-full bg-sky px-1.5 py-0.5 text-[11px] font-semibold text-brand">your value</span>}
-              <button className="ml-1 inline-grid h-6 w-6 place-items-center rounded text-ink-3 align-middle hover:bg-canvas hover:text-brand" onClick={() => setValuing(true)} aria-label={`Set your own value for ${programName(id)}`} title="Set your own value">
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
+              {c === undefined ? (
+                <>
+                  <span className="font-semibold text-ink">No published value</span>
+                  <button className="ml-2 inline-flex min-h-10 items-center font-medium text-brand hover:underline sm:min-h-0" onClick={() => setValuing(true)}>
+                    Set your own
+                  </button>
+                </>
+              ) : (
+                <>
+                  {status.tone === "expired" ? (
+                    <span className="font-semibold text-ink-3 line-through decoration-danger" title="Expired: not counted in the estimated value">
+                      {usd(value)}
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-ink">{usd(value)}</span>
+                  )}
+                  <span> at {cents(c)}</span>
+                  {own !== undefined && <span className="ml-1 rounded-full bg-sky px-1.5 py-0.5 text-[11px] font-semibold text-brand">your value</span>}
+                  <button
+                    className="ml-1 inline-grid h-10 w-10 place-items-center rounded text-ink-3 align-middle hover:bg-canvas hover:text-brand sm:h-6 sm:w-6"
+                    onClick={() => setValuing(true)}
+                    aria-label={`Set your own value for ${programName(id)}`}
+                    title="Set your own value"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              )}
             </p>
           )}
         </div>
@@ -307,31 +408,42 @@ function BalanceRow({
       <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
         {exp.chip && <ExpiryChip tone={exp.chip.tone}>{exp.chip.text}</ExpiryChip>}
         <span className="text-ink-2">{exp.text}</span>
+        {change && (
+          <ExplainChip text={change.title} className="bg-sky px-2.5 text-xs text-brand">
+            {change.text}
+          </ExplainChip>
+        )}
+        {status.policy?.caveat && status.kind !== "no-data" && <span className="basis-full text-xs text-ink-3">{status.policy.caveat}</span>}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm md:justify-end">
         <span className={cn(status.stale ? "font-medium text-warn" : "text-ink-3")}>
           Updated {checked <= 0 ? "today" : `${checked} day${checked === 1 ? "" : "s"} ago`}
         </span>
         {status.stale && (
-          <button className="btn-secondary px-2.5 py-1 text-xs" onClick={() => walletActions.setBalance(id, { ...balance, updated: todayIso })}>
+          <button className="btn-secondary min-h-10 px-2.5 py-1 text-xs sm:min-h-0" onClick={() => walletActions.setBalance(id, { ...balance, updated: todayIso })}>
             <CheckCircle2 className="h-3.5 w-3.5" /> Still right
           </button>
         )}
         {confirming ? (
           <>
-            <button className="btn-secondary px-2.5 py-1 text-xs" onClick={() => walletActions.setBalance(id, null)}>
+            <button className="btn-secondary min-h-10 px-2.5 py-1 text-xs sm:min-h-0" onClick={() => walletActions.setBalance(id, null)}>
               Remove
             </button>
-            <button className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setConfirming(false)}>
+            <button className="btn-ghost min-h-10 px-2.5 py-1 text-xs sm:min-h-0" onClick={() => setConfirming(false)}>
               Keep
             </button>
           </>
         ) : (
           <>
-            <button className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setEditing(true)}>
+            <button className="btn-ghost min-h-10 px-2.5 py-1 text-xs sm:min-h-0" onClick={() => setEditing(true)}>
               <Pencil className="h-3.5 w-3.5" /> Update
             </button>
-            <button className="grid h-7 w-7 place-items-center rounded text-ink-3 hover:bg-canvas hover:text-danger" onClick={() => setConfirming(true)} aria-label={`Remove ${programName(id)}`} title="Remove">
+            <button
+              className="grid h-10 w-10 place-items-center rounded text-ink-3 hover:bg-canvas hover:text-danger sm:h-7 sm:w-7"
+              onClick={() => setConfirming(true)}
+              aria-label={`Remove ${programName(id)}`}
+              title="Remove"
+            >
               <Trash2 className="h-4 w-4" />
             </button>
           </>
@@ -369,6 +481,7 @@ function EditBalance({ id, balance, todayIso, onDone }: { id: string; balance: P
           <X className="h-4 w-4" />
         </button>
       </div>
+      <ActivityHint program={id} className="sm:col-span-4" />
     </form>
   );
 }
@@ -376,6 +489,7 @@ function EditBalance({ id, balance, todayIso, onDone }: { id: string; balance: P
 function ValueEditor({ id, current, own, onDone }: { id: string; current?: number; own?: number; onDone: () => void }) {
   const median = valuationOf(id)?.median;
   const [draft, setDraft] = useState(current !== undefined ? String(current) : "");
+  const none = median === undefined;
   return (
     <form
       className="flex flex-wrap items-center gap-1"
@@ -392,13 +506,14 @@ function ValueEditor({ id, current, own, onDone }: { id: string; current?: numbe
         type="number"
         min={0.01}
         max={100}
-        step={0.05}
+        step="any"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         aria-label={`Cents per point for ${programName(id)}`}
       />
       <span className="text-xs text-ink-3">¢/pt</span>
       <button className="btn-primary px-2.5 py-1 text-xs">Save</button>
+      {none && <span className="basis-full text-xs text-ink-3">No outlet publishes a value for this one: use what you usually get per point.</span>}
       {own !== undefined && median !== undefined && (
         <button
           type="button"
@@ -418,46 +533,73 @@ function ValueEditor({ id, current, own, onDone }: { id: string; current?: numbe
   );
 }
 
-/** Where the numbers come from: valuation sources and expiration policies for the programs shown. */
+/** Where the numbers come from: each outlet's valuation and the expiration policy for the programs shown. */
 function AboutValues({ ids }: { ids: string[] }) {
   return (
     <details className="panel group p-5 text-sm">
-      <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold text-navy">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 font-semibold text-navy sm:min-h-0">
         <Info className="h-4 w-4 text-brand" /> Where these numbers come from
         <span className="ml-auto text-xs font-medium text-brand group-open:hidden">Show</span>
         <span className="ml-auto hidden text-xs font-medium text-brand group-open:inline">Hide</span>
       </summary>
-      <ul className="mt-4 divide-y divide-line">
+      <p className="mt-3 text-xs leading-relaxed text-ink-3">
+        Values are cents per point from the {EDITION} tables of {OUTLET_NAMES}; we use the middle figure. Expiration policies
+        come from the programs&apos; and card issuers&apos; own pages, or from two or more outlets that agree. Both were checked{" "}
+        {formatDate(valuations.verified)}.
+      </p>
+      <ul className="mt-2 divide-y divide-line">
         {ids.map((id) => {
           const v = valuationOf(id);
           const p = expirationPolicy(id);
           return (
-            <li key={id} className="grid gap-2 py-3 md:grid-cols-[minmax(0,220px)_1fr_1fr] md:gap-6">
+            <li key={id} className="grid gap-2 py-3 md:grid-cols-[minmax(0,200px)_1fr_1fr] md:gap-6">
               <p className="font-medium text-ink">{programName(id)}</p>
-              <div className="text-ink-2">
+              <div className="min-w-0 text-ink-2">
                 {v ? (
                   <>
                     <p>
                       Median {cents(v.median)}
-                      {v.low !== v.high && ` (range ${cents(v.low)}–${cents(v.high)})`} from {v.values.length} source{v.values.length === 1 ? "" : "s"}
+                      {v.low !== v.high && ` (range ${cents(v.low)}–${cents(v.high)})`}
                     </p>
-                    <SourceLinks sources={v.values.map((x) => x.url).filter(Boolean)} className="mt-1" />
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {v.values.map((x) => (
+                        <li key={x.source}>
+                          <a
+                            href={x.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex min-h-8 items-center font-medium text-brand hover:underline sm:inline sm:min-h-0"
+                          >
+                            {x.source}
+                          </a>
+                          : {cents(x.cents)}
+                          {x.previousCents !== undefined && <span className="text-ink-3"> (was {cents(x.previousCents)})</span>}
+                          {x.variants?.map((va) => (
+                            <span key={va.appliesTo} className="text-ink-3">
+                              ; {cents(va.cents)} for {va.appliesTo}
+                            </span>
+                          ))}
+                          <span className="text-ink-3"> · {formatMonth(x.asOf)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {v.note && <p className="mt-1 text-xs text-ink-3">{v.note}</p>}
                   </>
                 ) : (
-                  <p>No valuation on file</p>
+                  <p>No published value. {missingValuation(id) ?? ""} Use &ldquo;Set your own&rdquo; next to the balance.</p>
                 )}
               </div>
-              <div className="text-ink-2">
+              <div className="min-w-0 text-ink-2">
                 {p ? (
                   <>
                     <p>{p.notes}</p>
                     <p className="mt-0.5 text-xs text-ink-3">
-                      Activity: {p.activity} · as of {formatDate(p.asOf)}
+                      Activity: {p.activity} · as of {formatMonth(p.asOf)}
                     </p>
-                    <SourceLinks sources={p.sources} className="mt-1" />
+                    <SourceLinks sources={p.sources} checked={expirationPolicies.verified} className="mt-1" />
                   </>
                 ) : (
-                  <p>No expiration policy on file</p>
+                  <p>No confirmed expiration policy. {missingPolicy(id) ?? ""}</p>
                 )}
               </div>
             </li>

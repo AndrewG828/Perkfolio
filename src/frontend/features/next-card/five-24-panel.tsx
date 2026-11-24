@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { CalendarClock, ChevronDown, CircleHelp } from "lucide-react";
 import { Meter } from "@/frontend/components/meter";
-import type { NewCardCount } from "@/shared/lib/eligibility";
-import { daysUntil, formatDate, formatMonth } from "@/shared/lib/dates";
+import { thePhrase as thePhraseOf, type NewCardCount } from "@/shared/lib/eligibility";
+import { daysUntil, formatDate, formatDateOrMonth } from "@/shared/lib/dates";
 import { cn } from "@/shared/lib/format";
 import { CertaintyChip } from "./rule-results";
+
+const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
 
 /** Headline sentence for the 5/24 count. */
 export function fiveTwentyFourSummary(s: NewCardCount): string {
@@ -17,9 +19,11 @@ export function fiveTwentyFourSummary(s: NewCardCount): string {
     return `${s.count} counted, plus ${s.undated.length} wallet card${s.undated.length === 1 ? "" : "s"} without an open date that could push you over.`;
   }
   if (!s.historyKnown) return `${s.count} from your wallet so far. Add the other cards you've opened for an exact count.`;
-  return room === 1
-    ? "Under the limit, with room for 1 more personal card before Chase starts declining."
-    : `Under the limit, with room for ${room} more personal cards before Chase starts declining.`;
+  // Cards without an open date may count: the room is a range until they have dates.
+  const low = room - s.undated.length;
+  const n = low === room ? String(room) : `${low}–${room}`;
+  const more = `room for ${n} more personal card${room === 1 ? "" : "s"} before Chase starts declining`;
+  return low === room ? `Under the limit, with ${more}.` : `Under the limit, with ${more}: add the missing open date${s.undated.length === 1 ? "" : "s"} for an exact count.`;
 }
 
 /**
@@ -59,7 +63,7 @@ export function FiveTwentyFourPanel({
             <span className="text-2xl font-medium text-ink-3">/{s.months}</span>
           </p>
         </div>
-        {s.rule && <CertaintyChip certainty={s.rule.certainty} />}
+        {s.rule && <CertaintyChip certainty={s.rule.certainty} explain={false} />}
       </div>
       <Meter
         className="mt-4"
@@ -80,9 +84,9 @@ export function FiveTwentyFourPanel({
       )}
 
       {!compact && collapsible && rows > 0 && (
-        <button className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline lg:hidden" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen}>
-          {listOpen ? "Hide" : "Show"} the {rows === 1 ? "card" : `${rows} cards`}
-          {s.counted.length > 0 ? " and drop-off dates" : ""}
+        <button className="mt-2 inline-flex min-h-10 items-center gap-1 text-sm font-medium text-brand hover:underline lg:hidden" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen}>
+          {listOpen ? "Hide" : "Show"} {rows === 1 ? thePhraseOf((s.counted[0]?.record ?? s.undated[0]).name) : `the ${rows} cards`}
+          {s.counted.length > 0 ? (rows === 1 ? " and its drop-off date" : " and drop-off dates") : ""}
           <ChevronDown className={cn("h-4 w-4 transition-transform", listOpen && "rotate-180")} />
         </button>
       )}
@@ -96,7 +100,12 @@ export function FiveTwentyFourPanel({
                   <li key={record.key} className="py-2.5 text-sm">
                     <p>
                       <span className="font-medium text-ink">{record.name}</span>
-                      <span className="text-ink-3"> · opened {formatMonth(record.opened!)}</span>
+                      <span className="text-ink-3">
+                        {" "}
+                        · opened {formatDateOrMonth(record.opened!)}
+                        {record.business ? " · business card on your personal report" : ""}
+                        {record.authorizedUser ? " · authorized user" : ""}
+                      </span>
                     </p>
                     <p className="text-xs text-ink-2">
                       Drops off {formatDate(dropOff)} <span className="text-ink-3">({days} day{days === 1 ? "" : "s"})</span>
@@ -115,9 +124,12 @@ export function FiveTwentyFourPanel({
             </ol>
           )}
           <p className="mt-4 text-xs leading-relaxed text-ink-3">
-            Counts personal cards from every bank, open or closed; business cards usually don&apos;t count. A card opened
-            in a month counts to the end of that month {s.months} months later, so drop-off dates are on the safe side.
-            {s.rule?.certainty === "widely reported" && " The rule comes from applicants' reports, not Chase's published terms."}
+            Counts personal cards from every bank, open or closed, including ones you&apos;re an authorized user on (add those
+            to your history and tick &ldquo;authorized user&rdquo;: they count here but not as cards you hold), plus the few
+            business cards that show on personal credit reports, like most Capital One, Discover and TD Bank business cards. Chase, Amex and Citi business cards don&apos;t count. A card stops counting
+            on the 1st of the {ordinal(s.months + 1)} month after the month you opened it.
+            {s.rule?.certainty === "widely reported" &&
+              " Chase doesn't publish the rule; The Points Guy, Upgraded Points, NerdWallet and Doctor of Credit all report it."}
             {showLink && (
               <>
                 {" "}

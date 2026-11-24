@@ -5,15 +5,18 @@ import { expirationPolicies } from "../src/shared/data/strategy/expiration";
 import { valuations } from "../src/shared/data/strategy/valuations";
 import { cards, getCard } from "../src/shared/data/cards";
 import type { Card } from "../src/shared/data/types";
-import type { Certificate } from "../src/shared/lib/wallet";
+import type { Certificate, WalletState } from "../src/shared/lib/wallet";
 import { addMonths, daysUntil, formatDate, isoDate } from "../src/shared/lib/dates";
 import {
   balanceStatus,
+  ownCardPrograms,
   centsFor,
   centsPerPoint,
   certificateStatus,
   certificateTotals,
   expiryTone,
+  missingPolicy,
+  missingValuation,
   pointsVsCash,
   portfolioValue,
   redemptionStats,
@@ -73,7 +76,7 @@ test("cents per point is (cash - taxes) / points x 100", () => {
   assert.ok((centsPerPoint({ points: 1000, taxesUsd: 50, cashPriceUsd: 40 }) ?? 0) < 0);
 });
 
-test("redemption stats weight by points and compare with valuations", () => {
+test("redemption stats weight by points and compare only the redemptions that have a valuation", () => {
   const cents = (p?: string) => (p === "united-mileageplus" ? 1.2 : p === "world-of-hyatt" ? 1.7 : undefined);
   const s = redemptionStats(
     [
@@ -87,10 +90,24 @@ test("redemption stats weight by points and compare with valuations", () => {
   assert.equal(s.points, 135_000);
   assert.equal(s.savings, 2400);
   assert.ok(Math.abs((s.averageCpp ?? 0) - (2400 / 135_000) * 100) < 1e-9);
-  // (100k x 1.2 + 25k x 1.7) / 125k = 1.3
-  assert.ok(Math.abs((s.valuationCpp ?? 0) - 1.3) < 1e-9);
+  // Like with like: the two valued redemptions got (2000 + 300) / 125k = 1.84¢ against (100k x 1.2 + 25k x 1.7) / 125k = 1.3¢.
+  assert.equal(s.valued.count, 2);
+  assert.equal(s.valued.points, 125_000);
+  assert.ok(Math.abs((s.valued.cpp ?? 0) - 1.84) < 1e-9);
+  assert.ok(Math.abs((s.valued.valuationCpp ?? 0) - 1.3) < 1e-9);
   // United: 2000 - 1200 = +800; Hyatt: 300 - 425 = -125; the unvalued one is left out.
-  assert.ok(Math.abs(s.vsValuationUsd - 675) < 1e-9);
+  assert.ok(Math.abs(s.valued.vsValuationUsd - 675) < 1e-9);
+  // The review's case: a redemption with no published value doesn't inflate the comparison.
+  const mixed = redemptionStats(
+    [
+      { id: "h", date: "2026-03-01", label: "Hilton", program: "hilton-honors", points: 100_000, taxesUsd: 0, cashPriceUsd: 190 },
+      { id: "t", date: "2026-04-01", label: "TAP", program: "tap-miles-and-go", points: 50_000, taxesUsd: 40, cashPriceUsd: 3500 },
+    ],
+    (p) => centsFor(p),
+  );
+  assert.equal(mixed.valued.count, 1);
+  assert.ok(Math.abs((mixed.valued.cpp ?? 0) - 0.19) < 1e-9);
+  assert.ok((mixed.averageCpp ?? 0) > 2);
 });
 
 test("points vs cash gives a verdict against the valuation and the dollars at stake", () => {
@@ -133,14 +150,39 @@ test("portfolio value uses the median valuation unless the user overrides it", (
   assert.equal(centsFor("chase-ur", { "chase-ur": -1 }), median);
 });
 
-test("strategy data covers every program, and cards map to the currency they earn", () => {
+test("strategy data: every program has a valuation and a policy, or is listed as missing one", () => {
   const ids = PROGRAMS.map((p) => p.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.deepEqual(expirationPolicies.programs.map((p) => p.id).sort(), [...ids].sort());
-  assert.deepEqual(valuations.valuations.map((v) => v.id).sort(), [...ids].sort());
-  for (const v of valuations.valuations) assert.ok(v.low <= v.median && v.median <= v.high && v.median > 0, v.id);
+  const policyIds = expirationPolicies.programs.map((p) => p.id);
+  const valuationIds = valuations.valuations.map((v) => v.id);
+  const noPolicy = expirationPolicies.missing.map((m) => m.id);
+  const noValue = valuations.missing.map((m) => m.id);
+  for (const id of [...policyIds, ...valuationIds, ...noPolicy, ...noValue]) assert.ok(ids.includes(id), `unknown program ${id}`);
+  for (const id of ids) {
+    assert.equal(Number(valuationIds.includes(id)) + Number(noValue.includes(id)), 1, `valuation for ${id}`);
+    assert.equal(Number(policyIds.includes(id)) + Number(noPolicy.includes(id)), 1, `policy for ${id}`);
+  }
+  assert.equal(policyIds.length, 41);
+  assert.equal(valuationIds.length, 38);
+  assert.deepEqual([...noValue].sort(), ["eva-air-infinity-mileagelands", "tap-miles-and-go", "thai-royal-orchid-plus", "virgin-red"]);
+  assert.deepEqual(noPolicy, ["thai-royal-orchid-plus"]);
+  for (const v of valuations.valuations) {
+    const figures = v.values.map((x) => x.cents);
+    assert.ok(v.low <= v.median && v.median <= v.high && v.low > 0, v.id);
+    assert.equal(v.low, Math.min(...figures), v.id);
+    assert.equal(v.high, Math.max(...figures), v.id);
+    assert.equal(v.outletCount, v.values.length, v.id);
+    for (const x of v.values) {
+      assert.match(x.asOf, /^\d{4}-\d{2}$/);
+      assert.match(x.url, /^https:\/\//);
+      if (x.via) assert.ok(valuations.datasets[x.via], `${v.id}: dataset ${x.via}`);
+    }
+  }
   for (const p of expirationPolicies.programs) {
     if (p.rule === "inactivity" || p.rule === "fixed-term") assert.ok((p.months ?? 0) > 0, p.id);
+    assert.match(p.asOf, /^\d{4}-\d{2}$/);
+    assert.ok(p.sources.length > 0, p.id);
+    assert.doesNotMatch(`${p.activity} ${p.notes}`, /correction|seed|placeholder|single report/i, p.id);
   }
   const card = (id: string) => getCard(id) as Card;
   assert.equal(programForCard(card("amex-gold")), "amex-mr");
@@ -152,4 +194,106 @@ test("strategy data covers every program, and cards map to the currency they ear
     const id = programForCard(c);
     if (id) assert.ok(ids.includes(id), `${c.id} → ${id}`);
   }
+});
+
+test("programs without a valuation or a policy still work: no value until the user sets one, no expiry guess", () => {
+  assert.equal(centsFor("virgin-red"), undefined);
+  assert.equal(centsFor("virgin-red", { "virgin-red": 1.1 }), 1.1);
+  assert.ok(missingValuation("virgin-red"));
+  assert.equal(missingValuation("chase-ur"), undefined);
+  const balances = { "virgin-red": { points: 10_000, updated: "2026-11-01" }, "united-mileageplus": { points: 10_000, updated: "2026-11-01" } };
+  assert.deepEqual(portfolioValue(balances), { totalUsd: 120, valued: 1, unvalued: ["virgin-red"] });
+  assert.equal(portfolioValue(balances, { "virgin-red": 1 }).totalUsd, 220);
+  assert.equal(pointsVsCash({ points: 10_000, taxesUsd: 0, cashPriceUsd: 150, valuationCents: centsFor("tap-miles-and-go") }).verdict, undefined);
+  const thai = balanceStatus("thai-royal-orchid-plus", { points: 1, updated: "2026-11-20" }, TODAY, { earningCard: false });
+  assert.equal(thai.kind, "no-data");
+  assert.ok(missingPolicy("thai-royal-orchid-plus"));
+  assert.equal(balanceStatus("virgin-red", { points: 1, updated: "2026-11-20" }, TODAY, { earningCard: false }).kind, "never");
+});
+
+test("co-brand cardholders: World of Hyatt and AAdvantage points don't expire while the card is open", () => {
+  const old = { points: 40_000, updated: "2026-11-20", lastActivity: "2024-08-01" };
+  // With a card that earns them in the wallet, the inactivity clock doesn't apply (the policy says so).
+  assert.equal(balanceStatus("world-of-hyatt", old, TODAY, { earningCard: true }).kind, "card-exempt");
+  assert.equal(balanceStatus("american-aadvantage", old, TODAY, { earningCard: true }).kind, "card-exempt");
+  assert.equal(balanceStatus("american-aadvantage", old, TODAY, { earningCard: true }).tone, undefined);
+  // Without one, the 24 months count from the last activity.
+  const lapsed = balanceStatus("world-of-hyatt", old, TODAY, { earningCard: false });
+  assert.equal(lapsed.kind, "date");
+  assert.equal(lapsed.tone, "expired");
+  // Programs whose notes give no card exemption aren't affected by holding a card.
+  assert.equal(balanceStatus("hilton-honors", old, TODAY, { earningCard: true }).kind, "date");
+  assert.equal(balanceStatus("marriott-bonvoy", old, TODAY, { earningCard: true }).kind, "date");
+  const hyatt = expirationPolicies.programs.find((p) => p.id === "world-of-hyatt");
+  assert.match(hyatt?.notes ?? "", /points don't expire while the card account is open/);
+});
+
+test("fixed-term programs carry a caveat from their notes instead of 'whatever you do'", () => {
+  for (const p of expirationPolicies.programs.filter((x) => x.rule === "fixed-term")) {
+    assert.ok(p.caveat, `${p.id}: caveat`);
+    assert.doesNotMatch(p.caveat ?? "", /whatever you do/i, p.id);
+  }
+  const eva = expirationPolicies.programs.find((p) => p.id === "eva-air-infinity-mileagelands");
+  assert.match(eva?.caveat ?? "", /disagree/);
+  assert.match(eva?.activity ?? "", /sources disagree/);
+  const turkish = expirationPolicies.programs.find((p) => p.id === "turkish-miles-and-smiles");
+  assert.match(turkish?.caveat ?? "", /for a fee/);
+  // Wyndham keeps each outlet's own wording: TPG on points the cardmember earns, Upgraded Points on points earned with the card.
+  const wyndham = expirationPolicies.programs.find((p) => p.id === "wyndham-rewards");
+  assert.match(wyndham?.notes ?? "", /TPG says points they earn don't expire/);
+  assert.match(wyndham?.notes ?? "", /Upgraded Points says points earned with the card don't expire/);
+});
+
+test("Aeroplan: a deadline that fell during the expiry pause moves to the day expiry resumes", () => {
+  const old = balanceStatus("air-canada-aeroplan", { points: 50_000, updated: "2026-11-20", lastActivity: "2024-06-01" }, TODAY, { earningCard: false });
+  assert.equal(old.expires, "2026-11-30");
+  assert.equal(old.resumes, true);
+  assert.equal(old.tone, "red");
+  const recent = balanceStatus("air-canada-aeroplan", { points: 1, updated: "2026-11-20", lastActivity: "2026-01-10" }, TODAY, { earningCard: false });
+  assert.equal(recent.expires, "2027-07-10");
+  assert.equal(recent.resumes, undefined);
+});
+
+test("co-brand exemptions go by the user's own cards: history-only cards count, authorized-user cards don't", () => {
+  const W = (o: Partial<WalletState>): WalletState => ({ version: 1, cards: [], usage: {}, ignored: {}, ...o });
+  const old = { points: 60_000, updated: "2026-11-20", lastActivity: "2024-06-01" };
+  const status = (w: WalletState) => {
+    const own = ownCardPrograms(w);
+    return balanceStatus("american-aadvantage", old, TODAY, { earningCard: own.open.has("american-aadvantage"), closedCardOn: own.closed.get("american-aadvantage") });
+  };
+  // An authorized user on someone's AAdvantage Executive isn't a primary cardmember: the 24 months apply.
+  const au = W({ cards: ["citi-aadvantage-executive"], applications: [{ id: "a1", issuer: "Citi", cardId: "citi-aadvantage-executive", opened: "2025-02", business: false, authorizedUser: true }] });
+  assert.equal(ownCardPrograms(au).open.has("american-aadvantage"), false);
+  const lapsed = status(au);
+  assert.equal(lapsed.kind, "date");
+  assert.equal(lapsed.tone, "expired");
+  // The user's own card, in the wallet only, still counts.
+  assert.equal(status(W({ cards: ["citi-aadvantage-executive"] })).kind, "card-exempt");
+  // A Barclays Aviator exists only in the card history (we don't list it): its name says AAdvantage.
+  const aviator = W({ applications: [{ id: "a2", issuer: "Barclays", name: "AAdvantage Aviator Red", opened: "2023-05", business: false }] });
+  assert.equal(status(aviator).kind, "card-exempt");
+  // Closed in Oct 2026: miles last four months after closing when that's later than 24 months after the last activity.
+  const closed = W({ applications: [{ id: "a3", issuer: "Barclays", name: "Aviator Red", opened: "2023-05", closed: "2026-10", business: false }] });
+  const grace = status(closed);
+  assert.equal(grace.kind, "date");
+  assert.equal(grace.expires, "2027-02-01");
+  assert.equal(grace.afterClosing, true);
+  // Bank points: a card the user is an authorized user on doesn't keep their own balance safe.
+  const mr = W({ cards: ["amex-gold"], applications: [{ id: "a4", issuer: "American Express", cardId: "amex-gold", opened: "2024-01", business: false, authorizedUser: true }] });
+  assert.equal(balanceStatus("amex-mr", { points: 1, updated: "2026-11-20" }, TODAY, { earningCard: ownCardPrograms(mr).open.has("amex-mr") }).kind, "at-risk");
+  const aa = expirationPolicies.programs.find((p) => p.id === "american-aadvantage");
+  assert.equal(aa?.cardExemption?.primary, true);
+});
+
+test("inactivity programs whose research narrows or disputes what counts as activity carry a caveat", () => {
+  const caveat = (id: string) => expirationPolicies.programs.find((p) => p.id === id)?.caveat ?? "";
+  assert.match(caveat("etihad-guest"), /Only a flight/);
+  assert.match(caveat("accor-live-limitless"), /only an eligible hotel stay/);
+  assert.match(caveat("qatar-privilege-club"), /disagree on what resets/);
+  assert.match(caveat("avianca-lifemiles"), /not redeeming/);
+  assert.match(caveat("finnair-plus"), /British Airways Club/);
+  assert.match(caveat("air-france-klm-flying-blue"), /co-brand card/);
+  // Aeroméxico's "doesn't expire" rests on its card terms and TPG; Upgraded Points still gives 24 months.
+  assert.match(caveat("aeromexico-rewards"), /Upgraded Points still describes a 24-month/);
+  assert.match(expirationPolicies.programs.find((p) => p.id === "aeromexico-rewards")?.notes ?? "", /Upgraded Points' 2026 earning and redemption guides/);
 });

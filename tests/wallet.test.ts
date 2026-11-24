@@ -112,6 +112,12 @@ test("parseWallet enforces list caps, text limits and field formats on the new f
     { applications: [{ ...app, opened: "2025-13" }] },
     { applications: [{ ...app, opened: "March 2025" }] },
     { applications: [{ ...app, closed: "2024-01" }] }, // closed before opened
+    { applications: [{ ...app, opened: "2025-02-30" }] }, // no such day
+    { applications: [{ ...app, opened: "2025-03-00" }] },
+    { applications: [{ ...app, opened: "1969-12-31" }] },
+    { applications: [{ ...app, opened: "2025-03-10", closed: "2025-03-09" }] }, // a day before it opened
+    { applications: [{ ...app, opened: "2025-03-10", bonusEarned: "2025-02" }] },
+    { applications: [{ ...app, opened: "2025-03-10", bonusEarned: "2025-05-01" }] }, // bonus dates are months
     { applications: [{ ...app, business: "no" }] },
     { applications: [{ ...app, issuer: "" }] },
     { applications: [{ ...app, issuer: "x".repeat(41) }] },
@@ -146,9 +152,36 @@ test("parseWallet enforces list caps, text limits and field formats on the new f
   assert.equal((stripped?.certificates?.[0] as unknown as Record<string, unknown>).evil, undefined);
 });
 
+test("applications may carry the exact day they opened or closed (day-based issuer windows need it)", () => {
+  const app = { id: "app-day", issuer: "Citi", cardId: "citi-strata-premier", business: false };
+  const ok = [
+    { ...app, opened: "2026-11-05" },
+    { ...app, opened: "2026-11-05", closed: "2026-11-20" },
+    { ...app, opened: "2026-11-05", closed: "2026-11" }, // same month, day unknown
+    { ...app, opened: "2026-11", closed: "2026-11-02" },
+    { ...app, opened: "2024-02-29", bonusEarned: "2024-02" },
+  ];
+  for (const a of ok) assert.deepEqual(parseWallet({ cards: [], usage: {}, applications: [a] })?.applications, [a], JSON.stringify(a));
+});
+
+test("applications tell 'no bonus' apart from 'not recorded', and can be authorized-user cards", () => {
+  const app = { id: "app-b", issuer: "Capital One", cardId: "capital-one-venture-x", business: false, opened: "2025-08" };
+  for (const a of [{ ...app, bonusEarned: "none" }, { ...app, authorizedUser: true }, { ...app, bonusEarned: "2025-10", authorizedUser: true }]) {
+    assert.deepEqual(parseWallet({ cards: [], usage: {}, applications: [a] })?.applications, [a], JSON.stringify(a));
+  }
+  // false means the same as absent; anything else is rejected.
+  assert.deepEqual(parseWallet({ cards: [], usage: {}, applications: [{ ...app, authorizedUser: false }] })?.applications, [app]);
+  for (const bad of [{ ...app, authorizedUser: "yes" }, { ...app, bonusEarned: "None" }, { ...app, bonusEarned: "" }]) {
+    assert.equal(parseWallet({ cards: [], usage: {}, applications: [bad] }), null, JSON.stringify(bad));
+  }
+  // Field by field: one device records "no bonus" while the other marks it an authorized-user card.
+  const merged = mergeWallets3(W({ applications: [app] }), W({ applications: [{ ...app, bonusEarned: "none" }] }), W({ applications: [{ ...app, authorizedUser: true }] }));
+  assert.deepEqual(merged.applications, [{ ...app, bonusEarned: "none", authorizedUser: true }]);
+});
+
 test("a maxed-out wallet of realistic items stays under the 256 KB sync limit", () => {
   const big = W({
-    applications: Array.from({ length: 150 }, (_, i) => ({ id: crypto.randomUUID(), issuer: "Bank of America", cardId: `some-card-id-${i}`, name: "A card with a fairly long product name", opened: "2025-03", business: false, closed: "2026-01", bonusEarned: "2025-05" })),
+    applications: Array.from({ length: 150 }, (_, i) => ({ id: crypto.randomUUID(), issuer: "Bank of America", cardId: `some-card-id-${i}`, name: "A card with a fairly long product name", opened: "2025-03-14", business: false, closed: "2026-01-31", bonusEarned: "2025-05" })),
     balances: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`program-id-number-${i}`, { points: 123_456_789, updated: "2026-11-01", lastActivity: "2026-10-01" }])),
     certificates: Array.from({ length: 100 }, () => ({ id: crypto.randomUUID(), kind: "free-night" as const, program: "marriott-bonvoy", label: "x".repeat(80), valueUsd: 1234.56, points: 85_000, expires: "2027-01-01", used: false, notes: "n".repeat(160) })),
     redemptions: Array.from({ length: 200 }, () => ({ id: crypto.randomUUID(), date: "2026-01-01", label: "x".repeat(80), program: "air-france-klm-flying-blue", points: 123_456, taxesUsd: 1234.56, cashPriceUsd: 9876.54, notes: "n".repeat(160) })),
