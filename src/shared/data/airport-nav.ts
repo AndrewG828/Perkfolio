@@ -98,7 +98,7 @@ export const airportNav: Record<string, AirportNav> = {
       { id: "4A", name: "Terminal 4, Concourse A", gates: letters("A"), terminals: ["Terminal 4, Concourse A"] },
       { id: "4", name: "Terminal 4 (main hall)", terminals: ["Terminal 4"], checkpoint: "Terminal 4 security" },
       { id: "4B", name: "Terminal 4, Concourse B", gates: letters("B"), terminals: ["Terminal 4, Concourse B"] },
-      { id: "8", name: "Terminal 8", gates: numbers([1, 16]), terminals: ["Terminal 8"], checkpoint: "Terminal 8 security" },
+      { id: "8", name: "Terminal 8", gates: numbers([1, 16], [31, 47]), terminals: ["Terminal 8"], checkpoint: "Terminal 8 security" },
     ],
     links: [
       { a: "4", b: "4A", mode: "walk", minutes: 5 },

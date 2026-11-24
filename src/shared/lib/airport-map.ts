@@ -27,7 +27,10 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 function zoneHasTerminal(zone: NavZone, terminalName: string | null): boolean {
   if (!terminalName) return false;
   const t = norm(terminalName);
-  return [zone.name, ...(zone.terminals ?? [])].map(norm).some((z) => z === t || z.startsWith(t) || t.startsWith(z));
+  // Also match a building named for just the concourse ("Concourse B" for "Terminal 1, Concourse B").
+  return [zone.name, ...(zone.terminals ?? [])]
+    .map(norm)
+    .some((z) => z === t || z.startsWith(t) || t.startsWith(z) || (t.length >= 9 && z.endsWith(t)));
 }
 
 const centroid = (pts: Pt[]): Pt | null =>
