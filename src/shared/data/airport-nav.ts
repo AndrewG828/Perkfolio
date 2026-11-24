@@ -226,11 +226,11 @@ export const airportNav: Record<string, AirportNav> = {
   },
   SFO: {
     zones: [
-      { id: "G", name: "International Terminal G", gates: letters("G"), terminals: ["International Terminal", "International Terminal G"], checkpoint: "International Terminal G security" },
+      { id: "G", name: "International Terminal G", gates: letters("G"), terminals: ["International Terminal", "International Terminal G", "International Boarding Area G"], checkpoint: "International Terminal G security" },
       { id: "3", name: "Terminal 3", gates: letters("E", "F"), terminals: ["Terminal 3"], checkpoint: "Terminal 3 security" },
       { id: "2", name: "Terminal 2", gates: letters("D"), terminals: ["Terminal 2", "Terminal 2, Concourse D"], checkpoint: "Terminal 2 security" },
       { id: "1", name: "Harvey Milk Terminal 1", gates: letters("B", "C"), terminals: ["Harvey Milk Terminal 1"], checkpoint: "Terminal 1 security" },
-      { id: "A", name: "International Terminal A", gates: letters("A"), terminals: ["International Terminal A"], checkpoint: "International Terminal A security" },
+      { id: "A", name: "International Terminal A", gates: letters("A"), terminals: ["International Terminal A", "International Boarding Area A"], checkpoint: "International Terminal A security" },
     ],
     links: [
       { a: "G", b: "3", mode: "walk", minutes: 10 },

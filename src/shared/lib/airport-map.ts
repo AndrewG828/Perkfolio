@@ -55,7 +55,11 @@ function gatesInZone(data: AirportMapData, zone: NavZone) {
     return p && rules.some((r) => r.prefix === p.prefix && (r.from === undefined || p.number >= r.from) && (r.to === undefined || p.number <= r.to));
   });
   const inTerminal = byRule.filter((g) => zoneHasTerminal(zone, g.t));
-  return inTerminal.length ? inTerminal : byRule;
+  if (inTerminal.length) return inTerminal;
+  // The zone's own building is mapped but none of its gates are (LAX T5 mid-rebuild): gates tagged to another
+  // building (LAX's remote Eagle terminal, gates 52A–I) aren't this zone's middle.
+  if (data.terminals.some((t) => zoneHasTerminal(zone, t.name))) return byRule.filter((g) => !g.t);
+  return byRule;
 }
 
 type MapGate = AirportMapData["gates"][number];

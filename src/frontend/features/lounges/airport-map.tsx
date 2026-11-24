@@ -208,7 +208,8 @@ export function AirportMap({
     if (drag.current && drag.current.pointers.size < 2) drag.current.dist = undefined;
   };
 
-  const youLabel = origin?.kind === "gate" ? (origin.gate?.label ?? "You") : "Security";
+  const youLabel =
+    origin?.kind === "gate" ? (origin.gate?.label ?? nav.zones.find((z) => z.id === origin.zone)?.name ?? "Airside") : "Security";
 
   return (
     <div className="space-y-2">
