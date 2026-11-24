@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { airportNav } from "../src/shared/data/airport-nav";
-import { loungesAt } from "../src/shared/lib/lounge-access";
-import { gatePoint, loungePoint, routeGeometry, zoneAnchor, zoneAt, type AirportMapData } from "../src/shared/lib/airport-map";
+import { gateOf, loungesAt } from "../src/shared/lib/lounge-access";
+import { gatePoint, loungePoint, routeGeometry, trainStations, zoneAnchor, zoneAt, type AirportMapData } from "../src/shared/lib/airport-map";
 import { parseGate, routeTo, zoneForLounge } from "../src/shared/lib/wayfinding";
 import { build } from "../scripts/build-airport-maps";
 
@@ -172,9 +174,70 @@ test("terminals without gate rules place gates from their own buildings (Heathro
   const z = (id: string) => airportNav.LHR.zones.find((x) => x.id === id)!;
   assert.deepEqual(gatePoint(lhr, z("5"), "A7"), [100, 105]);
   assert.deepEqual(gatePoint(lhr, z("4"), "10"), [140, 1105]);
-  // On the grid: inside the building by the gate, not out at the terminal's middle.
-  const a7 = zoneAnchor(lhr, airportNav.LHR, z("5"))!;
-  assert.ok(a7[1] > 0 && a7[1] < 100, `${a7}`);
+  // On the grid: the terminal's middle inside it, and You at gate A7 inside the building by the gate (OSM has the gate
+  // just outside its south wall), not out at the terminal's middle.
+  const mid = zoneAnchor(lhr, airportNav.LHR, z("5"))!;
+  assert.ok(mid[1] > 0 && mid[1] < 100, `${mid}`);
+  const lounge = loungesAt("LHR").find((l) => zoneForLounge(airportNav.LHR, l)?.id === "5")!;
+  const origin = { kind: "gate" as const, zone: "5", gate: parseGate("A7")! };
+  const geo = routeGeometry(lhr, airportNav.LHR, origin, routeTo(airportNav.LHR, origin, lounge)!, lounge);
+  assert.equal(geo.startAt, "gate");
+  assert.ok(geo.start && geo.start[1] > 0 && geo.start[1] < 100 && Math.hypot(geo.start[0] - 100, geo.start[1] - 105) < 25, `You at ${geo.start}`);
+});
+
+test("with building outlines, a walk the buildings can't carry isn't drawn across the apron", () => {
+  // Made-up IAD: Concourse A in two buildings 500 m apart (nothing joins them), the main terminal far away.
+  const box = (x0: number, y0: number, x1: number, y1: number): [number, number][] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+  const iad: AirportMapData = {
+    code: "IAD",
+    origin: [38.95, -77.45],
+    runways: [],
+    terminals: [
+      { name: "Concourse A", rings: [box(0, 0, 300, 40)] },
+      { name: "Concourse A", rings: [box(800, 0, 1100, 40)] },
+      { name: "Washington-Dulles International Airport, Main Terminal", rings: [box(0, -600, 400, -500)] },
+    ],
+    gates: [
+      ...[1, 2, 3, 4, 5].map((n) => ({ ref: `A${n}`, x: n * 50, y: 45, t: "Concourse A" })),
+      ...[10, 12, 14, 16, 18].map((n, i) => ({ ref: `A${n}`, x: 820 + i * 60, y: 45, t: "Concourse A" })),
+    ],
+    attribution: "test",
+  };
+  const nav = airportNav.IAD;
+  const lounge = loungesAt("IAD").find((l) => zoneForLounge(nav, l)?.id === "A" && Number(/\d+/.exec(gateOf(l) ?? "")?.[0]) >= 10)!;
+  const origin = { kind: "gate" as const, zone: "A", gate: parseGate("A2")! };
+  const geo = routeGeometry(iad, nav, origin, routeTo(nav, origin, lounge)!, lounge);
+  // You and the lounge are shown; nothing is drawn between the two buildings.
+  assert.ok(geo.start && geo.start[0] < 300 && geo.end && geo.end[0] > 800, `${geo.start} → ${geo.end}`);
+  for (const sg of geo.segments) for (const [x] of sg.pts) assert.ok(x < 310 || x > 790, `${sg.mode} drawn across the apron at x=${x}`);
+});
+
+test("trains stop at stations: DFW's terminals have two, and a train stops at the one nearer the lounge", () => {
+  const data: AirportMapData = JSON.parse(readFileSync(join(__dirname, "..", "public", "airport-maps", "DFW.json"), "utf8"));
+  const nav = airportNav.DFW;
+  for (const zone of nav.zones) {
+    const st = trainStations(data, nav, zone);
+    assert.equal(st.length, 2, `Terminal ${zone.id}`);
+    assert.ok(Math.hypot(st[0][0] - st[1][0], st[0][1] - st[1][1]) > 300, `Terminal ${zone.id} stations ${st}`);
+    for (const p of st) assert.equal(zoneAt(data, nav, p), zone.id, `Terminal ${zone.id} station at ${p}`);
+  }
+  for (const lounge of loungesAt("DFW")) {
+    const zone = zoneForLounge(nav, lounge);
+    const end = loungePoint(data, nav, lounge);
+    if (!zone || !end) continue;
+    const stations = trainStations(data, nav, zone);
+    for (const from of nav.zones.filter((z) => z.id !== zone.id)) {
+      const origin = { kind: "gate" as const, zone: from.id };
+      const geo = routeGeometry(data, nav, origin, routeTo(nav, origin, lounge)!, lounge);
+      const train = geo.segments.find((sg) => sg.mode === "train")!;
+      const stop = train.pts[train.pts.length - 1];
+      assert.ok(stations.some((q) => q[0] === stop[0] && q[1] === stop[1]), `@${from.id} → ${lounge.id}: stops at ${stop}`);
+      // The nearer station to the lounge (as the crow flies, give or take the buildings' bends).
+      const [near] = [...stations].sort((a, b) => Math.hypot(a[0] - end[0], a[1] - end[1]) - Math.hypot(b[0] - end[0], b[1] - end[1]));
+      const extra = Math.hypot(stop[0] - end[0], stop[1] - end[1]) - Math.hypot(near[0] - end[0], near[1] - end[1]);
+      assert.ok(extra < 150, `@${from.id} → ${lounge.id}: stops ${Math.round(extra)} m further from the lounge than its other station`);
+    }
+  }
 });
 
 test("leaving the secure area from a concourse walks to the terminal with the exits first (JFK Terminal 4)", () => {

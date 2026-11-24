@@ -20,6 +20,11 @@ const OVERHANG = 600;
 /** Bigger grids get coarser cells, to bound memory and build time. */
 const MAX_CELLS = 1_200_000;
 /**
+ * Building the grid yields after about this many cells, and a search over all of it after settling a quarter as many,
+ * so each piece takes a few milliseconds.
+ */
+const STEP_CELLS = 250_000;
+/**
  * Paths keep to the middle of corridors: a cell costs extra by how far it is from the middle of the corridor it's in
  * (its room from the real outline, as a share of the room at the corridor's middle nearby), up to this much room (m)
  * in halls wider than twice that, and up to WALL_PENALTY extra right at a wall.
@@ -223,16 +228,16 @@ function* buildGrid(data: AirportMapData): Generator<void, WalkGrid | null> {
   // Clearance from the walkable area's edge, and room from the real outline: a cell inside it is half a cell from the
   // wall on average when it's next to one.
   yield;
-  const d = chamfer(walk, cols, rows);
+  const d = yield* chamfer(walk, cols, rows);
   for (let i = 0; i < n; i++) d[i] *= cell;
-  yield;
-  const room = chamfer(inside, cols, rows);
+  const room = yield* chamfer(inside, cols, rows);
   for (let i = 0; i < n; i++) room[i] = inside[i] ? (room[i] - 0.5) * cell : 0;
   yield;
 
   // A* cost: by a cell's room as a share of the room at the middle of its corridor (the most room nearby), so paths
   // keep to the middle of narrow piers and wide concourses alike; in halls, anywhere CENTRE_ROOM clear of the walls.
   const middle = maxFilter(room, cols, rows, Math.ceil(CENTRE_ROOM / cell));
+  yield;
   const halfCols = Math.ceil(cols / 2);
   const cost = new Float32Array(n).fill(1);
   for (let r = 0; r < rows; r++) {
@@ -247,50 +252,84 @@ function* buildGrid(data: AirportMapData): Generator<void, WalkGrid | null> {
 
   yield;
 
-  // Connected components (4-connected flood fill).
+  // Connected components (4-connected flood fill), in pieces.
   const comp = new Int32Array(n).fill(-1);
-  const stack = new Int32Array(n);
-  let next = 0;
-  for (let i = 0; i < n; i++) {
-    if (!walk[i] || comp[i] >= 0) continue;
-    let sp = 0;
-    stack[sp++] = i;
-    comp[i] = next;
+  const fill = { stack: new Int32Array(n), sp: 0, i: 0, next: 0 };
+  while (!fillComponents(walk, cols, comp, fill, STEP_CELLS)) yield;
+  return { cell, x0, y0, cols, rows, walk, clear: d, room, cost, comp, comps: fill.next };
+}
+
+/**
+ * Labels the next `budget` cells or so of a 4-connected flood fill of `walk` into components (`comp`, -1 for none
+ * yet), carrying on from `state`; true once every cell is done. A plain loop (not a generator's), so it runs fast.
+ */
+function fillComponents(walk: Uint8Array, cols: number, comp: Int32Array, state: { stack: Int32Array; sp: number; i: number; next: number }, budget: number): boolean {
+  const n = comp.length;
+  const { stack } = state;
+  let { sp, i, next } = state;
+  let work = 0;
+  for (;;) {
     while (sp) {
       const cur = stack[--sp];
       const cx = cur % cols;
       for (let k = 0; k < 4; k++) {
         const ni = k === 0 ? (cx > 0 ? cur - 1 : -1) : k === 1 ? (cx < cols - 1 ? cur + 1 : -1) : k === 2 ? cur - cols : cur + cols;
         if (ni >= 0 && ni < n && walk[ni] && comp[ni] < 0) {
-          comp[ni] = next;
+          comp[ni] = next - 1;
           stack[sp++] = ni;
         }
       }
+      if (++work >= budget) {
+        Object.assign(state, { sp, i, next });
+        return false;
+      }
     }
-    next++;
+    while (i < n && (!walk[i] || comp[i] >= 0)) i++;
+    if (i >= n) {
+      Object.assign(state, { sp, i, next });
+      return true;
+    }
+    comp[i] = next++;
+    stack[sp++] = i;
+    work += 1;
   }
-  return { cell, x0, y0, cols, rows, walk, clear: d, room, cost, comp, comps: next };
 }
 
 /**
  * Two-pass chamfer distance (1, √2), in cells, from each cell of a mask to the nearest cell outside it (0 outside);
- * the grid's edge counts as outside.
+ * the grid's edge counts as outside. Yields every STEP_CELLS cells or so.
  */
-function chamfer(mask: Uint8Array, cols: number, rows: number): Float32Array {
-  const n = cols * rows;
-  const d = new Float32Array(n);
-  for (let i = 0; i < n; i++) d[i] = mask[i] ? 1e9 : 0;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const i = r * cols + c;
-      if (!mask[i]) continue;
-      let v = Math.min(d[i], c > 0 ? d[i - 1] + 1 : 1);
-      if (r > 0) v = Math.min(v, d[i - cols] + 1, c > 0 ? d[i - cols - 1] + SQ2 : 1, c < cols - 1 ? d[i - cols + 1] + SQ2 : 1);
-      else v = Math.min(v, 1);
-      d[i] = v;
-    }
+function* chamfer(mask: Uint8Array, cols: number, rows: number): Generator<void, Float32Array> {
+  const d = new Float32Array(cols * rows);
+  for (let i = 0; i < d.length; i++) d[i] = mask[i] ? 1e9 : 0;
+  const every = Math.max(1, Math.ceil(STEP_CELLS / cols));
+  for (let r = 0; r < rows; r += every) {
+    chamferRows(mask, d, cols, rows, r, Math.min(rows, r + every), true);
+    yield;
   }
-  for (let r = rows - 1; r >= 0; r--) {
+  for (let r = rows; r > 0; r -= every) {
+    chamferRows(mask, d, cols, rows, Math.max(0, r - every), r, false);
+    yield;
+  }
+  return d;
+}
+
+/** One pass of chamfer over rows [from, to): forward (top-left to bottom-right) or back. */
+function chamferRows(mask: Uint8Array, d: Float32Array, cols: number, rows: number, from: number, to: number, forward: boolean) {
+  if (forward) {
+    for (let r = from; r < to; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        if (!mask[i]) continue;
+        let v = Math.min(d[i], c > 0 ? d[i - 1] + 1 : 1);
+        if (r > 0) v = Math.min(v, d[i - cols] + 1, c > 0 ? d[i - cols - 1] + SQ2 : 1, c < cols - 1 ? d[i - cols + 1] + SQ2 : 1);
+        else v = Math.min(v, 1);
+        d[i] = v;
+      }
+    }
+    return;
+  }
+  for (let r = to - 1; r >= from; r--) {
     for (let c = cols - 1; c >= 0; c--) {
       const i = r * cols + c;
       if (!mask[i]) continue;
@@ -300,7 +339,6 @@ function chamfer(mask: Uint8Array, cols: number, rows: number): Float32Array {
       d[i] = v;
     }
   }
-  return d;
 }
 
 /**
@@ -486,6 +524,59 @@ export function nudgeCell(
   return best;
 }
 
+/**
+ * From a cell in a thin arm of a building (a jet bridge or a gate's stub that OSM draws as part of the terminal), the
+ * nearest cell by walking, within `reach` meters, with room from the real outline of at least min(`want`, `share` × the
+ * most room within `radius` meters): out of the arm into the corridor it comes off. The cell itself when it already
+ * has that much room, or when nothing within reach does. Only cells `accept` allows, in the cell's component, count.
+ */
+export function outOfArm(
+  g: WalkGrid,
+  from: number,
+  opts: { want?: number; share?: number; radius?: number; reach?: number; accept?: (cell: number) => boolean } = {},
+): number {
+  const { want = 8, share = 0.7, radius = 50, reach = 60, accept } = opts;
+  const { cols, rows, cell } = g;
+  const ok = (i: number) => g.walk[i] === 1 && g.comp[i] === g.comp[from] && (!accept || accept(i));
+  const fc = from % cols;
+  const fr = (from - fc) / cols;
+  const R = Math.ceil(radius / cell);
+  let most = 0;
+  for (let y = Math.max(0, fr - R); y <= Math.min(rows - 1, fr + R); y++) {
+    for (let x = Math.max(0, fc - R); x <= Math.min(cols - 1, fc + R); x++) {
+      const i = y * cols + x;
+      if ((x - fc) ** 2 + (y - fr) ** 2 <= R * R && g.room[i] > most && ok(i)) most = g.room[i];
+    }
+  }
+  const target = Math.min(want, share * most);
+  if (g.room[from] >= target) return from;
+  // Nearest first (Dijkstra over the few hundred cells within reach).
+  const seen = new Map<number, number>([[from, 0]]);
+  const heap = new Heap();
+  heap.push(0, from);
+  while (heap.size) {
+    const d = heap.keys[0];
+    const cur = heap.pop();
+    if (d > seen.get(cur)!) continue;
+    if (g.room[cur] >= target) return cur;
+    const cx = cur % cols;
+    const cy = (cur - cx) / cols;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + DX[k];
+      const ny = cy + DY[k];
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      const ni = ny * cols + nx;
+      if (!ok(ni) || (k >= 4 && (!g.walk[cy * cols + nx] || !g.walk[ny * cols + cx]))) continue;
+      const nd = d + (k >= 4 ? SQ2 : 1) * cell;
+      if (nd <= reach && nd < (seen.get(ni) ?? Infinity)) {
+        seen.set(ni, nd);
+        heap.push(nd, ni);
+      }
+    }
+  }
+  return from;
+}
+
 /** A point moved onto the walkable area (nearest cell within `radius`, then nudged inward), or null if too far. */
 export function snapPoint(
   g: WalkGrid,
@@ -633,6 +724,12 @@ function searchState(g: WalkGrid): SearchState {
   return s;
 }
 
+/** Sets up a grid's search scratch arrays (each the size of the grid) ahead of its first route, memory and all. */
+export function prepareSearch(g: WalkGrid): void {
+  const s = searchState(g);
+  for (const a of [s.cost, s.parent, s.seen, s.done]) a.fill(0);
+}
+
 /**
  * Cheapest 8-connected cell path from s to t (A*, octile heuristic; no squeezing diagonally past a corner), or null
  * when they aren't connected. A cell costs more toward the walls of its corridor (WalkGrid.cost), so paths keep to
@@ -750,52 +847,107 @@ export function smoothCells(g: WalkGrid, cells: number[], from?: Pt, to?: Pt, ac
  * Multi-source geodesic distance over the walkable cells (Dijkstra, 8-connected): which seed each cell is closest
  * to by walking, and how far. Used to split buildings between the zones (concourses, halls) they hold.
  */
-export function nearestSeeds(g: WalkGrid, seeds: { cell: number; label: number }[]): { label: Int16Array; dist: Float64Array } {
-  const n = g.cols * g.rows;
-  const label = new Int16Array(n).fill(-1);
-  const dist = new Float64Array(n).fill(Infinity);
-  const heap = new Heap();
-  for (const s of seeds) {
-    if (s.cell < 0 || !g.walk[s.cell] || dist[s.cell] === 0) continue;
-    dist[s.cell] = 0;
-    label[s.cell] = s.label;
-    heap.push(0, s.cell);
-  }
-  const { cols, rows, walk, cell } = g;
-  while (heap.size) {
-    const d = heap.keys[0];
-    const cur = heap.pop();
-    if (d > dist[cur]) continue;
-    const cx = cur % cols;
-    const cy = (cur - cx) / cols;
-    for (let k = 0; k < 8; k++) {
-      const nx = cx + DX[k];
-      const ny = cy + DY[k];
-      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-      const ni = ny * cols + nx;
-      if (!walk[ni]) continue;
-      if (k >= 4 && (!walk[cy * cols + nx] || !walk[ny * cols + cx])) continue;
-      const nd = d + (k >= 4 ? SQ2 : 1) * cell;
-      if (nd < dist[ni]) {
-        dist[ni] = nd;
-        label[ni] = label[cur];
-        heap.push(nd, ni);
-      }
-    }
-  }
-  return { label, dist };
+export function nearestSeeds(g: WalkGrid, seeds: { cell: number; label: number }[]): { label: Int16Array; dist: Float32Array } {
+  const search = seedSearch(g);
+  search.seed(seeds);
+  while (!search.step(Infinity));
+  return search;
 }
 
-/** Walkable cells of a set that are on a wall of the building (a 4-neighbour isn't walkable). */
-function edgeCells(g: WalkGrid, member: (cell: number) => boolean): number[] {
-  const out: number[] = [];
+/** nearestSeeds in pieces: yields after setting up, seeding, and every STEP_CELLS / 10 cells it settles. */
+export function* nearestSeedsJob(g: WalkGrid, seeds: { cell: number; label: number }[]): Generator<void, { label: Int16Array; dist: Float32Array }> {
+  const search = seedSearch(g);
+  yield;
+  search.seed(seeds);
+  yield;
+  while (!search.step(STEP_CELLS / 10)) yield;
+  return search;
+}
+
+/**
+ * A nearestSeeds search: `seed` it, then `step` settles `budget` cells at a time (true once it's done). The work is in
+ * plain functions, not a generator's body, so it runs at full speed.
+ */
+function seedSearch(g: WalkGrid) {
+  const { cols, rows, walk, cell } = g;
+  const n = cols * rows;
+  const label = new Int16Array(n).fill(-1);
+  const dist = new Float32Array(n).fill(Infinity);
+  const heap = new Heap();
+  const seed = (seeds: { cell: number; label: number }[]) => {
+    const seeded: number[] = [];
+    for (const s of seeds) {
+      if (s.cell < 0 || !walk[s.cell] || dist[s.cell] === 0) continue;
+      dist[s.cell] = 0;
+      label[s.cell] = s.label;
+      seeded.push(s.cell);
+    }
+    // Only seeds at the edge of the seeded area spread (inside it, every cell is already a seed's).
+    for (const i of seeded) {
+      const cx = i % cols;
+      const cy = (i - cx) / cols;
+      for (let k = 0; k < 8; k++) {
+        const nx = cx + DX[k];
+        const ny = cy + DY[k];
+        if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && walk[ny * cols + nx] && dist[ny * cols + nx] !== 0) {
+          heap.push(0, i);
+          break;
+        }
+      }
+    }
+  };
+  const step = (budget: number): boolean => {
+    let work = 0;
+    while (heap.size) {
+      const d = heap.keys[0];
+      const cur = heap.pop();
+      if (d > dist[cur]) continue;
+      const cx = cur % cols;
+      const cy = (cur - cx) / cols;
+      for (let k = 0; k < 8; k++) {
+        const nx = cx + DX[k];
+        const ny = cy + DY[k];
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const ni = ny * cols + nx;
+        if (!walk[ni]) continue;
+        if (k >= 4 && (!walk[cy * cols + nx] || !walk[ny * cols + cx])) continue;
+        // Rounded as stored, so the heap's key matches the distance kept for the cell.
+        const nd = Math.fround(d + (k >= 4 ? SQ2 : 1) * cell);
+        if (nd < dist[ni]) {
+          dist[ni] = nd;
+          label[ni] = label[cur];
+          heap.push(nd, ni);
+        }
+      }
+      if (++work >= budget) return heap.size === 0;
+    }
+    return true;
+  };
+  return { label, dist, seed, step };
+}
+
+const wallCache = new WeakMap<WalkGrid, Int32Array>();
+
+/** Walkable cells on a wall of a building (a 4-neighbour isn't walkable), off the grid's edge; worked out once. */
+export function wallCells(g: WalkGrid): Int32Array {
+  let out = wallCache.get(g);
+  if (out) return out;
+  const list: number[] = [];
   const { cols, rows, walk } = g;
   for (let r = 1; r < rows - 1; r++) {
     for (let c = 1; c < cols - 1; c++) {
       const i = r * cols + c;
-      if (walk[i] && (!walk[i - 1] || !walk[i + 1] || !walk[i - cols] || !walk[i + cols]) && member(i)) out.push(i);
+      if (walk[i] && (!walk[i - 1] || !walk[i + 1] || !walk[i - cols] || !walk[i + cols])) list.push(i);
     }
   }
+  wallCache.set(g, (out = Int32Array.from(list)));
+  return out;
+}
+
+/** Walkable cells of a set that are on a wall of the building. */
+function edgeCells(g: WalkGrid, member: (cell: number) => boolean): number[] {
+  const out: number[] = [];
+  for (const i of wallCells(g)) if (member(i)) out.push(i);
   return out;
 }
 

@@ -21,12 +21,14 @@ export interface LabelItem {
   caps?: boolean;
   /** Where to try, in order (default below, above, right, left). */
   spots?: Spot[];
-  /** Other points the label may go at, after its own (a zone's name elsewhere in the zone). */
-  alts?: { x: number; y: number }[];
+  /** Other points the label may go at, after its own (a zone's name elsewhere in the zone), with their own radius. */
+  alts?: { x: number; y: number; r?: number }[];
   /** Always shown (destination, "You"). */
   force?: boolean;
-  /** Obstacles whose id starts with this the label may cover (zone names over gate dots). */
-  over?: string;
+  /** Obstacles whose id starts with one of these the label may cover (zone names over gate dots). */
+  over?: string[];
+  /** More it may cover when there's no room otherwise (the destination's zone name over the route). */
+  overIfNeeded?: string[];
 }
 
 export interface Box {
@@ -97,13 +99,14 @@ export function placeLabels(items: LabelItem[], obstacles: (Box & { id?: string 
   const inside = (b: Box) => b.left >= 2 && b.top >= 2 && b.left + b.w <= width - 2 && b.top + b.h <= height - 2;
   const onScreen = (p: { x: number; y: number }) => p.x >= -40 && p.y >= -40 && p.x <= width + 40 && p.y <= height + 40;
   for (const it of items) {
-    const points = [{ x: it.x, y: it.y }, ...(it.alts ?? [])].filter(onScreen);
+    const points = [{ x: it.x, y: it.y, r: it.r }, ...(it.alts ?? [])].filter(onScreen);
     if (!points.length) continue;
     const w = textWidth(it.text, it.size, it.weight, it.caps) + 6;
     const h = Math.round(it.size * 1.3);
     const gap = it.r + 3;
-    const at = (x: number, y: number, s: Spot): Box =>
-      s === "center"
+    const at = (x: number, y: number, s: Spot, r = it.r): Box => {
+      const gap = r + 3;
+      return s === "center"
         ? { left: x - w / 2, top: y - h / 2, w, h }
         : s === "below"
           ? { left: x - w / 2, top: y + gap, w, h }
@@ -112,11 +115,17 @@ export function placeLabels(items: LabelItem[], obstacles: (Box & { id?: string 
             : s === "right"
               ? { left: x + gap + 1, top: y - h / 2, w, h }
               : { left: x - gap - 1 - w, top: y - h / 2, w, h };
+    };
     const order = it.spots ?? ["below", "above", "right", "left"];
-    const spots = points.flatMap((p) => order.map((s) => at(p.x, p.y, s)));
-    const blocks = (o: Box & { id?: string }) => o.id !== it.id && !(it.over && o.id?.startsWith(it.over));
+    const spots = points.flatMap((p) => order.map((s) => at(p.x, p.y, s, p.r ?? it.r)));
+    let over = it.over ?? [];
+    const blocks = (o: Box & { id?: string }) => o.id !== it.id && !over.some((prefix) => o.id?.startsWith(prefix));
     const free = (b: Box) => inside(b) && !placed.some((p) => overlaps(p, b)) && !obstacles.some((o) => blocks(o) && overlaps(o, b, 0));
     let spot = spots.find(free);
+    if (!spot && it.overIfNeeded) {
+      over = [...over, ...it.overIfNeeded];
+      spot = spots.find(free);
+    }
     let leader = false;
     if (!spot && it.force) {
       // Further out, with a leader line back to the marker.
@@ -154,8 +163,16 @@ export function shortLoungeName(name: string, max = 28): string {
   return `${(space > max / 2 ? cut.slice(0, space) : cut).trim()}…`;
 }
 
-/** A zone name for the map: the concourse when the name has a terminal in front ("Terminal 4, Concourse A"). */
+/**
+ * A zone name for the map: the concourse when the name has a terminal in front ("Terminal 4, Concourse A"), and
+ * "Intl" for "International" ("Tom Bradley Intl", without "Terminal" when that's long).
+ */
 export function shortZoneName(name: string): string {
   const parts = name.split(",");
-  return (parts.length > 1 ? parts[parts.length - 1] : name).replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+  const short = (parts.length > 1 ? parts[parts.length - 1] : name)
+    .replace(/[()]/g, "")
+    .replace(/\bInternational\b/g, "Intl")
+    .replace(/\s+/g, " ")
+    .trim();
+  return short.length > 18 && /\bIntl Terminal$/.test(short) ? short.replace(/ Terminal$/, "") : short;
 }

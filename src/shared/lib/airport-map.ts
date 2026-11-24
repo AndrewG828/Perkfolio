@@ -1,7 +1,7 @@
 import type { Lounge } from "@/shared/data/types";
 import type { AirportNav, NavZone } from "@/shared/data/airport-nav";
 import { gateOf, loungesAt } from "./lounge-access";
-import { linkKey, navFor, parseGate, zoneForLounge, type Origin, type Route } from "./wayfinding";
+import { linkKey, navFor, parseGate, routeTo, zoneForLounge, type Origin, type Route } from "./wayfinding";
 import {
   cellAt,
   cellCenter,
@@ -10,9 +10,12 @@ import {
   gapsBetween,
   hasWalkGrid,
   walkGridStep,
+  wallCells,
   nearestCell,
-  nearestSeeds,
+  nearestSeedsJob,
   nudgeCell,
+  outOfArm,
+  prepareSearch,
   rasterize,
   smoothCells,
   terminalRings,
@@ -265,10 +268,11 @@ export function gatePoint(data: AirportMapData, zone: NavZone, name: string): Pt
 interface ZoneInfo {
   zone: NavZone;
   /**
-   * The middle of the zone, inside the building: where its train stops, its name goes and lounges without a gate
-   * sit. For a concourse, a roomy spot near the middle of its part of the building (the core where ATL's and DEN's
-   * trains stop; mid-arc on DFW's curved terminals); for a zone without gates (a main hall or atrium), a roomy spot on
-   * the side of the zones it connects to, a little away from other zones' gates.
+   * The middle of the zone, inside the building: where its train stops (but for a zone with several stations, see
+   * zoneStations), its name goes and lounges without a gate sit. For a concourse, a roomy spot near the middle of its
+   * part of the building (the core where ATL's and DEN's trains stop; mid-arc on DFW's curved terminals); for a zone
+   * without gates (a main hall or atrium), a roomy spot on the side of the zones it connects to, a little away from
+   * other zones' gates.
    */
   anchor: Pt | null;
 }
@@ -285,19 +289,33 @@ interface ZoneIndex {
   byId: Map<string, number>;
   /** Which zone each walkable cell belongs to: the nearest zone seed (gates, own building) by walking; -1 if none. */
   label: Int16Array;
+  /** Which zones' own buildings cover each cell (a bit per zone; a main hall no zone claims has none). */
+  own: Uint16Array;
+  /** The zones each zone has a walkway to (a bit per zone). */
+  walkLinks: number[];
   /** Components each zone's cells are in. */
   comps: Set<number>[];
   /** Where two zones meet (key pairKey(a, b)). */
   doors: Map<number, Pt>;
   /** Fixed places to cross between zones or buildings the map doesn't join (one per pair, whatever the route). */
   crossings: Map<string, Crossing | null>;
+  /** Stations of the zones with several (see zoneStations), by zone index. */
+  stations: Map<number, Pt[]>;
+  /** Each zone's outer walls (see facades). */
+  facades?: Facade[];
   placements?: Map<string, Pt>;
+  placementJob?: Generator<void, void>;
   markers?: ZoneMarker[];
-  /** Crossings still to work out ahead of the first route (see prepareMapStep); empty once they all are. */
+  markerJob?: Generator<void, void>;
+  /** What's still to work out ahead of the first route (crossings, stations; see prepareMapStep); empty once done. */
   pending?: (() => void)[];
 }
 
 const MAX_ZONES = 16;
+/** Longest walkway the map draws where OSM has none (LAX's Midfield Satellite tunnel is about 280 m on the map). */
+const MAX_CONNECTOR = 300;
+/** A gate drawn in another zone's building takes the cells within this many meters of it (see buildIndex). */
+const FOREIGN_GATE = 20;
 const bit = (k: number) => 1 << k;
 const pairKey = (a: number, b: number) => Math.min(a, b) * MAX_ZONES + Math.max(a, b);
 const dist = (a: Pt, b: Pt) => Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2);
@@ -391,6 +409,7 @@ function* buildIndex(data: AirportMapData, nav: AirportNav): Generator<void, Zon
     const mask = zones.reduce((m, z, k) => (zoneHasTerminal(z, t.name) ? m | bit(k) : m), 0);
     if (mask) rasterize(g, rings[ti], inZone, mask);
   });
+  yield;
   // Gates, moved onto the building when OSM puts them out at the aircraft stand.
   const zoneGates = zones.map((z) =>
     gatesInZone(data, z)
@@ -399,18 +418,33 @@ function* buildIndex(data: AirportMapData, nav: AirportNav): Generator<void, Zon
   );
   const gateCells = zoneGates.map((zg) => zg.map((x) => x.cell));
   const allGates = gateCells.flat();
-  let gateDist: Float64Array | null | undefined;
-  /** Meters walked from each cell to the nearest gate of any zone (computed when first needed). */
-  const distToGates = () => (gateDist ??= allGates.length ? nearestSeeds(g, allGates.map((cell) => ({ cell, label: 0 }))).dist : null);
+  let gateDist: Float32Array | null = null;
+  /** Meters walked from each cell to the nearest gate of any zone (worked out, in pieces, when first needed). */
+  const distToGates = function* (): Generator<void, Float32Array | null> {
+    if (!gateDist && allGates.length) gateDist = (yield* nearestSeedsJob(g, allGates.map((cell) => ({ cell, label: 0 })))).dist;
+    return gateDist;
+  };
 
-  // Seeds: each zone's gates, and the cells only its own buildings cover.
+  yield;
+  // Seeds: each zone's gates, and the cells only its own buildings cover, but for those right by another zone's gate
+  // drawn in that building (IAH's D7–D9, in Terminal C's outline), which go with the gate.
   const seeds: { cell: number; label: number }[] = [];
   gateCells.forEach((cells, k) => cells.forEach((cell) => seeds.push({ cell, label: k })));
+  const byForeignGate = new Uint8Array(n);
+  const R = Math.ceil(FOREIGN_GATE / g.cell);
+  gateCells.forEach((cells, k) =>
+    cells.forEach((cell) => {
+      if (!inZone[cell] || inZone[cell] & bit(k)) return;
+      const [c0, r0] = [cell % g.cols, Math.floor(cell / g.cols)];
+      for (let y = Math.max(0, r0 - R); y <= Math.min(g.rows - 1, r0 + R); y++)
+        for (let x = Math.max(0, c0 - R); x <= Math.min(g.cols - 1, c0 + R); x++) if ((x - c0) ** 2 + (y - r0) ** 2 <= R * R) byForeignGate[y * g.cols + x] = 1;
+    }),
+  );
   const own: number[][] = zones.map(() => []);
   for (let i = 0; i < n; i++) {
     const m = inZone[i];
     if (!m || !g.walk[i]) continue;
-    if ((m & (m - 1)) === 0) seeds.push({ cell: i, label: 31 - Math.clz32(m) });
+    if ((m & (m - 1)) === 0 && !byForeignGate[i]) seeds.push({ cell: i, label: 31 - Math.clz32(m) });
     for (let k = 0; k < zones.length; k++) if (m & bit(k)) own[k].push(i);
   }
   /** Zones joined to zone k by any link (walkway, train, bus) that have gates on the map. */
@@ -427,7 +461,7 @@ function* buildIndex(data: AirportMapData, nav: AirportNav): Generator<void, Zon
    * the main terminal on its south side, DEN's trains the north end of Jeppesen); else the roomiest spot near the
    * middle of its buildings. Always a little away from other zones' gates.
    */
-  const gatelessAnchor = (k: number): Pt | null => {
+  const gatelessAnchor = function* (k: number): Generator<void, Pt | null> {
     const z = zones[k];
     const cells = own[k];
     if (!cells.length) {
@@ -438,15 +472,14 @@ function* buildIndex(data: AirportMapData, nav: AirportNav): Generator<void, Zon
     }
     const links = linkedTo(k);
     const walkLinked = [...new Set(links.filter((x) => x.mode === "walk").map((x) => x.j))];
-    const gateTerm = (i: number) => {
-      const gd = distToGates();
-      return gd ? 0.3 * Math.max(0, 60 - gd[i]) : 0;
-    };
+    const gd = yield* distToGates();
+    const gateTerm = (i: number) => (gd ? 0.3 * Math.max(0, 60 - gd[i]) : 0);
     let score: ((i: number, x: number) => number) | null = null;
     if (walkLinked.length) {
       // Walking distance to each of those zones' gates: least in total (and evenly split) on the way between them;
       // with one, near the walkway to it (IAD's main terminal by the Z gates, not out in the landside hall).
-      const fields = walkLinked.map((j) => nearestSeeds(g, gateCells[j].map((cell) => ({ cell, label: 0 }))).dist);
+      const fields: Float32Array[] = [];
+      for (const j of walkLinked) fields.push((yield* nearestSeedsJob(g, gateCells[j].map((cell) => ({ cell, label: 0 })))).dist);
       const cost = new Float64Array(cells.length);
       let least = Infinity;
       cells.forEach((i, x) => {
@@ -484,22 +517,24 @@ function* buildIndex(data: AirportMapData, nav: AirportNav): Generator<void, Zon
   yield;
   const anchors: (Pt | null)[] = [];
   for (let k = 0; k < zones.length; k++) {
-    anchors.push(gateCells[k].length ? null : gatelessAnchor(k));
+    anchors.push(gateCells[k].length ? null : yield* gatelessAnchor(k));
     if (anchors[k]) yield;
   }
   anchors.forEach((a, k) => a && seeds.push({ cell: cellAt(g, a), label: k }));
-  const { label, dist: seedDist } = nearestSeeds(g, seeds);
+  const { label, dist: seedDist } = yield* nearestSeedsJob(g, seeds);
   yield;
 
   // How many of each zone's cells are in each component (building).
   const compCount = new Int32Array(zones.length * g.comps);
   for (let i = 0; i < n; i++) if (label[i] >= 0) compCount[label[i] * g.comps + g.comp[i]]++;
   const comps = zones.map((_, k) => new Set(Array.from({ length: g.comps }, (_, c) => c).filter((c) => compCount[k * g.comps + c] > 0)));
+  yield;
 
   // Gated zones' middles, in the zone's main building (the biggest one with its gates: JFK's Terminal 1, not the
   // gate-less New Terminal One next door). Candidates every other row and column.
   const candidates: number[][] = zones.map(() => []);
   for (let r = 0; r < g.rows; r += 2) for (let c = 0; c < g.cols; c += 2) if (label[r * g.cols + c] >= 0) candidates[label[r * g.cols + c]].push(r * g.cols + c);
+  yield;
   for (let k = 0; k < zones.length; k++) {
     if (anchors[k] || !zoneGates[k].length) continue;
     const withGates = [...new Set(zoneGates[k].map((x) => g.comp[x.cell]))];
@@ -529,7 +564,42 @@ function* buildIndex(data: AirportMapData, nav: AirportNav): Generator<void, Zon
   // Doors: where two zones' cells touch, at the point nearest both zones' seeds (the narrowest gap between them),
   // moved to the roomiest spot of the passage nearby.
   const doorAt = new Map<number, { i: number; j: number; v: number }>();
-  for (let i = 0; i < n; i++) {
+  const rowsPerStep = Math.max(1, Math.ceil(400_000 / g.cols));
+  for (let r = 0; r < g.rows; r += rowsPerStep) {
+    findDoors(g, label, seedDist, r * g.cols, Math.min(g.rows, r + rowsPerStep) * g.cols, doorAt);
+    yield;
+  }
+  const doors = new Map<number, Pt>();
+  for (const [key, { i, j }] of doorAt) {
+    const [a, b] = [label[i], label[j]];
+    const c = bestNear(g, i, 30, (x) => (label[x] === a || label[x] === b) && g.comp[x] === g.comp[i], (x, d) => Math.min(g.clear[x], 15) - 0.25 * d);
+    doors.set(key, cellCenter(g, c >= 0 ? c : i));
+  }
+
+  const walkLinks = zones.map((z) =>
+    nav.links.reduce((m, l) => {
+      const other = l.mode !== "walk" ? undefined : l.a === z.id ? byId.get(l.b) : l.b === z.id ? byId.get(l.a) : undefined;
+      return other === undefined ? m : m | bit(other);
+    }, 0),
+  );
+  return {
+    g,
+    zones: zones.map((zone, k) => ({ zone, anchor: anchors[k] })),
+    byId,
+    label,
+    own: inZone,
+    walkLinks,
+    comps,
+    doors,
+    crossings: new Map(),
+    stations: new Map(),
+  };
+}
+
+/** Where two zones' cells touch (cells `from` to `to`), keeping the pair nearest both zones' seeds for each pair. */
+function findDoors(g: WalkGrid, label: Int16Array, seedDist: Float32Array, from: number, to: number, doorAt: Map<number, { i: number; j: number; v: number }>) {
+  const n = g.cols * g.rows;
+  for (let i = from; i < to; i++) {
     const a = label[i];
     if (a < 0) continue;
     for (let side = 0; side < 2; side++) {
@@ -542,14 +612,6 @@ function* buildIndex(data: AirportMapData, nav: AirportNav): Generator<void, Zon
       if (v < (doorAt.get(key)?.v ?? Infinity)) doorAt.set(key, { i, j, v });
     }
   }
-  const doors = new Map<number, Pt>();
-  for (const [key, { i, j }] of doorAt) {
-    const [a, b] = [label[i], label[j]];
-    const c = bestNear(g, i, 30, (x) => (label[x] === a || label[x] === b) && g.comp[x] === g.comp[i], (x, d) => Math.min(g.clear[x], 15) - 0.25 * d);
-    doors.set(key, cellCenter(g, c >= 0 ? c : i));
-  }
-
-  return { g, zones: zones.map((zone, k) => ({ zone, anchor: anchors[k] })), byId, label, comps, doors, crossings: new Map() };
 }
 
 /**
@@ -565,12 +627,14 @@ function gateSpot(ix: ZoneIndex, data: AirportMapData, k: number, name: string):
   const snap = (p: Pt, radius: number): Pt | null => {
     let c = nearestCell(g, p, radius, inZone);
     if (c < 0) return null;
-    // Off a jet bridge or a sliver OSM draws as part of the terminal (nowhere within 12 m is 6 m wide, like Heathrow
-    // T5's): into the nearest roomy spot of the building, if it's not much further.
+    // Off a sliver OSM draws as part of the terminal (nowhere within 12 m is 6 m wide, like Heathrow T5's): into the
+    // nearest roomy spot of the building, if it's not much further.
     if (bestNear(g, c, 12, (i) => g.room[i] >= 3, () => 0) < 0) {
       const roomy = nearestCell(g, p, Math.min(radius, dist(p, cellCenter(g, c)) + 60), (i) => inZone(i) && g.room[i] >= 6);
       if (roomy >= 0) c = roomy;
     }
+    // Out of a jet bridge or a gate's stub (JFK's B31), into the concourse it comes off.
+    c = outOfArm(g, c, { accept: inZone });
     // Well inside the concourse (about 9 m from the real wall where it's that wide), on the gate's side of it.
     return cellCenter(g, nudgeCell(g, c, 30, PIN_ROOM, inZone, g.room));
   };
@@ -612,18 +676,25 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
  * `clearance`) and from the train lines into the zone (`rides`), so a train never runs through a pin before it stops;
  * toward `side` (a unit direction) when the lounge's location says which ("East side").
  */
-function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[], middles: Pt[], opts: { rides?: [Pt, Pt][]; clearance?: number; side?: Pt | null } = {}): Pt {
+function freeSpot(
+  ix: ZoneIndex,
+  p: Pt,
+  k: number,
+  placed: Pt[],
+  middles: Pt[],
+  opts: { rides?: [Pt, Pt][]; clearance?: number; side?: Pt | null; spacings?: number[]; pull?: number } = {},
+): Pt {
   const { g } = ix;
-  const { rides = [], clearance = MIDDLE_CLEARANCE, side = null } = opts;
+  const { rides = [], clearance = MIDDLE_CLEARANCE, side = null, spacings = [PIN_SPACING, 20, 12], pull = 0.12 } = opts;
   const from = cellAt(g, p);
   if (from < 0) return p;
-  for (const spacing of [PIN_SPACING, 20, 12]) {
+  for (const spacing of spacings) {
     const c = bestNear(
       g,
       from,
       140,
       (i) => {
-        if (g.comp[i] !== g.comp[from] || ix.label[i] !== k || g.clear[i] < Math.min(6, g.clear[from])) return false;
+        if (g.comp[i] !== g.comp[from] || ix.label[i] !== k || g.room[i] < Math.min(6, g.room[from])) return false;
         const q = cellCenter(g, i);
         return placed.every((o) => dist(o, q) >= spacing) && middles.every((m) => dist(m, q) >= Math.min(spacing, clearance));
       },
@@ -631,13 +702,37 @@ function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[], middles: Pt[], 
         const q = cellCenter(g, i);
         const nearRide = rides.reduce((s, [a, b]) => s + Math.max(0, 30 - segDist(q, a, b)), 0);
         const toward = side ? 0.2 * ((q[0] - p[0]) * side[0] + (q[1] - p[1]) * side[1]) : 0;
-        return Math.min(g.clear[i], 18) - 0.12 * d - 0.5 * nearRide + toward;
+        return Math.min(g.room[i], 18) - pull * d - 0.5 * nearRide + toward;
       },
     );
     if (c >= 0) return cellCenter(g, c);
   }
   return p;
 }
+
+/**
+ * What a lounge without a gate says it's by, when that's on the map: another lounge already placed ("next to the Chase
+ * Sapphire Lounge", "Beside The Club ATL") or the door between two zones ("between Concourses D and E", "connecting
+ * Terminals 2 and 3"). Null when it says neither.
+ */
+function landmark(ix: ZoneIndex, l: Lounge, others: Lounge[], placed: Map<string, Pt>): Pt | null {
+  const text = l.location ?? "";
+  const between = /\b(?:between|connecting) (?:Concourses?|Terminals?) ([A-Z0-9]{1,2}) and ([A-Z0-9]{1,2})\b/i.exec(text);
+  if (between) {
+    const [a, b] = [ix.byId.get(between[1].toUpperCase()), ix.byId.get(between[2].toUpperCase())];
+    const door = a !== undefined && b !== undefined ? ix.doors.get(pairKey(a, b)) : undefined;
+    if (door) return door;
+  }
+  const next = /\b(?:next to|beside)(?: the)? ([^,;.]+)/i.exec(text);
+  if (!next) return null;
+  const plain = (name: string) => name.trim().toLowerCase().replace(/^the\s+/, "");
+  const name = plain(next[1]);
+  const other = others.find((o) => o.id !== l.id && placed.has(o.id) && (name.startsWith(plain(o.name)) || plain(o.name).startsWith(name)));
+  return other ? placed.get(other.id)! : null;
+}
+
+/** True if a lounge's location places it by another lounge ("next to the …", "beside …"). */
+const byLounge = (l: Lounge) => /\b(?:next to|beside)\b/i.test(l.location ?? "");
 
 /** The side of its concourse a lounge's location names ("East side", "north end"), as a unit direction, or null. */
 function sideOf(l: Lounge): Pt | null {
@@ -651,19 +746,30 @@ function sideOf(l: Lounge): Pt | null {
  * middle (leaving the middle itself for the You marker, and off the train lines), never two on one spot.
  */
 function placements(ix: ZoneIndex, data: AirportMapData, nav: AirportNav): Map<string, Pt> {
-  if (ix.placements) return ix.placements;
+  if (!ix.placements) {
+    ix.placementJob ??= placementsJob(ix, data, nav);
+    while (!ix.placementJob.next().done);
+  }
+  return ix.placements!;
+}
+
+/** Works out the placements in pieces (a few lounges at a time), setting ix.placements once done. */
+function* placementsJob(ix: ZoneIndex, data: AirportMapData, nav: AirportNav): Generator<void, void> {
   const out = new Map<string, Pt>();
-  const items = loungesAt(data.code)
-    .map((l) => {
-      const zone = zoneForLounge(nav, l);
-      const k = zone ? (ix.byId.get(zone.id) ?? -1) : -1;
-      const gate = gateOf(l);
-      const spot = k >= 0 && gate ? gateSpot(ix, data, k, gate) : null;
-      return { l, k, at: spot?.p ?? (k >= 0 ? ix.zones[k].anchor : null), gated: spot !== null };
-    })
+  const all: { l: Lounge; k: number; at: Pt | null; gated: boolean }[] = [];
+  for (const l of loungesAt(data.code)) {
+    const zone = zoneForLounge(nav, l);
+    const k = zone ? (ix.byId.get(zone.id) ?? -1) : -1;
+    const gate = gateOf(l);
+    const spot = k >= 0 && gate ? gateSpot(ix, data, k, gate) : null;
+    all.push({ l, k, at: spot?.p ?? (k >= 0 ? ix.zones[k].anchor : null), gated: spot !== null });
+    if (all.length % 4 === 0) yield;
+  }
+  const items = all
     .filter((x): x is typeof x & { at: Pt } => x.at !== null)
-    // Lounges by a gate keep their spot; the rest make room around them.
-    .sort((a, b) => Number(b.gated) - Number(a.gated) || a.l.id.localeCompare(b.l.id));
+    // Lounges by a gate keep their spot; the rest make room around them, those by another lounge after it.
+    .sort((a, b) => Number(b.gated) - Number(a.gated) || Number(byLounge(a.l)) - Number(byLounge(b.l)) || a.l.id.localeCompare(b.l.id));
+  const lounges = items.map((x) => x.l);
   const placed: Pt[] = [];
   const middles = ix.zones.flatMap((z) => (z.anchor ? [z.anchor] : []));
   // Lines to keep pins without a gate off: the trains into the zone, and the walks across it between its middle and
@@ -682,15 +788,21 @@ function placements(ix: ZoneIndex, data: AirportMapData, nav: AirportNav): Map<s
     const walks = [...doors.map((d) => [mid, d] as [Pt, Pt]), ...doors.flatMap((d, x) => doors.slice(x + 1).map((e) => [d, e] as [Pt, Pt]))];
     return [...trains, ...walks];
   };
-  for (const { l, k, at, gated } of items) {
+  for (const item of items) {
+    const { l, k, gated } = item;
+    // A lounge without a gate goes by what its location says it's next to, if that's on the map (close by it), else
+    // by the zone's middle.
+    const near = gated ? null : landmark(ix, l, lounges, out);
+    const at = near ?? item.at;
     // A lounge by a gate stays there, just off the zone's middle (where the You marker goes) if it's right on it.
-    const crowded = placed.some((q) => dist(q, at) < 15) || middles.some((m) => dist(m, at) < (gated ? 15 : MIDDLE_CLEARANCE));
-    const p = crowded ? freeSpot(ix, at, k, placed, middles, gated ? { clearance: 20 } : { rides: rides(k), side: sideOf(l) }) : at;
+    const crowded = placed.some((q) => dist(q, at) < 15) || middles.some((m) => dist(m, at) < (gated ? 15 : MIDDLE_CLEARANCE)) || ix.label[cellAt(ix.g, at)] !== k;
+    const opts = gated ? { clearance: 20 } : near ? { clearance: 20, spacings: [20, 12], pull: 0.6 } : { rides: rides(k), side: sideOf(l) };
+    const p = crowded ? freeSpot(ix, at, k, placed, middles, opts) : at;
     placed.push(p);
     out.set(l.id, p);
+    if (crowded) yield;
   }
   ix.placements = out;
-  return out;
 }
 
 /** The middle of a zone (see ZoneInfo.anchor); inside the building when the map has buildings. */
@@ -698,6 +810,50 @@ export function zoneAnchor(data: AirportMapData, nav: AirportNav, zone: NavZone)
   const ix = zoneIndex(data, nav);
   const k = ix?.byId.get(zone.id);
   return ix && k !== undefined ? ix.zones[k].anchor : roughAnchor(data, zone);
+}
+
+/**
+ * Where zone k's train stops: its middle; for a zone with several stations (DFW's terminals, two each), points spread
+ * along its gates instead: (i + ½)/n of the way along the walk between its lowest- and highest-numbered gates, moved
+ * to a roomy spot nearby. Worked out once (prepareMapStep does it ahead of the first route).
+ */
+function zoneStations(ix: ZoneIndex, data: AirportMapData, k: number): Pt[] {
+  const { zone, anchor } = ix.zones[k];
+  if (!anchor) return [];
+  const n = zone.stations ?? 1;
+  if (n < 2) return [anchor];
+  const hit = ix.stations.get(k);
+  if (hit) return hit;
+  const { g, label } = ix;
+  const comp = g.comp[cellAt(g, anchor)];
+  const inZone = (c: number) => label[c] === k && g.comp[c] === comp;
+  const gates = gatesInZone(data, zone)
+    .flatMap((gt) => {
+      const p = looseGate(gt.ref);
+      const c = nearestCell(g, [gt.x, gt.y], 60, inZone);
+      return p && c >= 0 ? [{ n: p.number, c }] : [];
+    })
+    .sort((a, b) => a.n - b.n);
+  let out: Pt[] = [anchor];
+  const path = gates.length >= 2 ? cellPath(g, gates[0].c, gates[gates.length - 1].c, zonePenalty(ix, bit(k))) : null;
+  if (path && path.length > 1) {
+    const pts = path.map((c) => cellCenter(g, c));
+    const len = pathLength(pts);
+    out = Array.from({ length: n }, (_, i) => cellCenter(g, nudgeCell(g, cellAt(g, pointAt(pts, ((i + 0.5) / n) * len)), 30, 12, inZone, g.room)));
+  }
+  ix.stations.set(k, out);
+  return out;
+}
+
+/** Where trains stop in a zone (its middle, or its stations; see zoneStations); empty if it isn't on the map. */
+export function trainStations(data: AirportMapData, nav: AirportNav, zone: NavZone): Pt[] {
+  const ix = zoneIndex(data, nav);
+  const k = ix?.byId.get(zone.id);
+  if (!ix || k === undefined) {
+    const a = roughAnchor(data, zone);
+    return a ? [a] : [];
+  }
+  return zoneStations(ix, data, k);
 }
 
 /** The zone a point on the map is in (by the walkable grid), or null outside the buildings. */
@@ -719,37 +875,65 @@ export interface ZoneMarker {
 export function zoneMarkers(data: AirportMapData, nav: AirportNav): ZoneMarker[] {
   const ix = zoneIndex(data, nav);
   if (!ix) return nav.zones.flatMap((zone) => (roughAnchor(data, zone) ? [{ zone, p: roughAnchor(data, zone)!, alt: [] }] : []));
-  if (ix.markers) return ix.markers;
+  if (!ix.markers) {
+    ix.markerJob ??= markersJob(ix);
+    while (!ix.markerJob.next().done);
+  }
+  return ix.markers!;
+}
+
+/** Works out the zone markers in pieces (a zone at a time), setting ix.markers once done. */
+function* markersJob(ix: ZoneIndex): Generator<void, void> {
+  const cells = markerCells(ix);
+  yield;
+  const out: ZoneMarker[] = [];
+  for (let k = 0; k < ix.zones.length; k++) {
+    const { zone, anchor } = ix.zones[k];
+    if (!anchor) continue;
+    out.push({ zone, p: anchor, alt: markerAlts(ix, cells[k], anchor) });
+    yield;
+  }
+  ix.markers = out;
+}
+
+/**
+ * Roomy cells of each zone, every other row and column (plenty for picking a few spots), in its own buildings when it
+ * has any (not SFO's landside International Terminal Main Hall, which no zone claims).
+ */
+function markerCells(ix: ZoneIndex): number[][] {
   const { g } = ix;
-  // Roomy cells of each zone, every other row and column (plenty for picking a few spots).
   const cells: number[][] = ix.zones.map(() => []);
+  let owned = 0;
+  for (let i = 0; i < ix.own.length; i++) owned |= ix.own[i];
   for (let r = 0; r < g.rows; r += 2) {
     for (let c = 0; c < g.cols; c += 2) {
       const i = r * g.cols + c;
-      if (ix.label[i] >= 0 && g.clear[i] >= 6) cells[ix.label[i]].push(i);
+      const k = ix.label[i];
+      if (k >= 0 && g.clear[i] >= 6 && ((ix.own[i] >> k) & 1 || !((owned >> k) & 1))) cells[k].push(i);
     }
   }
-  ix.markers = ix.zones.flatMap(({ zone, anchor }, k) => {
-    if (!anchor) return [];
-    const comp = g.comp[cellAt(g, anchor)];
-    const chosen: Pt[] = [anchor];
-    for (let t = 0; t < 5; t++) {
-      let best: Pt | null = null;
-      let bestScore = -Infinity;
-      for (const i of cells[k]) {
-        if (g.comp[i] !== comp) continue;
-        const p = cellCenter(g, i);
-        const d = dist(p, anchor);
-        if (d > 350 || chosen.some((q) => dist(q, p) < 70)) continue;
-        const score = Math.min(g.clear[i], 15) - 0.01 * d;
-        if (score > bestScore) [best, bestScore] = [p, score];
-      }
-      if (!best) break;
-      chosen.push(best);
-    }
-    return [{ zone, p: anchor, alt: chosen.slice(1) }];
-  });
-  return ix.markers;
+  return cells;
+}
+
+/** A few other roomy spots for a zone's name, 70 m+ apart and within 350 m of its middle, in the same building. */
+function markerAlts(ix: ZoneIndex, cells: number[], anchor: Pt): Pt[] {
+  const { g } = ix;
+  const comp = g.comp[cellAt(g, anchor)];
+  const near: { p: Pt; room: number }[] = [];
+  for (const i of cells) {
+    if (g.comp[i] !== comp) continue;
+    const p = cellCenter(g, i);
+    if (dist(p, anchor) <= 350) near.push({ p, room: Math.min(g.clear[i], 15) - 0.01 * dist(p, anchor) });
+  }
+  const chosen: Pt[] = [anchor];
+  for (let t = 0; t < 5; t++) {
+    let best: Pt | null = null;
+    let bestScore = -Infinity;
+    for (const { p, room } of near) if (room > bestScore && !chosen.some((q) => dist(q, p) < 70)) [best, bestScore] = [p, room];
+    if (!best) break;
+    chosen.push(best);
+  }
+  return chosen.slice(1);
 }
 
 export function loungePoint(data: AirportMapData, nav: AirportNav, l: Lounge): Pt | null {
@@ -787,27 +971,36 @@ export function prepareMapStep(data: AirportMapData, nav: AirportNav): boolean {
   const ix = zoneIndex(data, nav);
   if (!ix) return true;
   if (!ix.placements) {
-    placements(ix, data, nav);
+    ix.placementJob ??= placementsJob(ix, data, nav);
+    ix.placementJob.next();
     return false;
   }
   if (!ix.markers) {
-    zoneMarkers(data, nav);
+    ix.markerJob ??= markersJob(ix);
+    ix.markerJob.next();
     return false;
   }
   if (!ix.pending) {
-    // The crossings routes use: between walk-linked zones the map doesn't join, and between the buildings of a zone
-    // spread over several (the order matters: a link's crossing works out its zone crossing first).
-    const tasks: (() => void)[] = [];
+    // The search's scratch arrays, the stations of zones with several, and the crossings routes use: between
+    // walk-linked zones the map doesn't join, and between the buildings of a zone spread over several (the order
+    // matters: a link's crossing works out its zone crossing first).
+    const tasks: (() => void)[] = [() => prepareSearch(ix.g), () => wallCells(ix.g), () => facades(ix, data.runways as Pt[][])];
+    ix.zones.forEach((z, k) => (z.zone.stations ?? 1) > 1 && tasks.push(() => zoneStations(ix, data, k)));
     for (const l of nav.links) {
       const [a, b] = [ix.byId.get(l.a), ix.byId.get(l.b)];
-      if (l.mode === "walk" && a !== undefined && b !== undefined && !ix.doors.has(pairKey(a, b))) tasks.push(() => linkCrossing(ix, a, b));
+      if (l.mode === "walk" && a !== undefined && b !== undefined && !ix.doors.has(pairKey(a, b))) tasks.push(() => zoneCrossing(ix, a, b), () => linkCrossing(ix, a, b));
     }
     ix.comps.forEach((set, k) => {
       const list = [...set];
       list.forEach((ca, x) => list.slice(x + 1).forEach((cb) => tasks.push(() => buildingCrossing(ix, ca, cb, bit(k)))));
     });
+    // Last, one route (from security to the first lounge), so the code every route runs is warmed up before the page
+    // asks for its own.
+    const lounge = loungesAt(data.code)[0];
+    const route = lounge && routeTo(nav, { kind: "landside" }, lounge);
+    if (route) tasks.push(() => walkableRoute(ix, data, nav, { kind: "landside" }, route, lounge));
     ix.pending = tasks;
-    return tasks.length === 0;
+    return false;
   }
   ix.pending.shift()?.();
   return ix.pending.length === 0;
@@ -859,11 +1052,14 @@ function zoneCrossing(ix: ZoneIndex, a: number, b: number): Crossing | null {
     const gap = ix.comps[lo].size && ix.comps[hi].size
       ? fixedGap(g, gapsBetween(g, (c) => label[c] === lo, (c) => label[c] === hi), (pa, pb) => 0.15 * ((ma ? dist(pa, ma) : 0) + (mb ? dist(pb, mb) : 0)))
       : null;
-    ix.crossings.set(key, gap ? inward(ix, gap) : null);
+    ix.crossings.set(key, gap ? short(inward(ix, gap)) : null);
   }
   const c = ix.crossings.get(key)!;
   return c && a > b ? { a: c.b, b: c.a, d: c.d } : c;
 }
+
+/** A crossing if it's no longer than MAX_CONNECTOR (a missing building isn't bridged by a walkway across the apron). */
+const short = (c: Crossing): Crossing | null => (dist(c.a, c.b) <= MAX_CONNECTOR ? c : null);
 
 /**
  * How a walk between two walk-linked zones that don't touch on the map is drawn, the same for every route: at their
@@ -908,7 +1104,7 @@ function buildingCrossing(ix: ZoneIndex, ca: number, cb: number, mask: number): 
     const { g, label } = ix;
     const member = (comp: number) => (c: number) => g.comp[c] === comp && label[c] >= 0 && ((mask >> label[c]) & 1) === 1;
     const gap = fixedGap(g, gapsBetween(g, member(lo), member(hi)));
-    ix.crossings.set(key, gap ? inward(ix, gap) : null);
+    ix.crossings.set(key, gap ? short(inward(ix, gap)) : null);
   }
   const c = ix.crossings.get(key)!;
   return c && ca > cb ? { a: c.b, b: c.a, d: c.d } : c;
@@ -1022,10 +1218,13 @@ function walkLeg(ix: ZoneIndex, zs: number[], from: Pt, to: Pt): Piece[] | null 
       extend(cellPath(g, a, b, pen)!, s.from, s.allowed === null);
       continue;
     }
-    // A zone spread over buildings the map doesn't join: cross at their fixed crossing.
+    // A zone spread over buildings the map doesn't join: cross at their fixed crossing, if it joins the same zone or
+    // two with a walkway between them.
     const cross = crossingFor(ix, a, b, s.allowed ?? legMask);
     const [ca, cb] = cross ? [cellAt(g, cross.a), cellAt(g, cross.b)] : [-1, -1];
     if (!cross || g.comp[ca] !== g.comp[a] || g.comp[cb] !== g.comp[b]) return null;
+    const [za, zb] = [ix.label[ca], ix.label[cb]];
+    if (za !== zb && !((ix.walkLinks[za] >> zb) & 1)) return null;
     extend(cellPath(g, a, ca, pen)!, s.from, s.allowed === null);
     connect(cross.a, cross.b);
     extend(cellPath(g, cb, b, pen)!, cross.b, s.allowed === null);
@@ -1034,31 +1233,98 @@ function walkLeg(ix: ZoneIndex, zs: number[], from: Pt, to: Pt): Piece[] | null 
   return pieces;
 }
 
-/** Where a bus pulls in at zone k coming from `toward`: the zone's facade on the way there, a little inside. */
-function busStop(ix: ZoneIndex, k: number, toward: Pt): Pt | null {
-  const { g } = ix;
-  const anchor = ix.zones[k].anchor;
-  if (!anchor) return null;
-  const n = Math.ceil(dist(anchor, toward) / g.cell);
-  for (let s = 0; s <= n; s++) {
-    const p: Pt = [toward[0] + ((anchor[0] - toward[0]) * s) / n, toward[1] + ((anchor[1] - toward[1]) * s) / n];
-    const i = cellAt(g, p);
-    if (i >= 0 && ix.label[i] === k && g.comp[i] === g.comp[cellAt(g, anchor)]) return cellCenter(g, nudgeCell(g, i, 20, 8, (c) => ix.label[c] === k, g.room));
+/** A zone's outer walls in its main building: the cells, where they are, which way is outside, how far to a runway. */
+interface Facade {
+  cells: number[];
+  x: Float64Array;
+  y: Float64Array;
+  /** The way out of the building from each (a unit-ish step toward the outside). */
+  ox: Int8Array;
+  oy: Int8Array;
+  runway: Float64Array;
+}
+
+/** Each zone's outer walls (every other wall cell of its main building), worked out once. */
+function facades(ix: ZoneIndex, runways: Pt[][]): Facade[] {
+  if (ix.facades) return ix.facades;
+  const { g, label } = ix;
+  const main = ix.zones.map(({ anchor }) => (anchor ? g.comp[cellAt(g, anchor)] : -1));
+  const lists: number[][] = ix.zones.map(() => []);
+  for (const i of wallCells(g)) {
+    const k = label[i];
+    if (k >= 0 && g.comp[i] === main[k]) lists[k].push(i);
   }
-  return anchor;
+  return (ix.facades = lists.map((all) => {
+    const cells = all.filter((_, x) => x % 2 === 0);
+    const f: Facade = {
+      cells,
+      x: new Float64Array(cells.length),
+      y: new Float64Array(cells.length),
+      ox: new Int8Array(cells.length),
+      oy: new Int8Array(cells.length),
+      runway: new Float64Array(cells.length),
+    };
+    cells.forEach((c, x) => {
+      [f.x[x], f.y[x]] = cellCenter(g, c);
+      f.ox[x] = (g.walk[c + 1] ? 0 : 1) - (g.walk[c - 1] ? 0 : 1);
+      f.oy[x] = (g.walk[c + g.cols] ? 0 : 1) - (g.walk[c - g.cols] ? 0 : 1);
+      f.runway[x] = toRunway(runways, [f.x[x], f.y[x]]);
+    });
+    return f;
+  }));
+}
+
+/** Meters from a point to the nearest runway (Infinity without runways). */
+function toRunway(runways: Pt[][], p: Pt): number {
+  let m = Infinity;
+  for (const r of runways) for (let i = 1; i < r.length; i++) m = Math.min(m, segDist(p, r[i - 1], r[i]));
+  return m;
+}
+
+/**
+ * Where a bus might leave zone k for `toward` (or arrive from it): the zone's outer walls nearest `toward`, on the
+ * airfield's side (toward the runways); for a trip outside security, where you'd go out to the roads: the outer walls
+ * by the zone's middle (its main hall), on the roads' side (away from the runways) and toward `toward`. Each faces
+ * `toward` and is a little inside; the best few, 60 m+ apart, best first, with what each costs over the best.
+ */
+function busStops(ix: ZoneIndex, runways: Pt[][], area: "airside" | "landside", k: number, toward: Pt): { p: Pt; extra: number }[] {
+  const { g } = ix;
+  const f = facades(ix, runways)[k];
+  const anchor = ix.zones[k].anchor;
+  if (!anchor) return [];
+  if (!f.cells.length) return [{ p: anchor, extra: 0 }];
+  const cost = new Float64Array(f.cells.length);
+  for (let x = 0; x < f.cells.length; x++) {
+    const [dx, dy] = [toward[0] - f.x[x], toward[1] - f.y[x]];
+    const side = runways.length ? 0.5 * f.runway[x] : 0;
+    // Facing `toward` (the outside is on its side), so the ride doesn't set off across the building.
+    const away = f.ox[x] * dx + f.oy[x] * dy < 0 ? 200 : 0;
+    const there = Math.sqrt(dx * dx + dy * dy);
+    cost[x] = (area === "airside" ? there + side : Math.hypot(f.x[x] - anchor[0], f.y[x] - anchor[1]) + 0.25 * there - side) + away;
+  }
+  const order = Array.from(cost.keys()).sort((a, b) => cost[a] - cost[b]);
+  const out: { p: Pt; extra: number; at: Pt }[] = [];
+  for (const x of order) {
+    if (out.length >= 3) break;
+    const at: Pt = [f.x[x], f.y[x]];
+    if (out.some((o) => dist(o.at, at) < 60)) continue;
+    out.push({ at, p: cellCenter(g, nudgeCell(g, f.cells[x], 20, 8, (c) => ix.label[c] === k, g.room)), extra: cost[x] - cost[order[0]] });
+  }
+  return out.map(({ p, extra }) => ({ p, extra }));
 }
 
 /**
  * A ride drawn as a gentle arc (buses and trips outside security), so it reads as a ride rather than a walk across
- * whatever is in between: of a few bows either side, the one over the fewest other buildings (a bus drives around
- * the piers in its way), the flattest of those, and one that doesn't set off back over the walk that came from
- * `from` (or arrive back over the one that goes on to `to`). An airside bus bows toward the runways, a trip outside
- * security away from them (to the landside roads), where that's no worse.
+ * whatever is in between: of a few bows either side, the one over the least building (a bus drives around the piers
+ * in its way; past its first and last 30 m, on the way out of and into its own buildings, those count too), the
+ * flattest of those, and one that doesn't set off back over the walk that came from `from` (or arrive back over the
+ * one that goes on to `to`). An airside bus bows toward the runways, a trip outside security away from them (to the
+ * landside roads), where that's no worse. Returns the arc and its score (lower is better).
  */
-function arc(ix: ZoneIndex, runways: Pt[][], area: "airside" | "landside", a: Pt, b: Pt, from: Pt | null = null, to: Pt | null = null): Pt[] {
-  const { g, label } = ix;
+function arc(ix: ZoneIndex, runways: Pt[][], area: "airside" | "landside", a: Pt, b: Pt, from: Pt | null = null, to: Pt | null = null): { pts: Pt[]; score: number } {
+  const { g } = ix;
   const len = dist(a, b);
-  if (len < 1) return [a, b];
+  if (len < 1) return { pts: [a, b], score: 0 };
   const [nx, ny] = [-(b[1] - a[1]) / len, (b[0] - a[0]) / len];
   // The airfield's side of the line from a to b: toward the nearest runway.
   const mid: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -1079,15 +1345,22 @@ function arc(ix: ZoneIndex, runways: Pt[][], area: "airside" | "landside", a: Pt
       return [(1 - t) ** 2 * a[0] + 2 * (1 - t) * t * c[0] + t ** 2 * b[0], (1 - t) ** 2 * a[1] + 2 * (1 - t) * t * c[1] + t ** 2 * b[1]] as Pt;
     });
   };
-  // The two zones it joins, each in the building it's in there.
-  const ends = [a, b].map((p) => cellAt(g, p)).filter((c) => c >= 0).map((c) => [label[c], g.comp[c]]);
-  /** Meters of the curve over buildings other than the two it joins. */
+  /** The building (component) a point is in, or -1. */
+  const building = (p: Pt) => {
+    const c = cellAt(g, p);
+    return c >= 0 && g.walk[c] ? g.comp[c] : -1;
+  };
+  const ends = [building(a), building(b)];
+  /** Meters of the curve over buildings, but for its first and last 30 m on the way out of (or into) its own. */
   const over = (pts: Pt[]) => {
+    const inside = pts.map(building);
+    const free = (30 * n) / Math.max(pathLength(pts), 1);
+    let lo = 0;
+    while (lo < inside.length && lo <= free && inside[lo] >= 0 && inside[lo] === ends[0]) lo++;
+    let hi = inside.length - 1;
+    while (hi >= lo && inside.length - 1 - hi <= free && inside[hi] >= 0 && inside[hi] === ends[1]) hi--;
     let m = 0;
-    for (const p of pts) {
-      const c = cellAt(g, p);
-      if (c >= 0 && g.walk[c] && !ends.some(([z, comp]) => label[c] === z && g.comp[c] === comp)) m++;
-    }
+    for (let i = lo; i <= hi; i++) if (inside[i] >= 0) m++;
     return (m * pathLength(pts)) / n;
   };
   /** Degrees a route turns at p, coming from q and going on to r (0 straight on, 180 straight back). */
@@ -1099,19 +1372,19 @@ function arc(ix: ZoneIndex, runways: Pt[][], area: "airside" | "landside", a: Pt
   };
   let best: Pt[] = [a, b];
   let bestScore = Infinity;
-  for (const share of [0.2, 0.3, 0.45, 0.7]) {
+  for (const share of [0.2, 0.3, 0.45, 0.7, 1]) {
     for (const side of [1, -1]) {
       const pts = curve(side, Math.min(share * len, 1500 * share));
-      // Rounder arcs only to keep off buildings: each meter of detour costs as much as 0.15 m over a building; a
-      // sharp turn back at either end as much as 30 m; the wrong side of the terminals (a bus over the landside
-      // roads, a trip outside security over the airfield) as much as 60 m.
+      // Rounder arcs only to keep off buildings: each meter of detour costs as much as 0.075 m over a building; a
+      // sharp turn back at either end as much as 18 m; the wrong side of the terminals (a bus over the landside
+      // roads, a trip outside security over the airfield) as much as 30 m.
       const back = (from ? Math.max(0, turn(from, a, pts[2]) - 60) : 0) + (to ? Math.max(0, turn(pts[n - 2], b, to) - 60) : 0);
       const wrongSide = airfield !== 0 && side === (area === "airside" ? -airfield : airfield) ? 60 : 0;
-      const score = over(pts) + 0.15 * (pathLength(pts) - len) + 0.3 * back + wrongSide;
+      const score = 2 * over(pts) + 0.15 * (pathLength(pts) - len) + 0.3 * back + wrongSide;
       if (score < bestScore) [best, bestScore] = [pts, score];
     }
   }
-  return best;
+  return { pts: best, score: bestScore };
 }
 
 const pathLength = (pts: Pt[]) => pts.slice(1).reduce((s, p, i) => s + dist(pts[i], p), 0);
@@ -1120,16 +1393,15 @@ const pathLength = (pts: Pt[]) => pts.slice(1).reduce((s, p, i) => s + dist(pts[
 const MIN_ACCESS = 45;
 
 /**
- * Where to get on a ride (`pts` from its first stop) for a walk that comes from `toward` (your gate, or the door you
- * came in by). Where the ride's first `hops` hops pass `toward` clearly closer than its stop does, in the building of
- * one of `zones` (the ride's zone, and the one the walk comes through before it), it starts there instead: at the
- * point nearest `toward` that's past it (so the walk there and the ride head the same way), but not nearer than
- * MIN_ACCESS while there's room. So a ride never runs back past where you came from (IAD's AeroTrain leaves the main
- * terminal through the passage from the Z gates). Run on a reversed ride, it's where to get off for a walk on to
- * `toward` (the lounge, or the door to the next zone): before the ride runs past it (DFW's Skylink crosses Terminal
- * B's arc by the lounge on its way to the far tip). Returns the ride from that point on, and the zone it's in.
+ * Where to get on a bus or a trip outside security (`pts`, its arc from the first stop) for a walk that comes from
+ * `toward` (your gate, or the door you came in by). Where the arc passes `toward` clearly closer than its stop does, in
+ * the building of one of `zones` (the ride's zone, and the one the walk comes through before it), it starts there
+ * instead: at the point nearest `toward` that's past it (so the walk there and the ride head the same way), but not
+ * nearer than MIN_ACCESS while there's room. So a ride never sets off back past where you came from. Run on a reversed
+ * ride, it's where to get off for a walk on to `toward` (the lounge, or the door to the next zone), before the ride
+ * runs past it. Returns the ride from that point on, and the zone it's in.
  */
-function boardAt(ix: ZoneIndex, pts: Pt[], zones: number[], toward: Pt, hops: number): { pts: Pt[]; zone: number } {
+function boardAt(ix: ZoneIndex, pts: Pt[], zones: number[], toward: Pt): { pts: Pt[]; zone: number } {
   const { g, label } = ix;
   const c0 = cellAt(g, pts[0]);
   const stay = { pts, zone: zones[0] };
@@ -1139,7 +1411,7 @@ function boardAt(ix: ZoneIndex, pts: Pt[], zones: number[], toward: Pt, hops: nu
   // Points along the ride (every 2 m) where you could get on: in those zones' building, clear of its walls, and past
   // `toward` (the ride heads on away from it, or across: within 100° of straight on).
   const cands: { i: number; p: Pt; d: number; zone: number }[] = [];
-  for (let i = 1; i < pts.length && i <= hops; i++) {
+  for (let i = 1; i < pts.length; i++) {
     const [a, b] = [pts[i - 1], pts[i]];
     const len = dist(a, b);
     const m = Math.max(1, Math.ceil(len / 2));
@@ -1159,32 +1431,32 @@ function boardAt(ix: ZoneIndex, pts: Pt[], zones: number[], toward: Pt, hops: nu
     cands.filter((x) => x.d >= floor).sort((a, b) => a.d - b.d)[0] ??
     cands.filter((x) => x.d >= 10).sort((a, b) => b.d - a.d)[0] ??
     (atStop > 60 ? [...cands].sort((a, b) => b.d - a.d)[0] : undefined);
-  if (pick) return { pts: [pick.p, ...pts.slice(pick.i)], zone: pick.zone };
-  // A train whose line passes the lounge outside the building, then stops far beyond it (DFW's Skylink by the
-  // Admirals Club on Terminal B's arc, to the arc's far tip): its last hop bends a little (within 20°) to a station
-  // MIN_ACCESS short of the lounge, where the building is, rather than the walk coming all the way back.
-  if (hops !== 1 || atStop <= 60) return stay;
-  const from = pts[1];
-  const reach = dist(from, pts[0]);
-  const heading = Math.atan2(pts[0][1] - from[1], pts[0][0] - from[0]);
-  // Only where the line does pass the lounge first: beside it (within 120 m), well before the stop.
-  const t = ((toward[0] - from[0]) * (pts[0][0] - from[0]) + (toward[1] - from[1]) * (pts[0][1] - from[1])) / (reach * reach || 1);
-  if (t > 1 - 20 / Math.max(reach, 1) || segDist(toward, from, pts[0]) > 120) return stay;
-  let best: { p: Pt; d: number; zone: number } | null = null;
-  for (let deg = -20; deg <= 20; deg += 2) {
-    const [ux, uy] = [Math.cos(heading + (deg * Math.PI) / 180), Math.sin(heading + (deg * Math.PI) / 180)];
-    for (let r = Math.max(0, reach - 600); r <= reach + 20; r += 3) {
-      const p: Pt = [from[0] + ux * r, from[1] + uy * r];
-      const c = cellAt(g, p);
-      if (c < 0 || !g.walk[c] || label[c] !== zones[0] || g.comp[c] !== comp || g.room[c] < 6) continue;
-      const d = dist(p, toward);
-      // The ride and the walk head the same way (or across), not back: `toward` is ahead of the station on the way
-      // from the other stop (for a ride that ends there; for one that starts there, the walk comes from behind it).
-      if (d < floor || d > atStop - 20 || (p[0] - toward[0]) * ux + (p[1] - toward[1]) * uy > 0.17 * d) continue;
-      if (!best || d < best.d) best = { p, d, zone: label[c] };
-    }
-  }
-  return best ? { pts: [best.p, ...pts.slice(1)], zone: best.zone } : stay;
+  return pick ? { pts: [pick.p, ...pts.slice(pick.i)], zone: pick.zone } : stay;
+}
+
+/**
+ * The stations a train from zone j to zone k stops at, for the walks either side (in from `from`, on to `to`): each
+ * zone's one station, or of several, the pair that makes those walks shortest (walking in the buildings).
+ */
+function pickStations(ix: ZoneIndex, data: AirportMapData, j: number, k: number, from: Pt, to: Pt): [Pt, Pt] {
+  const [a, b] = [zoneStations(ix, data, j), zoneStations(ix, data, k)];
+  if (a.length < 2 && b.length < 2) return [a[0], b[0]];
+  const walk = (p: Pt, q: Pt) => {
+    const w = walkLength(ix.g, p, cellAt(ix.g, q));
+    return Number.isFinite(w) ? w : 3 * dist(p, q);
+  };
+  const wa = a.map((s) => (a.length > 1 ? walk(from, s) : 0));
+  const wb = b.map((s) => (b.length > 1 ? walk(to, s) : 0));
+  let best: [Pt, Pt] = [a[0], b[0]];
+  let least = Infinity;
+  a.forEach((p, x) =>
+    b.forEach((q, y) => {
+      // Riding further costs a little, so of two stations about as far from the lounge, the train stops at the nearer.
+      const cost = wa[x] + wb[y] + 0.05 * dist(p, q);
+      if (cost < least) [best, least] = [[p, q], cost];
+    }),
+  );
+  return best;
 }
 
 /** The point `s` meters along a polyline. */
@@ -1250,18 +1522,17 @@ function meetsLine(g: WalkGrid, walk: Pt[], line: Pt[], minAlong: number, maxAlo
 }
 
 /**
- * Where a walk to a ride runs alongside the ride's line before it gets to the stop (a walk round DFW's Terminal B arc
- * meets the Skylink's line well before the station), the ride starts where the walk first comes up to its line, and
- * the rest of the walk goes; likewise where the walk from a ride runs back alongside it, the ride ends where the walk
- * last leaves its line. Leaves at least MIN_ACCESS of each walk, so the stop still shows apart from the You marker
- * and the pin.
+ * Where a walk to a bus or a trip outside security runs alongside its arc before it gets to the stop, the ride starts
+ * where the walk first comes up to it, and the rest of the walk goes; likewise where the walk from one runs back
+ * alongside it, the ride ends where the walk last leaves it. Leaves at least MIN_ACCESS of each walk, so the stop still
+ * shows apart from the You marker and the pin. Trains keep to their stations.
  */
 function untangle(g: WalkGrid, segments: RouteGeometry["segments"]) {
   for (let r = 0; r < segments.length; r++) {
     const ride = segments[r];
-    if (ride.mode === "walk" || ride.mode === "connector") continue;
-    // A train's first or last hop; the first or last 200 m of an arc.
-    const startLine = ride.mode === "train" ? ride.pts.slice(0, 2) : headOf(ride.pts, 200);
+    if (ride.mode !== "bus" && ride.mode !== "landside") continue;
+    // The first or last 200 m of the arc.
+    const startLine = headOf(ride.pts, 200);
     const prev = segments[r - 1];
     if (prev?.mode === "walk") {
       const len = pathLength(prev.pts);
@@ -1272,7 +1543,7 @@ function untangle(g: WalkGrid, segments: RouteGeometry["segments"]) {
       }
     }
     const back = [...ride.pts].reverse();
-    const endLine = ride.mode === "train" ? back.slice(0, 2) : headOf(back, 200);
+    const endLine = headOf(back, 200);
     const next = segments[r + 1];
     if (next?.mode === "walk") {
       const len = pathLength(next.pts);
@@ -1323,6 +1594,13 @@ function walkableRoute(ix: ZoneIndex, data: AirportMapData, nav: AirportNav, ori
   const ks = route.zones.map((id) => ix.byId.get(id));
   if (!ks.length || ks.some((k) => k === undefined)) return null;
   let zs = ks as number[];
+  const spot = origin.kind === "gate" && origin.gate ? gateSpot(ix, data, zs[0], origin.gate.label) : null;
+  const start = spot?.p ?? ix.zones[zs[0]].anchor;
+  const startAt: RouteGeometry["startAt"] = spot ? (spot.exact ? "gate" : "near-gate") : "zone";
+  const end = loungePoint(data, nav, lounge);
+  if (!start || !end || cellAt(ix.g, end) < 0 || !ix.g.walk[cellAt(ix.g, end)]) return null;
+  /** Where you are and the lounge, without the way between, when it can't be drawn inside the buildings. */
+  const markersOnly: RouteGeometry = { segments: [], start, end, startAt };
   let modes: SegmentMode[] = [];
   for (let i = 0; i < zs.length - 1; i++) {
     const key = linkKey(route.zones[i], route.zones[i + 1]);
@@ -1337,11 +1615,6 @@ function walkableRoute(ix: ZoneIndex, data: AirportMapData, nav: AirportNav, ori
     modes = [...modes.slice(0, out), ...path.slice(1).map((): SegmentMode => "walk"), ...modes.slice(out)];
   }
   const n = zs.length;
-  const spot = origin.kind === "gate" && origin.gate ? gateSpot(ix, data, zs[0], origin.gate.label) : null;
-  const start = spot?.p ?? ix.zones[zs[0]].anchor;
-  const startAt: RouteGeometry["startAt"] = spot ? (spot.exact ? "gate" : "near-gate") : "zone";
-  const end = loungePoint(data, nav, lounge);
-  if (!start || !end || cellAt(ix.g, end) < 0 || !ix.g.walk[cellAt(ix.g, end)]) return null;
 
   // The route as walks (runs of zones joined by walkways) between rides: runs[r] comes before rides[r].
   const runs: number[][] = [];
@@ -1360,39 +1633,50 @@ function walkableRoute(ix: ZoneIndex, data: AirportMapData, nav: AirportNav, ori
     let k = j + 1;
     if (mode !== "landside") while (k < n - 1 && modes[k] === mode) k++;
     const stops = zs.slice(j, k + 1).map((z) => ix.zones[z].anchor);
-    if (stops.some((s) => !s)) return null;
+    if (stops.some((s) => !s)) return markersOnly;
     const pts = stops as Pt[];
-    if (mode === "bus") {
-      // Buses pull in at the facades facing each other.
-      pts[0] = busStop(ix, zs[j], pts[1]) ?? pts[0];
-      pts[pts.length - 1] = busStop(ix, zs[k], pts[0]) ?? pts[pts.length - 1];
-    }
-    // Trains are straight hops between stations; buses and trips outside security are arcs, which set off away from
-    // the walk that comes in (from its last door) and arrive away from the one that goes on (to its first door).
+    // The walks either side: in from the last door of the one before (or from where you are), and on to the first door
+    // of the one after (or the lounge).
+    const prev = rides[rides.length - 1];
+    const from = lastWaypoint(ix, runs[runs.length - 1]) ?? (prev ? prev.pts[prev.pts.length - 1] : start);
+    const k2 = runEnd(k);
+    const to = firstWaypoint(ix, zs.slice(k, k2 + 1)) ?? (k2 === n - 1 ? end : ix.zones[zs[k2]].anchor!);
     let line = pts;
-    if (mode !== "train") {
-      const from = lastWaypoint(ix, runs[runs.length - 1]) ?? (rides.length ? rides[rides.length - 1].pts[rides[rides.length - 1].pts.length - 1] : start);
-      const k2 = runEnd(k);
-      const to = firstWaypoint(ix, zs.slice(k, k2 + 1)) ?? (k2 === n - 1 ? end : ix.zones[zs[k2]].anchor);
-      const runways = data.runways as Pt[][];
+    if (mode === "train") {
+      // Trains are straight hops between stations and stop only there: of a zone's several stations (DFW's), the ones
+      // that make the walks either side shortest.
+      [pts[0], pts[pts.length - 1]] = pickStations(ix, data, zs[j], zs[k], from, to);
+    } else {
+      // Buses, and trips outside security, leave and arrive by the facades facing each other, drawn as arcs that set off
+      // away from the walk that comes in and arrive away from the one that goes on.
+      // Of the few likely stops at either end, the pair whose arc keeps off the buildings best.
       const area = mode === "bus" ? "airside" : "landside";
-      line = pts.slice(1).flatMap((p, x) => arc(ix, runways, area, pts[x], p, x === 0 ? from : null, x === pts.length - 2 ? to : null).slice(x ? 1 : 0));
+      const runways = data.runways as Pt[][];
+      const [first, last] = [busStops(ix, runways, area, zs[j], pts[1]), busStops(ix, runways, area, zs[k], pts[pts.length - 2])];
+      let least = Infinity;
+      for (const a of first.length ? first : [{ p: pts[0], extra: 0 }])
+        for (const b of last.length ? last : [{ p: pts[pts.length - 1], extra: 0 }]) {
+          const stops = [a.p, ...pts.slice(1, -1), b.p];
+          const arcs = stops.slice(1).map((p, x) => arc(ix, runways, area, stops[x], p, x === 0 ? from : null, x === stops.length - 2 ? to : null));
+          const score = arcs.reduce((sum, x) => sum + x.score, 0) + 0.5 * (a.extra + b.extra);
+          if (score < least) [least, line] = [score, arcs.flatMap((x, i) => x.pts.slice(i ? 1 : 0))];
+        }
     }
     rides.push({ mode, from: zs[j], to: zs[k], pts: line });
     i = k;
   }
-  // Get on and off each ride where the walks meet it (not past the lounge, or back past your gate): toward the last
-  // door (or the start) of the walk before, and the first door (or the lounge, or the next ride) of the walk after.
+  // Get on and off a bus or a trip outside security where the walks meet it (not past the lounge, or back past your
+  // gate): toward the last door (or the start) of the walk before, and the first door (or the lounge, or the next
+  // ride) of the walk after. Getting on in the zone the walk comes through (or off in the one it goes on to) leaves the
+  // zone of the stop out of that walk. Trains stop at their stations.
   rides.forEach((ride, r) => {
-    // A train's first and last hops; all of an arc. Getting on in the zone the walk comes through (or off in the one
-    // it goes on to) leaves the zone of the stop out of that walk.
-    const hops = ride.mode === "train" ? 1 : Infinity;
+    if (ride.mode === "train") return;
     const [run, next] = [runs[r], runs[r + 1]];
     const before = r === 0 ? start : rides[r - 1].pts[rides[r - 1].pts.length - 1];
-    const on = boardAt(ix, ride.pts, [ride.from, ...run.slice(-2, -1)], lastWaypoint(ix, run) ?? before, hops);
+    const on = boardAt(ix, ride.pts, [ride.from, ...run.slice(-2, -1)], lastWaypoint(ix, run) ?? before);
     if (run.length > 1 && on.zone === run[run.length - 2]) runs[r] = run.slice(0, -1);
     const after = r + 1 < rides.length ? rides[r + 1].pts[0] : end;
-    const off = boardAt(ix, [...on.pts].reverse(), [ride.to, ...next.slice(1, 2)], firstWaypoint(ix, next) ?? after, hops);
+    const off = boardAt(ix, [...on.pts].reverse(), [ride.to, ...next.slice(1, 2)], firstWaypoint(ix, next) ?? after);
     if (next.length > 1 && off.zone === next[1]) runs[r + 1] = next.slice(1);
     ride.pts = off.pts.reverse();
   });
@@ -1409,7 +1693,7 @@ function walkableRoute(ix: ZoneIndex, data: AirportMapData, nav: AirportNav, ori
   for (let r = 0; r < runs.length; r++) {
     const ride = rides[r];
     const pieces = walkLeg(ix, runs[r], cur, ride ? ride.pts[0] : end);
-    if (!pieces) return null;
+    if (!pieces) return markersOnly;
     for (const p of pieces) push(p.connector ? "connector" : "walk", p.pts);
     if (!ride) break;
     push(ride.mode, ride.pts);
@@ -1469,11 +1753,14 @@ function slice(pts: Pt[], a: number, b: number): Pt[] {
 /**
  * The route as map segments: walks inside the buildings (down the middle of concourses, through the doors between
  * zones), train rides as straight hops between the zones' stations, buses and landside trips as arcs. Without
- * building outlines (or if a point can't be placed on them) it falls back to following the gates.
+ * building outlines it falls back to following the gates. With them, a way the buildings can't carry (one missing
+ * from the map) isn't drawn across the apron: the route is just where you are and the lounge (no segments), or, if
+ * those can't be placed either, nothing.
  */
 export function routeGeometry(data: AirportMapData, nav: AirportNav, origin: Origin, route: Route, lounge: Lounge): RouteGeometry {
   const ix = zoneIndex(data, nav);
-  return (ix && walkableRoute(ix, data, nav, origin, route, lounge)) || gateFollowingRoute(data, nav, origin, route, lounge);
+  if (!ix) return gateFollowingRoute(data, nav, origin, route, lounge);
+  return walkableRoute(ix, data, nav, origin, route, lounge) ?? { segments: [], start: null, end: loungePoint(data, nav, lounge), startAt: "zone" };
 }
 
 // --- Fallback without building outlines: follow the gates -------------------------------------------------------

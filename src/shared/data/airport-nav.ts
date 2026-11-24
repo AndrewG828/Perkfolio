@@ -26,6 +26,12 @@ export interface NavZone {
   terminals?: string[];
   /** Security checkpoint that puts you in this zone, if there is one. */
   checkpoint?: string;
+  /**
+   * How many stations the zone's train stops at, when it's more than one (in the zone's middle): DFW's terminals have
+   * two Skylink stations each. The map spreads them along the zone's gates, a quarter of the way in from each end; the
+   * exact spots aren't in this data, so they're approximate.
+   */
+  stations?: number;
 }
 
 export interface NavLink {
@@ -87,7 +93,7 @@ export const airportNav: Record<string, AirportNav> = {
     note: "The Transportation Mall walkway runs alongside the Plane Train if you'd rather walk (about 4 minutes between concourses).",
   },
   DFW: {
-    zones: ["A", "B", "C", "D", "E"].map((t) => terminal(t)),
+    zones: ["A", "B", "C", "D", "E"].map((t) => terminal(t, { stations: 2 })),
     links: allPairs(["A", "B", "C", "D", "E"], "train", 5, "Skylink"),
     landside: { how: "Terminal Link bus between terminals", minutes: 10 },
     note: "Skylink trains run both directions every couple of minutes; rides take about 2–9 minutes.",

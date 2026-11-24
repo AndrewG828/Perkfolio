@@ -6,16 +6,18 @@ import { airportNav } from "../src/shared/data/airport-nav";
 import { gateOf, loungesAt } from "../src/shared/lib/lounge-access";
 import { linkKey, parseGate, routeTo, zoneForLounge, zonesForGate, type Origin, type ParsedGate } from "../src/shared/lib/wayfinding";
 import { cellAt, isWalkable, rasterize, terminalRings, walkGrid, type Pt, type WalkGrid } from "../src/shared/lib/walkable";
-import { gatePoint, loungePoint, prepareMap, routeGeometry, zoneAt, zoneMarkers, type AirportMapData } from "../src/shared/lib/airport-map";
+import { gatePoint, loungePoint, prepareMapStep, routeGeometry, trainStations, zoneAt, zoneMarkers, type AirportMapData } from "../src/shared/lib/airport-map";
 
 /**
  * Every pre-built airport map with wayfinding data, from security, from each zone, from every gate OSM has (each
  * gate to a few lounges, so it stays quick) and from every lounge's gate (some of which OSM lacks): the start is in
- * the zone you said; walks stay inside the buildings (and, but for the seams between buildings drawn apart, inside
- * their real outlines) as clean polylines down the middle of the concourses, not along their walls; a walk never
- * runs back over the train, bus or trip outside security it leaves or meets; rides start and end apart from the You
- * marker and the pin; a connector (a walkway the map doesn't draw, like ORD's B–C tunnel) only joins zones that have
- * a walkway between them, always in the same place; and pins and zone middles sit well inside the buildings, pins by
+ * the zone you said, well inside the building (not in a jet bridge or a gate's stub); walks stay inside the buildings
+ * (and, but for the seams between buildings drawn apart, inside their real outlines) as clean polylines down the
+ * middle of the concourses, not along their walls; trains stop only at stations; buses and trips outside security
+ * keep off the buildings between their stops, and a walk never runs back over one it leaves or meets, or turns
+ * straight back before one; rides start and end apart from the You marker and the pin; a connector (a walkway the map
+ * doesn't draw, like ORD's B–C tunnel) only joins zones that have a walkway between them, always in the same place;
+ * and pins and zone middles sit well inside the buildings (as roomy as the building within 50 m allows), pins by
  * their gates.
  *
  * The maps the browser builds from OpenStreetMap when there's no file (LAS, MIA, PHL, PHX) aren't covered: there's
@@ -69,15 +71,22 @@ function overRide(walk: Pt[], ride: Pt[]): number {
   return m;
 }
 
-/** The most room from the real outline within `r` meters of a point (how wide the building is there). */
+/** The most room from the real outline within `r` meters of a point in its building (how wide the building is there). */
 function roomNear(g: WalkGrid, p: Pt, r: number): number {
   const i = cellAt(g, p);
   const R = Math.ceil(r / g.cell);
   const [c0, r0] = [i % g.cols, Math.floor(i / g.cols)];
   let m = 0;
   for (let y = Math.max(0, r0 - R); y <= Math.min(g.rows - 1, r0 + R); y++)
-    for (let x = Math.max(0, c0 - R); x <= Math.min(g.cols - 1, c0 + R); x++) m = Math.max(m, g.room[y * g.cols + x]);
+    for (let x = Math.max(0, c0 - R); x <= Math.min(g.cols - 1, c0 + R); x++)
+      if ((x - c0) ** 2 + (y - r0) ** 2 <= R * R && g.comp[y * g.cols + x] === g.comp[i]) m = Math.max(m, g.room[y * g.cols + x]);
   return m;
+}
+
+/** Degrees between two directions (0 the same way, 180 straight back). */
+function angle(u: Pt, v: Pt): number {
+  const [lu, lv] = [Math.hypot(u[0], u[1]), Math.hypot(v[0], v[1])];
+  return lu && lv ? (Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1]) / (lu * lv)))) * 180) / Math.PI : 0;
 }
 
 const maps = readdirSync(dir)
@@ -90,9 +99,16 @@ for (const code of maps) {
   test(`${code}: routes start where you are, stay inside the terminals down the middle, and never double back`, () => {
     const data: AirportMapData = JSON.parse(readFileSync(join(dir, `${code}.json`), "utf8"));
     const nav = airportNav[code];
+    // Prepared in pieces small enough for idle callbacks (loose: the pieces are a few ms, but the tests run in parallel).
+    let biggest = 0;
+    for (let done = false; !done; ) {
+      const t0 = performance.now();
+      done = prepareMapStep(data, nav);
+      biggest = Math.max(biggest, performance.now() - t0);
+    }
+    assert.ok(biggest < 100, `a prepare step took ${Math.round(biggest)} ms`);
     const g = walkGrid(data);
     assert.ok(g, "map has terminal outlines");
-    prepareMap(data, nav);
     // The real outlines (the walkable grid is a cell wider all round).
     const inside = new Uint8Array(g.cols * g.rows);
     for (const rs of terminalRings(data)) rasterize(g, rs, inside, 1);
@@ -103,7 +119,8 @@ for (const code of maps) {
     const lounges = loungesAt(code);
     for (const l of lounges) {
       const p = loungePoint(data, nav, l);
-      assert.ok(p && wellInside(p, 6, 15), `${l.id} pin at ${p} is on a wall or outside`);
+      // As roomy as the building within 50 m allows: never in a jet bridge or a gate's stub off the concourse.
+      assert.ok(p && wellInside(p, 6, 50), `${l.id} pin at ${p} is on a wall, in a stub or outside`);
       // By its gate, when the gate is on the map (Heathrow's lounges too, whose terminals have no gate rules).
       const gate = gateOf(l);
       const zone = zoneForLounge(nav, l);
@@ -136,6 +153,13 @@ for (const code of maps) {
     }
 
     const walkLinks = new Set(nav.links.filter((l) => l.mode === "walk").map((l) => linkKey(l.a, l.b)));
+    const stations = nav.zones.flatMap((z) => trainStations(data, nav, z));
+    /** Meters of a polyline over the buildings' real outlines, but for its runs out of (or into) the buildings at its ends. */
+    const overBuildings = (pts: Pt[]) => {
+      const inside = pts.slice(1).flatMap((b, i) => along(pts[i], b).slice(1)).map(inOutline);
+      const [lo, hi] = [inside.indexOf(false), inside.lastIndexOf(false)];
+      return { over: lo < 0 ? 0 : 2 * inside.slice(lo, hi + 1).filter(Boolean).length, ends: 2 * (lo < 0 ? inside.length : lo + inside.length - 1 - hi) };
+    };
     const crossings = new Map<string, string>();
     let [walked, outside, nearWall, rides, ridesAtMarker, slowest] = [0, 0, 0, 0, 0, 0];
     for (const { origin, name, to } of origins) {
@@ -149,13 +173,30 @@ for (const code of maps) {
         for (const p of [geo.start, geo.end]) assert.ok(p && isWalkable(g, p), `${where}: end point ${p} is outside`);
         // The start is in the zone you said (at your gate, or its middle when the gate isn't on the map).
         if (origin.kind === "gate") assert.equal(zoneAt(data, nav, geo.start!), origin.zone, `${where}: starts in ${zoneAt(data, nav, geo.start!)} at ${geo.start}`);
+        if (origin.kind === "gate" && geo.startAt !== "zone") assert.ok(wellInside(geo.start!, 6, 50), `${where}: You at ${geo.start} is on a wall or in a stub`);
         geo.segments.forEach((s, i) => {
-          if (s.mode === "walk" || s.mode === "connector") return;
-          // A walk never runs back over the ride it leaves or meets (trains past the lounge, trips outside security
-          // set off back over the walk to the exit).
+          if (s.mode === "walk" || s.mode === "connector" || s.mode === "seam") return;
           const [prev, next] = [geo.segments[i - 1], geo.segments[i + 1]];
-          if (next?.mode === "walk") assert.ok(overRide(next.pts, [...s.pts].reverse()) < 25, `${where}: the walk after the ${s.mode} runs back over it`);
-          if (prev?.mode === "walk") assert.ok(overRide([...prev.pts].reverse(), s.pts) < 25, `${where}: the ${s.mode} sets off back over the walk`);
+          if (s.mode === "train") {
+            // Trains stop only at stations (a zone's middle, or one of its stations).
+            for (const p of s.pts) assert.ok(stations.some((q) => dist(p, q) < 1), `${where}: the train stops at ${p.map(Math.round)}, not a station`);
+          } else {
+            // A bus or a trip outside security keeps off the buildings between its stops; a walk never runs back over one
+            // it leaves or meets (an arc past the lounge, or set off back over the walk to the exit), or turns straight
+            // back to it.
+            const { over, ends } = overBuildings(s.pts);
+            assert.ok(over <= 40 && ends <= 80, `${where}: the ${s.mode} runs ${over} m over buildings (${ends} m getting out and in)`);
+            if (next?.mode === "walk") assert.ok(overRide(next.pts, [...s.pts].reverse()) < 25, `${where}: the walk after the ${s.mode} runs back over it`);
+            if (prev?.mode === "walk") assert.ok(overRide([...prev.pts].reverse(), s.pts) < 25, `${where}: the ${s.mode} sets off back over the walk`);
+            if (prev?.mode === "walk" && length(prev.pts) >= 30) {
+              const [a, b] = [pointAt([...prev.pts].reverse(), 25), pointAt(s.pts, 25)];
+              const turn = angle([s.pts[0][0] - a[0], s.pts[0][1] - a[1]], [b[0] - s.pts[0][0], b[1] - s.pts[0][1]]);
+              assert.ok(turn < 135, `${where}: the walk turns ${Math.round(turn)}° back to get on the ${s.mode}`);
+            }
+          }
+          // A bus can stop right at your gate or the lounge's (LAX's pier-tip bus gates); a train or a trip outside
+          // security starts and ends a walk away.
+          if (s.mode === "bus") return;
           rides++;
           if ((geo.start && dist(s.pts[0], geo.start) < 3 && geo.startAt !== "zone" && origin.kind === "gate") || (geo.end && dist(s.pts[s.pts.length - 1], geo.end) < 3)) ridesAtMarker++;
         });

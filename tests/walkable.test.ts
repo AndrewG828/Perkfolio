@@ -1,7 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AirportMapData } from "../src/shared/lib/airport-map";
-import { cellAt, cellPath, gapsBetween, isWalkable, smoothCells, snapPoint, stitchRings, visible, walkGrid, type Pt } from "../src/shared/lib/walkable";
+import {
+  cellAt,
+  cellPath,
+  gapsBetween,
+  isWalkable,
+  nearestSeeds,
+  nearestSeedsJob,
+  outOfArm,
+  smoothCells,
+  snapPoint,
+  stitchRings,
+  visible,
+  walkGrid,
+  type Pt,
+} from "../src/shared/lib/walkable";
 
 // A made-up L-shaped terminal: a 200 m arm along the top and one down the left, both 40 m wide.
 const L: Pt[] = [[0, 0], [200, 0], [200, 40], [40, 40], [40, 200], [0, 200], [0, 0]];
@@ -128,3 +142,37 @@ test("room is measured from the real outline: none outside it, about the distanc
   assert.ok(g.cost[cellAt(g, [20, 100])] < g.cost[cellAt(g, [4, 100])], "the middle costs less than the wall");
 });
 
+
+test("a point in a jet bridge or gate stub moves out into the concourse it comes off", () => {
+  // A 40 m wide concourse along the top, with a 9 m wide, 40 m long stub hanging off it.
+  const concourse: Pt[] = [[0, 0], [300, 0], [300, 40], [160, 40], [160, 80], [151, 80], [151, 40], [0, 40], [0, 0]];
+  const g = walkGrid(map([[concourse]]))!;
+  const tip = cellAt(g, [155.5, 76]);
+  assert.ok(g.room[tip] < 5, `room at the stub's tip ${g.room[tip]}`);
+  const out = outOfArm(g, tip);
+  assert.ok(g.room[out] >= 8, `moved to a cell with room ${g.room[out]}`);
+  const [x, y] = [(out % g.cols + 0.5) * g.cell + g.x0, (Math.floor(out / g.cols) + 0.5) * g.cell + g.y0];
+  assert.ok(y < 40 && Math.abs(x - 155.5) < 20, `out at ${x},${y}`);
+  // Already roomy: stays put.
+  const mid = cellAt(g, [100, 20]);
+  assert.equal(outOfArm(g, mid), mid);
+});
+
+test("the seed search gives the same zones in pieces as all at once", () => {
+  const g = walkGrid(map([[L]]))!;
+  const seeds = [
+    { cell: cellAt(g, [185, 20]), label: 0 },
+    { cell: cellAt(g, [20, 185]), label: 1 },
+  ];
+  const whole = nearestSeeds(g, seeds);
+  const job = nearestSeedsJob(g, seeds);
+  let step = job.next();
+  let pieces = 0;
+  while (!step.done) [step, pieces] = [job.next(), pieces + 1];
+  assert.ok(pieces >= 2);
+  assert.deepEqual(Array.from(step.value.label), Array.from(whole.label));
+  // Every walkable cell is reached, and the corner is about as far from each seed.
+  for (let i = 0; i < g.walk.length; i++) if (g.walk[i]) assert.ok(whole.label[i] >= 0);
+  const corner = cellAt(g, [20, 20]);
+  assert.ok(Math.abs(whole.dist[corner] - 165) < 15, `${whole.dist[corner]}`);
+});
