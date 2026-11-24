@@ -78,3 +78,32 @@ test("rings split into several OSM ways are stitched back into one closed ring",
   assert.deepEqual(rings[0][0], rings[0][rings[0].length - 1]);
   assert.equal(rings[0].length, 5);
 });
+
+test("overlapping outer rings are unioned, not cut out of each other", () => {
+  // A concourse with its core drawn as a second ring over it (DEN Concourse C).
+  const concourse: Pt[] = [[0, 0], [300, 0], [300, 40], [0, 40], [0, 0]];
+  const core: Pt[] = [[120, -30], [180, -30], [180, 70], [120, 70], [120, -30]];
+  const g = walkGrid(map([[concourse, core]]))!;
+  assert.ok(isWalkable(g, [150, 20]), "where the rings overlap");
+  assert.ok(isWalkable(g, [150, 60]) && isWalkable(g, [20, 20]));
+});
+
+test("smoothing keeps off the walls even when the path starts against one", () => {
+  // A hall with a 30 m pillar in the middle, entered right at its west wall: the tight start mustn't let the
+  // shortcut around the pillar graze it (the clearance a shortcut keeps is the path's own, where it is).
+  const hall: Pt[][] = [
+    [[0, 0], [60, 0], [60, 90], [0, 90], [0, 0]],
+    [[90, 0], [150, 0], [150, 90], [90, 90], [90, 0]],
+    [[60, 0], [90, 0], [90, 30], [60, 30], [60, 0]],
+    [[60, 60], [90, 60], [90, 90], [60, 90], [60, 60]],
+  ];
+  const g = walkGrid(map(hall.map((r) => [r])))!;
+  const a: Pt = [-2, 45];
+  const b: Pt = [147, 45];
+  assert.ok(g.clear[cellAt(g, a)] <= 4, "starts against the wall");
+  const pts = smoothCells(g, cellPath(g, cellAt(g, a), cellAt(g, b))!, a, b);
+  for (const p of samples(pts)) {
+    assert.ok(isWalkable(g, p), `${p} is outside`);
+    if (p[0] > 50 && p[0] < 100) assert.ok(g.clear[cellAt(g, p)] >= 6, `${p.map(Math.round)} grazes the pillar (${g.clear[cellAt(g, p)]} m clear)`);
+  }
+});

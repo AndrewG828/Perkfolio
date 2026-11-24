@@ -15,6 +15,8 @@ export type Pt = [number, number];
 const CELL = 3;
 /** The grid covers the gates' bounding box plus this margin (passenger areas, not cargo sheds across the field). */
 const MARGIN = 300;
+/** Buildings that reach past that margin (DEN's Jeppesen Terminal) are kept whole, up to this much further out. */
+const OVERHANG = 600;
 /** Bigger grids get coarser cells, to bound memory and build time. */
 const MAX_CELLS = 1_200_000;
 /** Clearance (m) below which cells cost extra, and how much extra right at a wall. */
@@ -123,6 +125,9 @@ export function terminalRings(data: AirportMapData): Pt[][][] {
 
 const gridCache = new WeakMap<AirportMapData, WalkGrid | null>();
 
+/** True once the walkable grid for this map has been built (walkGrid returns it at once). */
+export const hasWalkGrid = (data: AirportMapData) => gridCache.has(data);
+
 /** The walkable grid for a map (built once per map object), or null when the map has no terminal outlines. */
 export function walkGrid(data: AirportMapData): WalkGrid | null {
   if (gridCache.has(data)) return gridCache.get(data)!;
@@ -155,10 +160,10 @@ function buildGrid(data: AirportMapData): WalkGrid | null {
   });
   if (!inArea.length) return null;
   const [sx, sy, ex, ey] = box(inArea.flat(2));
-  const minX = Math.max(ax, sx);
-  const minY = Math.max(ay, sy);
-  const maxX = Math.min(bx, ex);
-  const maxY = Math.min(by, ey);
+  const minX = Math.max(ax - OVERHANG, sx);
+  const minY = Math.max(ay - OVERHANG, sy);
+  const maxX = Math.min(bx + OVERHANG, ex);
+  const maxY = Math.min(by + OVERHANG, ey);
   let cell = CELL;
   while (((maxX - minX) / cell + 6) * ((maxY - minY) / cell + 6) > MAX_CELLS) cell += 0.5;
   const x0 = minX - 3 * cell;
@@ -234,8 +239,10 @@ function buildGrid(data: AirportMapData): WalkGrid | null {
 }
 
 /**
- * Marks the cells whose centres are inside a shape's rings (even-odd across the rings), OR-ing `value` into `out`.
- * Used for the walkable mask and for which zone's buildings a cell is in.
+ * Marks the cells whose centres are inside any of a shape's rings, OR-ing `value` into `out`. Rings are unioned, not
+ * even-odd: the map keeps only outer rings (inner ones are dropped when it's built), and outer rings that overlap
+ * (DEN Concourse C's core over its concourse) mustn't cancel out. Used for the walkable mask and for which zone's
+ * buildings a cell is in.
  */
 export function rasterize(
   g: Pick<WalkGrid, "x0" | "y0" | "cell" | "cols" | "rows">,
@@ -243,19 +250,21 @@ export function rasterize(
   out: Uint8Array | Uint16Array,
   value: number,
 ) {
+  for (const r of rings) rasterizeRing(g, r, out, value);
+}
+
+function rasterizeRing(g: Pick<WalkGrid, "x0" | "y0" | "cell" | "cols" | "rows">, r: Pt[], out: Uint8Array | Uint16Array, value: number) {
   const { x0, y0, cell, cols, rows } = g;
   // Edges as [top y, bottom y, x at the top, dx/dy], by top y; a scanline only looks at the edges it crosses.
   const edges: [number, number, number, number][] = [];
   let maxY = -Infinity;
-  for (const r of rings) {
-    for (let i = 0; i < r.length; i++) {
-      const a = r[i];
-      const b = r[(i + 1) % r.length];
-      if (a[1] === b[1]) continue;
-      const [p, q] = a[1] < b[1] ? [a, b] : [b, a];
-      edges.push([p[1], q[1], p[0], (q[0] - p[0]) / (q[1] - p[1])]);
-      maxY = Math.max(maxY, q[1]);
-    }
+  for (let i = 0; i < r.length; i++) {
+    const a = r[i];
+    const b = r[(i + 1) % r.length];
+    if (a[1] === b[1]) continue;
+    const [p, q] = a[1] < b[1] ? [a, b] : [b, a];
+    edges.push([p[1], q[1], p[0], (q[0] - p[0]) / (q[1] - p[1])]);
+    maxY = Math.max(maxY, q[1]);
   }
   if (!edges.length) return;
   edges.sort((e, f) => e[0] - f[0]);
@@ -344,7 +353,7 @@ export function nudgeCell(g: WalkGrid, from: number, radius = 15, cap = 12, acce
     for (let x = Math.max(0, fc - R); x <= Math.min(g.cols - 1, fc + R); x++) {
       const i = y * g.cols + x;
       if (!g.walk[i] || g.comp[i] !== g.comp[from]) continue;
-      const d = Math.hypot(x - fc, y - fr) * g.cell;
+      const d = Math.sqrt((x - fc) ** 2 + (y - fr) ** 2) * g.cell;
       if (d > radius) continue;
       const score = Math.min(g.clear[i], cap) - 0.12 * d;
       if (score > bestScore + 1e-6 && (!accept || accept(i)) && visible(g, origin, cellCenter(g, i), 0)) [best, bestScore] = [i, score];
@@ -367,15 +376,17 @@ export function snapPoint(
 
 /**
  * True if the straight segment a→b stays on walkable cells with at least `minClear` meters of clearance (and in
- * cells `accept` allows). Walks every cell the segment touches (Amanatides–Woo), so it can't clip a wall's corner;
- * through a cell corner both side cells must pass.
+ * cells `accept` allows). `minClear` can vary along the segment: a function of t (0 at a, 1 at b). Walks every cell
+ * the segment touches (Amanatides–Woo), so it can't clip a wall's corner; through a cell corner both side cells must
+ * pass.
  */
-export function visible(g: WalkGrid, a: Pt, b: Pt, minClear: number, accept?: (cell: number) => boolean): boolean {
+export function visible(g: WalkGrid, a: Pt, b: Pt, minClear: number | ((t: number) => number), accept?: (cell: number) => boolean): boolean {
   const { x0, y0, cell, cols, rows, walk, clear } = g;
+  let t = 0;
   const ok = (x: number, y: number) => {
     if (x < 0 || y < 0 || x >= cols || y >= rows) return false;
     const i = y * cols + x;
-    return walk[i] === 1 && clear[i] >= minClear && (!accept || accept(i));
+    return walk[i] === 1 && clear[i] >= (typeof minClear === "number" ? minClear : minClear(Math.min(t, 1))) && (!accept || accept(i));
   };
   let cx = Math.floor((a[0] - x0) / cell);
   let cy = Math.floor((a[1] - y0) / cell);
@@ -394,6 +405,7 @@ export function visible(g: WalkGrid, a: Pt, b: Pt, minClear: number, accept?: (c
     if (n <= 0 || (cx === ex && cy === ey)) return true;
     if (Math.abs(tx - ty) < 1e-9) {
       // Through a corner: both cells beside it must be fine too.
+      t = tx;
       if (!ok(cx + sx, cy) || !ok(cx, cy + sy)) return false;
       cx += sx;
       cy += sy;
@@ -401,9 +413,11 @@ export function visible(g: WalkGrid, a: Pt, b: Pt, minClear: number, accept?: (c
       ty += tdy;
       n--;
     } else if (tx < ty) {
+      t = tx;
       cx += sx;
       tx += tdx;
     } else {
+      t = ty;
       cy += sy;
       ty += tdy;
     }
@@ -546,26 +560,44 @@ export function cellPath(g: WalkGrid, s: number, t: number, penalty?: (cell: num
 }
 
 /**
- * Turns a cell path into a clean polyline: line-of-sight shortcuts (string pulling) that keep clear of walls, at
- * least as clear as the path they replace (up to `minClear` meters), then drops points that are in line.
- * `from`/`to` replace the first and last cell centres; `accept` limits which cells a shortcut may cross.
+ * Turns a cell path into a clean polyline: line-of-sight shortcuts (string pulling) that keep as clear of walls as
+ * the path they replace does at the same point (up to `minClear` meters), then drops points that are in line. The
+ * clearance is local, so one narrow spot on the way (a doorway, the seam between two buildings) doesn't let a long
+ * shortcut hug the walls everywhere else. `from`/`to` replace the first and last cell centres; `accept` limits which
+ * cells a shortcut may cross.
  */
 export function smoothCells(g: WalkGrid, cells: number[], from?: Pt, to?: Pt, accept?: (cell: number) => boolean, minClear = 7.5): Pt[] {
   const pts = cells.map((c) => cellCenter(g, c));
   if (from) pts[0] = from;
   if (to) pts[pts.length - 1] = to;
   if (pts.length <= 2) return pts;
+  const n = pts.length;
+  // The clearance the path keeps around each of its points (the least within two cells, up to minClear), and how
+  // far along the path each point is.
+  const need = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    let lo = minClear;
+    for (let j = Math.max(0, k - 2); j <= Math.min(n - 1, k + 2); j++) lo = Math.min(lo, g.clear[cells[j]]);
+    need[k] = 0.9 * lo;
+  }
+  const s = new Float64Array(n);
+  for (let k = 1; k < n; k++) s[k] = s[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
+  /** What a shortcut from point i to point j must keep at t: what the path has at the same share of its length. */
+  const needAt = (i: number, j: number) => (t: number) => {
+    const at = s[i] + t * (s[j] - s[i]);
+    let [lo, hi] = [i, j];
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (s[mid] <= at) lo = mid;
+      else hi = mid;
+    }
+    return Math.min(need[lo], need[hi]);
+  };
   const out: Pt[] = [pts[0]];
   let i = 0;
-  while (i < pts.length - 1) {
+  while (i < n - 1) {
     let j = i + 1;
-    let low = Math.min(g.clear[cells[i]], g.clear[cells[j]]);
-    while (j + 1 < pts.length) {
-      const c = Math.min(low, g.clear[cells[j + 1]]);
-      if (!visible(g, pts[i], pts[j + 1], Math.min(minClear, c) * 0.9, accept)) break;
-      low = c;
-      j++;
-    }
+    while (j + 1 < n && visible(g, pts[i], pts[j + 1], needAt(i, j + 1), accept)) j++;
     out.push(pts[j]);
     i = j;
   }
@@ -718,15 +750,15 @@ export function gapsBetween(g: WalkGrid, a: (cell: number) => boolean, b: (cell:
   return found.filter((f) => f.d <= bestD + slack).sort((p, q) => p.d - q.d);
 }
 
-/** The gap that makes the shortest trip from `from` to `to` (straight-line legs on each side). */
-export function bestGap(g: WalkGrid, gaps: Gap[], from: Pt, to: Pt): Gap | null {
+/**
+ * One place to cross between two areas, the same whatever the route (a tunnel is where it is): among the gaps within
+ * `gapsBetween`'s slack of the narrowest, the one with the lowest `extra` cost (e.g. far from both zones' middles).
+ */
+export function fixedGap(g: WalkGrid, gaps: Gap[], extra: (a: Pt, b: Pt) => number = () => 0): Gap | null {
   let best: Gap | null = null;
   let bestCost = Infinity;
   for (const gap of gaps) {
-    const a = cellCenter(g, gap.a);
-    const b = cellCenter(g, gap.b);
-    // Crossing outside the buildings is the slow part (and the least certain), so it counts double.
-    const cost = Math.hypot(a[0] - from[0], a[1] - from[1]) + 2 * gap.d + Math.hypot(to[0] - b[0], to[1] - b[1]);
+    const cost = gap.d + extra(cellCenter(g, gap.a), cellCenter(g, gap.b));
     if (cost < bestCost) [best, bestCost] = [gap, cost];
   }
   return best;

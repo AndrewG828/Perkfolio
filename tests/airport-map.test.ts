@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { airportNav } from "../src/shared/data/airport-nav";
 import { loungesAt } from "../src/shared/lib/lounge-access";
-import { gatePoint, loungePoint, routeGeometry, zoneAnchor, type AirportMapData } from "../src/shared/lib/airport-map";
+import { gatePoint, loungePoint, routeGeometry, zoneAnchor, zoneAt, type AirportMapData } from "../src/shared/lib/airport-map";
 import { parseGate, routeTo } from "../src/shared/lib/wayfinding";
 import { build } from "../scripts/build-airport-maps";
 
@@ -87,4 +87,50 @@ test("route geometry: a walk between concourses crosses where they meet, not thr
   const pts = geo.segments[0].pts.map((p) => p.join(","));
   assert.ok(pts.includes("1000,100"), "leaves E at E1");
   assert.ok(pts.includes("900,0"), "enters D at D10");
+});
+
+test("gate refs: several letters cover their gate, and a gate missing from the map is placed by its neighbours", () => {
+  // Made-up JFK: Terminal 1's "3AB" and "9", Terminal 8's 8, 10 and 12 (OSM has no gate 9 in Terminal 8).
+  const jfk: AirportMapData = {
+    code: "JFK",
+    origin: [40.64, -73.78],
+    terminals: [],
+    runways: [],
+    gates: [
+      { ref: "3AB", x: 0, y: 0, t: "Terminal 1" },
+      { ref: "9", x: 500, y: 0, t: "Terminal 1" },
+      { ref: "8", x: 0, y: 300, t: "Terminal 8" },
+      { ref: "10", x: 40, y: 300, t: "Terminal 8" },
+      { ref: "12", x: 80, y: 300, t: "Terminal 8" },
+    ],
+    attribution: "test",
+  };
+  const z = (id: string) => airportNav.JFK.zones.find((x) => x.id === id)!;
+  assert.deepEqual(gatePoint(jfk, z("1"), "3"), [0, 0]);
+  // Terminal 8's gate 9 is between its 8 and 10, not Terminal 1's gate 9.
+  assert.deepEqual(gatePoint(jfk, z("8"), "9"), [20, 300]);
+  // Nothing numbered near gate 40: not on the map.
+  assert.equal(gatePoint(jfk, z("8"), "40"), null);
+});
+
+test("a building named for two concourses is split between them (IAD's Concourse A & B)", () => {
+  // One 1 km building: B gates on its west half, A gates on its east half.
+  const iad: AirportMapData = {
+    code: "IAD",
+    origin: [38.95, -77.45],
+    terminals: [{ name: "Concourse A & B", rings: [[[0, 0], [1000, 0], [1000, 40], [0, 40], [0, 0]]] }],
+    runways: [],
+    gates: [
+      ...Array.from({ length: 10 }, (_, n) => ({ ref: `B${40 + n}`, x: 50 + n * 40, y: 45, t: "Concourse A & B" })),
+      ...Array.from({ length: 10 }, (_, n) => ({ ref: `A${14 + n}`, x: 950 - n * 40, y: 45, t: "Concourse A & B" })),
+    ],
+    attribution: "test",
+  };
+  const iadNav = airportNav.IAD;
+  const z = (id: string) => iadNav.zones.find((x) => x.id === id)!;
+  const [a, b] = [zoneAnchor(iad, iadNav, z("A"))!, zoneAnchor(iad, iadNav, z("B"))!];
+  assert.ok(b[0] < 500 && a[0] > 500, `A ${a}, B ${b}`);
+  assert.equal(zoneAt(iad, iadNav, b), "B");
+  // Each concourse's middle is inside the building, not on its wall.
+  for (const p of [a, b]) assert.ok(p[1] > 8 && p[1] < 32, `${p}`);
 });

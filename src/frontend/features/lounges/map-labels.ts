@@ -1,8 +1,8 @@
 /**
  * Label layout for the airport map, in screen pixels: each label tries a few spots around its marker (below, above,
  * right, left) and takes the first that doesn't cover another label, a marker, the route or the map's edge.
- * Labels that can't fit are dropped, except forced ones (the destination and "You"), which take their best spot
- * anyway.
+ * Labels that can't fit are dropped, except forced ones (the destination and "You"), which try spots further out
+ * (drawn with a leader line back to the marker) and, failing those, take the spot that covers least.
  */
 
 export type Spot = "center" | "below" | "above" | "right" | "left";
@@ -25,6 +25,8 @@ export interface LabelItem {
   alts?: { x: number; y: number }[];
   /** Always shown (destination, "You"). */
   force?: boolean;
+  /** Obstacles whose id starts with this the label may cover (zone names over gate dots). */
+  over?: string;
 }
 
 export interface Box {
@@ -34,7 +36,8 @@ export interface Box {
   h: number;
 }
 
-export type PlacedLabel = LabelItem & Box;
+/** A placed label; `leader` when it sits away from its marker and needs a line back to it. */
+export type PlacedLabel = LabelItem & Box & { leader?: boolean };
 
 /** Letter spacing for caps labels, in em. */
 export const CAPS_TRACKING = 0.08;
@@ -73,15 +76,21 @@ export function lineBoxes(pts: [number, number][], step = 9, half = 4): Box[] {
   return out;
 }
 
+/** Directions for a forced label's spots further out: below, above, right, left, then the diagonals. */
+const FAR = [90, -90, 0, 180, 45, 135, -45, -135].map((deg) => [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)]);
+
 /**
  * Places labels in priority order (first = most important). `obstacles` are markers and the route; an obstacle
- * with the label's own id (its marker) doesn't count.
+ * with the label's own id (its marker) doesn't count. A point more than 40 px off screen isn't a candidate, but the
+ * label can still go at another of its points (a zone's name where the zone is on screen).
  */
 export function placeLabels(items: LabelItem[], obstacles: (Box & { id?: string })[], width: number, height: number): PlacedLabel[] {
   const placed: PlacedLabel[] = [];
   const inside = (b: Box) => b.left >= 2 && b.top >= 2 && b.left + b.w <= width - 2 && b.top + b.h <= height - 2;
+  const onScreen = (p: { x: number; y: number }) => p.x >= -40 && p.y >= -40 && p.x <= width + 40 && p.y <= height + 40;
   for (const it of items) {
-    if (it.x < -40 || it.y < -40 || it.x > width + 40 || it.y > height + 40) continue;
+    const points = [{ x: it.x, y: it.y }, ...(it.alts ?? [])].filter(onScreen);
+    if (!points.length) continue;
     const w = textWidth(it.text, it.size, it.weight, it.caps) + 6;
     const h = Math.round(it.size * 1.3);
     const gap = it.r + 3;
@@ -96,15 +105,29 @@ export function placeLabels(items: LabelItem[], obstacles: (Box & { id?: string 
               ? { left: x + gap + 1, top: y - h / 2, w, h }
               : { left: x - gap - 1 - w, top: y - h / 2, w, h };
     const order = it.spots ?? ["below", "above", "right", "left"];
-    const spots = [{ x: it.x, y: it.y }, ...(it.alts ?? [])].flatMap((p) => order.map((s) => at(p.x, p.y, s)));
-    const free = (b: Box) => inside(b) && !placed.some((p) => overlaps(p, b)) && !obstacles.some((o) => o.id !== it.id && overlaps(o, b, 0));
+    const spots = points.flatMap((p) => order.map((s) => at(p.x, p.y, s)));
+    const blocks = (o: Box & { id?: string }) => o.id !== it.id && !(it.over && o.id?.startsWith(it.over));
+    const free = (b: Box) => inside(b) && !placed.some((p) => overlaps(p, b)) && !obstacles.some((o) => blocks(o) && overlaps(o, b, 0));
     let spot = spots.find(free);
+    let leader = false;
     if (!spot && it.force) {
-      // Best effort: the spot that covers the fewest other things.
-      const cost = (b: Box) => (inside(b) ? 0 : 1000) + placed.filter((p) => overlaps(p, b)).length * 10 + obstacles.filter((o) => o.id !== it.id && overlaps(o, b, 0)).length;
-      spot = spots.reduce((a, b) => (cost(b) < cost(a) ? b : a));
+      // Further out, with a leader line back to the marker.
+      const far = [16, 34].flatMap((extra) =>
+        FAR.map(([c, s]) => {
+          const [px, py] = [it.x + c * (gap + extra), it.y + s * (gap + extra)];
+          return { left: c > 0.3 ? px : c < -0.3 ? px - w : px - w / 2, top: s > 0.3 ? py : s < -0.3 ? py - h : py - h / 2, w, h };
+        }),
+      );
+      spot = far.find(free);
+      leader = Boolean(spot);
+      if (!spot) {
+        // Best effort: the spot that covers the fewest other things.
+        const cost = (b: Box) => (inside(b) ? 0 : 1000) + placed.filter((p) => overlaps(p, b)).length * 10 + obstacles.filter((o) => blocks(o) && overlaps(o, b, 0)).length;
+        spot = [...spots, ...far].reduce((a, b) => (cost(b) < cost(a) ? b : a));
+        leader = !spots.includes(spot);
+      }
     }
-    if (spot) placed.push({ ...it, ...spot });
+    if (spot) placed.push({ ...it, ...spot, leader });
   }
   return placed;
 }

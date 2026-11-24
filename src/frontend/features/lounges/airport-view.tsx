@@ -15,7 +15,7 @@ import {
   terminalsAt,
   type LoungeAccessGrant,
 } from "@/shared/lib/lounge-access";
-import { isConnected, linkKey, navFor, rankByDistance, resolveOrigin, routeTo, zoneForLounge } from "@/shared/lib/wayfinding";
+import { isConnected, linkKey, navFor, rankByDistance, resolveOrigin, routeTo, zoneForLounge, type Origin } from "@/shared/lib/wayfinding";
 import { useHydrated } from "@/frontend/state/wallet-store";
 import { cn } from "@/shared/lib/format";
 import { AccessPicker, useAccessSelection } from "./access-picker";
@@ -66,9 +66,10 @@ export function AirportView({ code }: { code: string }) {
     window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
   }, [from, toId]);
 
-  const resolved = nav ? resolveOrigin(nav, from) : null;
+  // Memoized on what was typed (the map redraws its route only when the origin or route really changes).
+  const resolved = useMemo(() => (nav ? resolveOrigin(nav, from) : null), [nav, from]);
   // Until the traveler gives a gate, show the route from security so directions are always visible.
-  const origin = nav ? (resolved?.ok ? resolved.origin : { kind: "landside" as const }) : null;
+  const origin = useMemo<Origin | null>(() => (nav ? (resolved?.ok ? resolved.origin : { kind: "landside" }) : null), [nav, resolved]);
   const fromSecurityDefault = Boolean(nav) && !resolved?.ok;
   const isOpen = (l: Lounge) => (grants.get(l.id)?.length ?? 0) > 0;
   const ranked = nav && origin ? rankByDistance(nav, origin, all).map((r) => ({ ...r, open: isOpen(r.lounge) })) : [];

@@ -107,11 +107,16 @@ The repository's upsert only writes if the stored version equals `base`; the new
   `shared/lib/osm-airport.ts`) writes `public/airport-maps/<CODE>.json`. If an airport has no file, the browser builds
   it from overpass-api.de and caches it in localStorage. Routes stay inside the buildings: `shared/lib/walkable.ts`
   rasterizes the terminal outlines into a ~3 m grid (wall clearance, A* that keeps to the middle of corridors, string
-  pulling), and `shared/lib/airport-map.ts` splits it into zones (nearest zone gates/building by walking), puts every
-  zone middle, pin and the You marker inside a building, and walks each leg through the doors between consecutive
-  zones; buildings OSM doesn't join get a short dotted connector, and train/bus legs are dashed hops between zone
-  middles. Without outlines it falls back to following the gates; `tests/airport-routes.test.ts` routes every
-  pre-built map. Credit "© OpenStreetMap contributors (ODbL)" wherever the map shows.
+  pulling), and `shared/lib/airport-map.ts` splits it into zones (nearest zone gates/building by walking; a building
+  named for several, like IAD's "Concourse A & B", belongs to each), puts every zone middle, pin and the You marker
+  inside a building, and walks each leg through the doors between consecutive zones. Zones a walkway joins that OSM
+  doesn't (ORD's B–C tunnel) get one fixed dotted connector per pair, only ever on a nav walk link. Trains are dashed
+  hops between zone middles, cut short where the walk would double back along them; buses (facade to facade) and trips
+  outside security are arcs. A gate OSM lacks is placed between its numbered neighbours, else You goes to the zone's
+  middle, labelled with the zone. The page builds all this in idle-time steps (`prepareMapStep`), never in a render.
+  Without outlines it falls back to following the gates; `tests/airport-routes.test.ts` routes every pre-built map
+  from every OSM gate (start zone, connectors, outlines, no doubling back). Credit "© OpenStreetMap contributors
+  (ODbL)" wherever the map shows.
 - Other storage: compare selection is in sessionStorage `perkfolio:compare:v1`; banner dismissal is
   `perkfolio:banner-dismissed`.
 - Anything reading `new Date()` or localStorage must render after hydration (`useHydrated()`), or prerendering
