@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Info, Plus } from "lucide-react";
 import { getCurrency, programName } from "@/shared/data/points";
-import { CURRENCY_COLOR, Dot, listJoin } from "./ui";
+import { CURRENCY_COLOR, Dot, currencyProse, listJoin } from "./ui";
 import { useWalletReach } from "./use-wallet-reach";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -29,10 +29,7 @@ export function WalletPointsSummary() {
 
   const transferable = points.currencies.filter((c) => c.transferable);
   const limited = points.currencies.filter((c) => !c.transferable);
-  const names = [
-    ...points.currencies.map((c) => getCurrency(c.currency)?.shortName ?? c.currency),
-    ...points.programs.map((p) => programName(p.program)),
-  ];
+  const names = [...points.currencies.map((c) => currencyProse(c.currency)), ...points.programs.map((p) => programName(p.program))];
   const all = Array.from(reach.values());
   const airlines = all.filter((r) => r.kind === "airline").length;
   const hotels = all.filter((r) => r.kind === "hotel").length;

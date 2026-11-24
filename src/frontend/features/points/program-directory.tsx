@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { ALLIANCES, awardPrograms, type Alliance, type AwardProgram } from "@/shared/data/points";
+import { ALLIANCES, programList, type Alliance, type ProgramRef } from "@/shared/data/points";
 import { Segmented, Switch } from "./controls";
 import { ProgramTile } from "./program-tile";
 import { useWalletReach, type WalletReach } from "./use-wallet-reach";
@@ -28,13 +29,18 @@ export function readProgramFilters(params: Pick<URLSearchParams, "get">): Progra
   };
 }
 
-function writeProgramFilters(f: ProgramFilters) {
+/** The canonical query string for these filters (defaults left out). */
+function programQuery(f: ProgramFilters): string {
   const sp = new URLSearchParams();
   if (f.kind !== "all") sp.set("kind", f.kind);
   if (f.alliance !== "all" && f.kind !== "hotel") sp.set("alliance", ALLIANCE_SLUG[f.alliance]);
   if (f.mine) sp.set("mine", "1");
-  const qs = sp.toString();
-  window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  return sp.toString();
+}
+
+function writeProgramFilters(f: ProgramFilters) {
+  const qs = programQuery(f);
+  window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
 }
 
 /** Directory with filters in the URL (?kind=airline&alliance=oneworld&mine=1). Needs a <Suspense> boundary. */
@@ -42,10 +48,18 @@ export function ProgramDirectoryExplorer() {
   const params = useSearchParams();
   const filters = readProgramFilters(params);
   const wallet = useWalletReach();
+  // Values the page can't use (?kind=bogus&alliance=xyz) are dropped from the URL, as the planner does.
+  const query = params.toString();
+  useEffect(() => {
+    const sp = new URLSearchParams(query);
+    const ours = new URLSearchParams([...sp].filter(([k]) => ["kind", "alliance", "mine"].includes(k))).toString();
+    const clean = readProgramFilters(sp);
+    if (ours !== programQuery(clean)) writeProgramFilters(clean);
+  }, [query]);
   return <ProgramDirectory filters={filters} onChange={(patch) => writeProgramFilters({ ...filters, ...patch })} wallet={wallet} />;
 }
 
-const matches = (p: AwardProgram, f: ProgramFilters, w?: WalletReach) =>
+const matches = (p: ProgramRef, f: ProgramFilters, w?: WalletReach) =>
   (f.kind === "all" || p.kind === f.kind) &&
   (f.alliance === "all" || (p.kind === "airline" && (f.alliance === "none" ? !p.alliance : p.alliance === f.alliance))) &&
   (!f.mine || Boolean(w?.reach.has(p.id)));
@@ -62,7 +76,7 @@ export function ProgramDirectory({
 }) {
   const personal = Boolean(wallet?.hydrated);
   const hasCards = (wallet?.points.cards.length ?? 0) > 0;
-  const list = [...awardPrograms].sort((a, b) => a.name.localeCompare(b.name)).filter((p) => matches(p, filters, wallet));
+  const list = [...programList].sort((a, b) => a.name.localeCompare(b.name)).filter((p) => matches(p, filters, wallet));
   const sections = (["airline", "hotel"] as const)
     .map((kind) => ({ kind, title: kind === "airline" ? "Airline programs" : "Hotel programs", programs: list.filter((p) => p.kind === kind) }))
     .filter((s) => s.programs.length > 0);
@@ -123,6 +137,7 @@ export function ProgramDirectory({
                   program={p}
                   reach={personal && hasCards ? (wallet!.reach.get(p.id) ?? null) : undefined}
                   mine={wallet?.mine}
+                  data={wallet?.data}
                 />
               ))}
             </div>

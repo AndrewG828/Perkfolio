@@ -7,6 +7,7 @@ import { loungeNetworks } from "@/shared/data/networks";
 import { CardArt } from "@/frontend/components/card-art";
 import { WalletButton } from "@/frontend/components/wallet-button";
 import { CardTransferPartners } from "@/frontend/features/points/card-transfer-partners";
+import { CardValueNote } from "@/frontend/features/points/point-value";
 import { frequencyLabel, frequencyShort } from "@/shared/lib/periods";
 import { usd } from "@/shared/lib/format";
 
@@ -106,12 +107,7 @@ export default async function CardPage({ params }: PageProps<"/cards/[id]">) {
                 <p className="font-medium text-ink">All other eligible purchases</p>
               </div>
             </div>
-            <p className="mt-3 text-sm text-ink-3">
-              We value {card.rewardsCurrency} at {card.pointValueCents}¢ each.{" "}
-              <Link href="/about#methodology" className="link">
-                How we value points
-              </Link>
-            </p>
+            <CardValueNote card={card} />
           </Section>
 
           {card.credits.length > 0 && (

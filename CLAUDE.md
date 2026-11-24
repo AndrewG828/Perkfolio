@@ -19,6 +19,7 @@ npx tsc --noEmit -p .  # types
 npm run lint
 npm run build          # run all four before pushing
 npm run db:migrate     # apply DB migrations by hand (reads DATABASE_URL from .env.local)
+npm run points:import -- --a <dir> --b <dir>   # regenerate Points & Miles data from research (see Points & Miles)
 vercel logs --project perkfolio --json   # prod logs; Hobby keeps only ~30 minutes
 ```
 
@@ -40,7 +41,8 @@ src/shared/     Pure code used by both sides: data/ (card, lounge, earn-rate, po
                 validation, three-way merge, credit periods, caps/limits, points logic, formatting). No React, no
                 server APIs.
 src/proxy.ts    Rewrites the old domain (credit-card-hacking.vercel.app) to /move.
-scripts/        CLI scripts (db-migrate.ts). tests/  node:test unit tests, run with tsx.
+scripts/        CLI scripts (db-migrate.ts, build-airport-maps.ts, import-points-research.ts). tests/  node:test unit
+                tests, run with tsx.
 ```
 
 Rules of thumb: a client component may import `frontend/` and `shared/`, plus `"use server"` actions from
@@ -140,44 +142,134 @@ The repository's upsert only writes if the stored version equals `base`; the new
 Cards live in `src/shared/data/cards/{amex,chase-bilt,other}.ts` (types in `src/shared/data/types.ts`). When editing:
 - keep `lastVerified` current;
 - add earn-rate specs in `src/shared/data/calculator-rates.ts` for new cards;
-- put images in `public/cards/<id>.webp` mapped in `src/shared/data/card-images.ts`.
+- put images in `public/cards/<id>.webp` mapped in `src/shared/data/card-images.ts`;
+- a card that earns a bank currency gets `transferPartners: transferPartnerNames("<currency>", "<card id>")` (from the
+  Points & Miles partner list), never a hand-written list.
 
 **Never rename a card or credit `id`**: they're keys in saved wallets. A scheduled Claude task runs on the 1st of
 each month to verify terms and open a PR (paths listed in its prompt match this layout).
 
 ## Points & Miles
 
-Pages: `/points` (hub: wallet summary, featured sweet spots, transfer explorer, program preview, "is this a good
-deal?" calculator), `/points/sweet-spots`, `/points/transfers` (matrix; per-currency tabs on phones),
-`/points/programs` and `/points/programs/[id]`. Views are in `frontend/features/points/`. Each page server-renders the
-full content; the wallet personalizes it after hydration (`useWalletReach()`), and filters live in the URL
-(`useSearchParams` inside `<Suspense>` whose fallback is the same view, unfiltered; writes use
-`history.replaceState`). Card pages show structured transfer partners (`card-transfer-partners.tsx`).
+Pages: `/points` (hub: wallet summary, featured sweet spots, transfer bonuses, transfer explorer, program preview,
+"is this a good deal?" calculator), `/points/sweet-spots`, `/points/transfers` (two modes: the matrix with
+per-currency tabs on phones, and "I need miles"; then bonuses, hotel points to airlines, the partner-change log and
+currency notes), `/points/programs`, `/points/programs/[id]` (every program in `programList`, guide or not: transfers,
+value per point, airlines it books, booking rules, hotel conversions, sweet spots), `/points/airlines` (pick an airline,
+see who can book it, `?airline=NH`) and `/points/booking-rules` (sortable, filterable matrix). Views are in
+`frontend/features/points/`. Each page server-renders the full content; the wallet personalizes it after hydration
+(`useWalletReach()`), and filters live in the URL (`useSearchParams` inside `<Suspense>` whose fallback is the same
+view, unfiltered; writes use `history.replaceState`, and every view drops values it can't use from the URL). Anything
+that depends on today's date (live bonuses, days left, bonuses applied in the planner, scheduled ratio changes once
+their date comes, a dated airline listing that has ended) renders after hydration via `localIsoDate()`:
+`useWalletReach()` returns `today` and `data`, the dataset as it stands today (`pointsDataOn(today)`), and views pass
+`data` to the shared helpers (`bestPartnerFor`, `transferSources`, `bookingOptionsFor`, …) so no ratio stays stale under
+a "Scheduled" label. Card pages show structured transfer partners (`card-transfer-partners.tsx`; its ratio pills and
+change notes are client islands from `dated-partner.tsx` for the same reason).
 
-Data lives in `src/shared/data/points/` (types and the fixed id lists in `types.ts`, lookups in `index.ts`):
-- `currencies.ts` `bankCurrencies`: one entry per `BANK_CURRENCY_IDS` (amex-mr, chase-ur, capital-one, citi-typ, bilt,
-  wells-fargo).
-- `programs.ts` `awardPrograms`: `id` must be in `PROGRAM_IDS`. Ids are URL slugs: never rename one.
-- `transfers.ts` `transferPartners`: `from` bank points become `to` program points. When the ratio depends on the card,
-  add one entry per ratio, each with `cards` (card ids); an entry with `cards` is usable only by those cards.
-- `sweet-spots.ts` `sweetSpots`, in featured order. Flights have a cabin and are one-way or round-trip; hotels are
-  `per: "night"` with `from` = `to`.
-- `photos.ts` `regionPhotos` (by Region), `airportPhotos` (by code), `loungePhotos` (by lounge id).
-- `program-names.ts` (not seed data): a display name for every fixed id, plus aliases that map the free-text
-  `transferPartners` names in card data to program ids.
+**Data is generated from research** by `scripts/import-points-research.ts`:
 
-Files starting with `// SEED DATA: replaced by verified research before release` still hold placeholder values
-(`grep -rl "SEED DATA" src` lists them). Delete that line once a file holds verified data.
+```bash
+npm run points:import -- --a <research dir A> --b <research dir B>   # or POINTS_RESEARCH_A / POINTS_RESEARCH_B
+npm run points:import -- --a <dir> --b <dir> --dry-run              # print counts, what it applied and skipped
+npm run points:import -- --a <dir> --b <dir> --no-change-log        # partner list exactly as the transfer tracks have it
+```
+
+For each track it reads `<track>.final.json` when it exists, else `<track>.verified.json` (never `.json` drafts or
+`.gapfill.json`), and only the confirmed lists: nothing from `rejected`, `stillMissing`, `unconfirmed`, `notResearched`
+or `pending`. Re-run it when research lands (more sweet spots and photos are coming), then run the checks. It prints
+what it applied, what it skipped and which curation rules have lapsed (delete those).
+
+| Dir | Track(s) | Writes (in `src/shared/data/points/`) |
+| --- | --- | --- |
+| A | `transfers-a`, `transfers-b` | `currencies.ts` (`bankCurrencies`), `transfers.ts` (`transferPartners`) |
+| A | `programs-air-a`, `programs-air-b`, `programs-hotel` | `programs.ts` (`awardPrograms`) |
+| A | `sweet-flights-b`, `sweet-flights-a`, `sweet-hotels` | `sweet-spots.ts` (`sweetSpots`, featured order) |
+| A | `photos.verified.json`, `photos.auto.json` (optional manifests) | `photos.ts` (`regionPhotos`, `airportPhotos`, `loungePhotos`, `miscPhotos`) |
+| B | `booking-rules-a`, `booking-rules-b` | `booking-rules.ts` (`bookingRules`; `null` = unknown; `notes`, `sameAs`) |
+| B | `who-can-book` (+ the flight sweet spots) | `airlines.ts` (`bookableAirlines`, `programBookingNotes`, `whoCanBookCaveats`) |
+| B | `valuations` | `valuations.ts` (`pointValues`, `valuationEditions`, `unvaluedIds`) |
+| B | `transfer-extras` | `hotel-transfers.ts`, `transfer-bonuses.ts`, `partner-changes.ts` |
+
+What the importer does beyond copying: validates every id, date and https URL (and fails without writing on a problem);
+keeps sources and `asOf`/`lastVerified` with every entry; drops research-process sentences ("not one of ours", "this
+session", "Treat as weak") after rewording the ones that carry facts (`REWRITES`: "listed by the oneworld rule" →
+"listed by oneworld membership", a maintainer's "drop this entry after Dec 17" → "From December 17, …"); writes program
+ids in the who-can-book caveats as names; treats "Not confirmed" transfer times as unknown (`time` absent); applies the
+in-effect entries of the dated partner-change log to the partner list (removed partners dropped, changed ratios
+replaced, added partners listed with the log's ratio, `changedOn` and the bank's general minimum and steps, i.e. those
+every other row of the currency carries: Chase's and Citi's 1,000 in 1,000s, any amount for Wells Fargo; a dated,
+sourced log entry can restore a pair a transfer track left in `rejected` as unconfirmed, e.g. Citi → JAL, Wells Fargo →
+Cathay and Wyndham) and attaches scheduled ratio changes to their row (`scheduled`, e.g. Bilt → Hyatt 4:3 from
+2027-01-01); adds to program text that lists the banks transferring in any bank the log added since
+(`noteAddedPartners`); assigns card-specific ratios the research gives only in notes (`CARD_SPECIFIC`, e.g. Chase →
+Hyatt 1:1 for Sapphire Reserve and Reserve for Business, 4:3 for Sapphire Preferred and Ink Preferred); fixes rows whose
+cited pages don't state them (`ROW_FIXES`: the Amex rows gain Upgraded Points' and NerdWallet's Amex guides, which
+research B downloaded for transfer-extras, and Qantas's 500-point minimum); adds what a downloaded source states but the
+research left out (`HOTEL_RULE_FIXES`: Hilton's 10,000-point minimum from Upgraded Points' table; `BOOKING_RULE_FIXES`:
+Upgraded Points' award-calendar page for Aeroplan's 355-day window); updates currency text the change log outdated
+(`CURRENCY_TEXT_FIXES`, Wells Fargo's "Choice is 1:2" now names Wyndham) and garbled photo captions (`ALT_FIXES`); skips
+entries a newer track contradicts (`SUPERSEDED`); all of these match exact content, so each rule lapses once the
+research changes; reads minimums, steps and caps that the research states only in words (hotel rows' "lists a
+20,000-point minimum", Marriott's "convert 3,000 to 240,000 points a day", a bonus "capped at 50,000 miles"); writes
+prose the way the pages do (`prose()`: ISO dates as words, "on 2026-11-24" → "on November 24, 2026" and a citation's
+"TPG (2026-08-25)" → "TPG (Aug 2026)"; a rate the ratio pills show as they show it, "2:1.5" → "4:3"; another 1:x rate
+per 1,000 points, "1:0.7" → "1,000 → 700"; hotel rates reduced like the hotel tables, "10:1.5" → "20:3"); gives a
+listing the research dates ("drop or relabel this entry after December 17, 2026") an `endsOn`; keeps booking-rule notes
+as sentences without process wording or citation-only lines, and turns a bridge program whose every rule is one "uses
+Flying Club's rules" sentence into `sameAs`; lists every airline a flight sweet spot books as bookable with its program
+(with the sweet spot's sources; operators who-can-book lacks come from `EXTRA_AIRLINES`, with IATA codes as research B's
+baggage track checked them). That includes pairs the who-can-book verification rejected for want of a second source
+(STARLUX and Aer Lingus on Atmos): the verified sweet spot is the confirmation. It orders sweet spots so neighbours
+differ in program, region and cabin and the big programs are spread through the list; and accepts photos only when the
+file exists under `public/`, every credit field is filled and the license is CC0, public domain, CC BY or CC BY-SA (a
+template or very long Commons description is replaced as alt text by its first sentence or the title). Program ids
+outside `PROGRAM_IDS` are skipped in the matrix but kept by name in the hotel-conversion table and the change log.
+
+Hand-written files: `types.ts` (types, `PROGRAM_IDS` and the other fixed lists; ids are URL slugs, never rename one;
+add an id here and in `program-names.ts` before the importer will use it; `PROGRAM_BRIDGES`: programs spent through
+another with no transfer, Virgin Red → Flying Club), `program-names.ts` (a display name and aliases for every fixed
+id), `card-partners.ts` (`transferPartnerNames()`: card data's `transferPartners` are derived from the partner list, so
+never list partners by hand) and `index.ts` (lookups: `programList`/`programRef()` for programs with or without a guide,
+`bookingRulesOf`, `getAirline`, `airlinesBookableWith` (a bridge program books what its target books), `pointValueOf`,
+hotel routes).
 
 Logic lives in `shared/lib/points.ts`: `currencyOfCard()` classifies every card (cards whose transfers need another card
 are listed in `LIMITED`, plain cash back in `CASH_ONLY`; a test fails for an unclassified card, so classify new cards
-there), `reachablePrograms()` and `sweetSpotsFor()` pick the best ratio across currencies and card-specific entries,
-and `judgeRedemption()` compares cents per point with the cards' `pointValueCents`.
+there), `reachablePrograms()` and `sweetSpotsFor()` pick the best ratio across currencies and card-specific entries
+(and through bridges: a Capital One or Bilt wallet reaches Flying Club "via Virgin Red", `TransferRoute.via`; a direct
+transfer wins a tie), `transferSources()` lists bridged currencies with `via`, `liveBonuses()` hides a bonus the day after
+it ends, `milesPlan()` lists direct bank routes (bridged ones included) then bank → hotel → airline routes (Marriott's
+per-60,000 bonus and every hotel's minimum and steps via `hotelPointsFor()`/`hotelLimits()`; a bonus counts only for its
+cards and up to its cap, `bankPointsWithBonus()`; a scheduled ratio applies from its date, `partnerOn()`),
+`bookingOptionsFor()` answers "who can book this airline" (folding Virgin Red into Flying Club, `bookingPrograms()`),
+`valueSources()` gives the deal calculator the median published value per currency or program (the user can type their
+own; ids no outlet values get no default, never an estimate), `valueForWallet()` swaps in an outlet's figure for the
+wallet's cards (NerdWallet's 1.3¢ for Citi cards without a Strata Premier or Elite) and `cardPageValue()` is the
+card data's own `pointValueCents` (with the cards behind it), shown next to the published median on card pages, program
+pages and in the calculator so the two numbers are always explained. It is usually below the median but not always
+(World of Hyatt and Hilton are above every outlet): `valueRelation()` compares them and the wording follows (a "more
+conservative" figure only when it is lower). `ratioLabel()` writes every ratio in smallest whole numbers (1:0.8,
+250:200 and 5:4 all read "5:4"), `wholeRatio(p, 200)` the hotel rates (`hotelRatio()`: 10:1.5 reads "20:3").
+`pointsDataOn(today)` is the dataset with scheduled changes applied (`partnerOn()`: from its date the row takes the new
+ratio and `changedOn`); `partnerChangeOf()` finds the log entry behind a row's `changedOn` ("Added Nov 18, 2026").
 
 Photos go in `public/photos/` and every one needs its credit fields (author, license, sourcePage). Show them with
 `PhotoFrame` (`frontend/components/photo-frame.tsx`): it prints "Photo: author · license" linked to the source, and
-falls back to a region gradient when there's no photo. The About page lists every credit. `tests/points.test.ts`
-checks ids, references, ratios, regions, ISO dates, https URLs and photo credits.
+falls back to a region gradient when there's no photo (the hub's overlapping postcards put their credits in one line
+under the stack). The About page lists the credits of the photos a page shows (`shownPhotos()`: region photos of the
+regions sweet spots go to; airport and lounge photos aren't shown anywhere yet), and a test fails for any file under
+`public/photos/` without a credit (`allPhotos()`).
+`tests/points.test.ts` checks ids, references, ratios, regions, ISO dates, https URLs, photo credits and licenses, the
+change-log reconciliation, card partner lists, bonus expiry and caps, the planner (bridges, hotel minimums, scheduled
+ratios), who-can-book (every flight sweet spot's operator lists its program), booking rules and valuations.
+
+UI notes: `/points/sweet-spots` shows 12 cards at a time ("Show more"; a `#<id>` link opens enough pages to include
+it) and, once the wallet is known, puts the ones it can book first in Featured order; the transfer chart shows a
+bridged route in the cell ("via VR" for Capital One and Bilt to Flying Club); one transfer time shared by every
+partner (Amex's terms) or none at all (Bilt) is said once, not on every row; the booking-rules matrix sorts by "Most rules confirmed" by default and shows three rules per phone card, the
+section tabs scroll the current tab into view on phones, and the planner shows a prompt instead of a plan for an empty
+or invalid amount and drops values it can't use from the URL.
 
 ## Environment
 

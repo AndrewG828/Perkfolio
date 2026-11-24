@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Info } from "lucide-react";
-import { awardPrograms, currencies, getCurrency, isCurrencyId, type BankCurrencyId } from "@/shared/data/points";
-import { bestPartnerFor, ratioVaries } from "@/shared/lib/points";
+import { currencies, getCurrency, isCurrencyId, programList, type BankCurrencyId } from "@/shared/data/points";
+import { bestPartnerFor, directRoute, pointsData, ratioVaries } from "@/shared/lib/points";
 import { cn } from "@/shared/lib/format";
-import { CURRENCY_ABBR, CURRENCY_COLOR, Dot, RatioPill, programColor } from "./ui";
+import { CardPageNote, ValueInline } from "./point-value";
+import { CURRENCY_ABBR, CURRENCY_COLOR, Dot, RatioPill, programColor, timeLabel } from "./ui";
 import { useWalletReach, type WalletReach } from "./use-wallet-reach";
 
 /** Hub explorer with the currency in the URL (?currency=chase-ur), defaulting to one the wallet earns. */
@@ -15,6 +17,14 @@ export function TransferExplorerLive() {
   const wallet = useWalletReach();
   const fromUrl = params.get("currency");
   const currency = isCurrencyId(fromUrl) ? fromUrl : (currencies.find((c) => wallet.mine.has(c.id))?.id ?? currencies[0]?.id);
+  // ?currency=bogus shows the default; drop the value from the URL too.
+  useEffect(() => {
+    if (fromUrl === null || isCurrencyId(fromUrl)) return;
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete("currency");
+    const qs = sp.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+  }, [fromUrl]);
   const pick = (id: BankCurrencyId) => {
     const sp = new URLSearchParams(window.location.search);
     sp.set("currency", id);
@@ -36,18 +46,23 @@ export function TransferExplorer({
   const info = currency ? getCurrency(currency) : undefined;
   if (!currency || !info) return null;
   const mine = wallet?.mine ?? new Set<BankCurrencyId>();
-  const rows = awardPrograms
+  const data = wallet?.data ?? pointsData;
+  const rows = programList
     .map((program) => {
-      const general = bestPartnerFor(currency, program.id);
+      const general = bestPartnerFor(currency, program.id, data);
       if (!general) return null;
-      const yours = wallet?.reach.get(program.id)?.routes.find((r) => r.currency === currency)?.partner;
-      return { program, partner: yours ?? general, varies: !yours && ratioVaries(currency, program.id) };
+      const yours = directRoute(wallet?.reach.get(program.id), currency)?.partner;
+      return { program, partner: yours ?? general, varies: !yours && ratioVaries(currency, program.id, data) };
     })
     .filter((r): r is NonNullable<typeof r> => Boolean(r))
     .sort((a, b) => a.program.name.localeCompare(b.program.name));
   const airlines = rows.filter((r) => r.program.kind === "airline");
   const hotels = rows.filter((r) => r.program.kind === "hotel");
   const isMine = mine.has(currency);
+  // One time for every partner (Amex's terms give one; no source gives Bilt's): said once, not on every row.
+  const times = new Set(rows.map((r) => r.partner.time ?? null));
+  const sharedTime = times.size === 1 ? [...times][0] : undefined;
+  const perRow = sharedTime === undefined;
 
   return (
     <div className="panel overflow-hidden">
@@ -88,7 +103,7 @@ export function TransferExplorer({
               {info.name}
             </h3>
             <p className="mt-1 text-sm text-ink-2">
-              Earned with {info.earnedWith}. Transfers to{" "}
+              Transfers to{" "}
               <strong className="text-ink">
                 {airlines.length} airline{airlines.length === 1 ? "" : "s"}
               </strong>{" "}
@@ -96,18 +111,30 @@ export function TransferExplorer({
               <strong className="text-ink">
                 {hotels.length} hotel program{hotels.length === 1 ? "" : "s"}
               </strong>
-              .
+              . Published valuations put a point at <ValueInline id={currency} />. <CardPageNote id={currency} />
             </p>
+            {!perRow && (
+              <p className="mt-1 text-xs text-ink-3">
+                {sharedTime
+                  ? `Transfer time for every partner: ${sharedTime.charAt(0).toLowerCase()}${sharedTime.slice(1)}.`
+                  : `None of our sources gives transfer times for ${info.shortName}.`}
+              </p>
+            )}
           </div>
           {isMine && (
             <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-semibold text-success">Your cards earn this</span>
           )}
         </div>
         {info.restrictions && (
-          <p className="mt-3 flex gap-2 rounded-md bg-canvas p-3 text-sm text-ink-2">
+          <div className="mt-3 flex gap-2 rounded-md bg-canvas p-3 text-sm text-ink-2">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" aria-hidden />
-            {info.restrictions}
-          </p>
+            <p>
+              <span className="line-clamp-3">{info.restrictions}</span>
+              <Link href="/points/transfers#currency-notes" className="mt-1 inline-block text-xs font-semibold text-brand hover:underline">
+                Full rules for each currency
+              </Link>
+            </p>
+          </div>
         )}
 
         <div className="mt-5 grid gap-6 md:grid-cols-[3fr_2fr]">
@@ -134,9 +161,9 @@ export function TransferExplorer({
                         <Dot color={programColor(program)} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium text-ink">{program.name}</span>
-                          <span className="block text-xs text-ink-3 sm:hidden">{partner.time}</span>
+                          {perRow && <span className={cn("block text-xs text-ink-3 sm:hidden", !partner.time && "italic")}>{timeLabel(partner)}</span>}
                         </span>
-                        <span className="hidden text-xs text-ink-3 sm:inline">{partner.time}</span>
+                        {perRow && <span className={cn("hidden text-xs text-ink-3 sm:inline", !partner.time && "italic")}>{timeLabel(partner)}</span>}
                         <RatioPill partner={partner} mine={isMine} varies={varies} />
                       </Link>
                     </li>

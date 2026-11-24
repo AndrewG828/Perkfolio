@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { awardPrograms, sweetSpots } from "@/shared/data/points";
+import { programList, sweetSpots } from "@/shared/data/points";
 import { cn } from "@/shared/lib/format";
 import { ProgramTile } from "./program-tile";
 import { SweetSpotCard } from "./sweet-spot-card";
@@ -30,7 +30,7 @@ export function FeaturedSweetSpots() {
       >
         {bookable.length
           ? `Your cards reach ${bookable.length} of the ${sweetSpots.length} redemptions we track.`
-          : "Redemptions where points go furthest: fixed-price business class, cheap short hops and hotel nights that cost less than they should."}
+          : "Redemptions where points go furthest, each with its price, the fees on top, how to book it and the sources behind it."}
       </SectionHeading>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {list.map((s, i) => (
@@ -39,6 +39,7 @@ export function FeaturedSweetSpots() {
             spot={s}
             reach={hasCards ? (wallet.reach.get(s.program) ?? null) : undefined}
             mine={wallet.mine}
+            data={wallet.data}
             className={cn(i === 2 && "sm:max-lg:hidden")}
           />
         ))}
@@ -51,13 +52,12 @@ export function FeaturedSweetSpots() {
 export function ProgramPreview({ limit = 8 }: { limit?: number }) {
   const wallet = useWalletReach();
   const hasCards = wallet.hydrated && wallet.points.cards.length > 0;
-  const ordered = [...awardPrograms].sort(
-    (a, b) => Number(a.kind === "hotel") - Number(b.kind === "hotel") || a.name.localeCompare(b.name),
-  );
+  // Programs with a guide, airlines first.
+  const ordered = programList.filter((p) => p.guide);
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {ordered.slice(0, limit).map((p) => (
-        <ProgramTile key={p.id} program={p} compact reach={hasCards ? (wallet.reach.get(p.id) ?? null) : undefined} mine={wallet.mine} />
+        <ProgramTile key={p.id} program={p} compact reach={hasCards ? (wallet.reach.get(p.id) ?? null) : undefined} mine={wallet.mine} data={wallet.data} />
       ))}
     </div>
   );

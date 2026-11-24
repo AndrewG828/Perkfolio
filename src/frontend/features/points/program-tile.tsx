@@ -1,31 +1,36 @@
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
-import type { AwardProgram, BankCurrencyId } from "@/shared/data/points";
-import { coBrandCards, ratioLabel, ratioVaries, transferSources, type ProgramReach } from "@/shared/lib/points";
+import { programName, type BankCurrencyId, type ProgramRef } from "@/shared/data/points";
+import { coBrandCards, pointsData, ratioLabel, ratioVaries, transferSources, type PointsData, type ProgramReach } from "@/shared/lib/points";
 import { shortCardName } from "@/shared/lib/card-name";
 import { cn } from "@/shared/lib/format";
+import { ValueInline } from "./point-value";
 import { CURRENCY_ABBR, CURRENCY_COLOR, Dot, PRICING, ProgramMark, SURCHARGES } from "./ui";
 
-/** A program in the directory: the whole tile links to its guide. Pass `reach`/`mine` to personalize. */
+/** A program in the directory: the whole tile links to its page. Pass `reach`/`mine` to personalize. */
 export function ProgramTile({
   program,
   reach,
   mine,
+  data = pointsData,
   compact = false,
 }: {
-  program: AwardProgram;
+  program: ProgramRef;
   reach?: ProgramReach | null;
   mine?: Set<BankCurrencyId>;
+  /** The dataset as it stands today (useWalletReach().data). */
+  data?: PointsData;
   compact?: boolean;
 }) {
-  const sources = transferSources(program.id);
+  const sources = transferSources(program.id, data);
   const coBrand = coBrandCards(program.id);
   const meta = program.kind === "hotel" ? "Hotels" : (program.alliance ?? "No alliance");
+  const guide = program.guide;
 
   return (
     <article
       className={cn(
-        "panel group relative flex flex-col transition-shadow focus-within:ring-2 focus-within:ring-brand hover:shadow-[var(--shadow-lift)]",
+        "panel group relative flex min-w-0 flex-col transition-shadow focus-within:ring-2 focus-within:ring-brand hover:shadow-[var(--shadow-lift)]",
         compact ? "gap-3 p-4" : "gap-4 p-5",
       )}
     >
@@ -38,37 +43,47 @@ export function ProgramTile({
             </Link>
           </h3>
           <p className="mt-0.5 truncate text-xs text-ink-3">
-            {program.owner} · {meta}
+            {guide ? `${guide.owner} · ` : ""}
+            {meta}
           </p>
         </div>
       </div>
 
-      {!compact && (
-        <>
-          <p className="line-clamp-3 text-sm leading-relaxed text-ink-2">{program.summary}</p>
-          <div className="flex flex-wrap gap-1.5">
-            <span className="chip">{PRICING[program.pricing].label}</span>
-            {program.partnerSurcharges && <span className="chip">{SURCHARGES[program.partnerSurcharges].label}</span>}
-          </div>
-        </>
-      )}
+      {!compact &&
+        (guide ? (
+          <>
+            <p className="line-clamp-3 text-sm leading-relaxed text-ink-2">{guide.summary}</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="chip">{PRICING[guide.pricing].label}</span>
+              {guide.partnerSurcharges && <span className="chip">{SURCHARGES[guide.partnerSurcharges].label}</span>}
+              <ValueInline id={program.id} className="ml-auto truncate text-xs" />
+            </div>
+          </>
+        ) : (
+          <p className="text-sm leading-relaxed text-ink-2">No program guide yet; its page lists the verified transfers and the airlines it books.</p>
+        ))}
 
       <div className={cn("mt-auto", !compact && "border-t border-line pt-3")}>
         {sources.length > 0 ? (
           <>
             <p className="sr-only">Transfer from</p>
             <ul className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-ink-2">
-              {sources.map(({ currency, partner }) => {
-                const yours = reach?.routes.find((r) => r.currency === currency)?.partner;
-                const varies = !yours && ratioVaries(currency, program.id);
+              {sources.map(({ currency, partner, via }) => {
+                const yours = reach?.routes.find((r) => r.currency === currency && r.via === via)?.partner;
+                const varies = !yours && ratioVaries(currency, via ?? program.id, data);
                 return (
-                  <li key={currency} className={cn("inline-flex items-center gap-1.5", mine?.has(currency) && "font-semibold text-brand")}>
+                  <li
+                    key={currency}
+                    title={via ? `via ${programName(via)}` : undefined}
+                    className={cn("inline-flex items-center gap-1.5", mine?.has(currency) && "font-semibold text-brand")}
+                  >
                     <Dot color={CURRENCY_COLOR[currency]} />
                     {CURRENCY_ABBR[currency]}
                     <span className="text-ink-3 tabular-nums">
                       {ratioLabel(yours ?? partner)}
                       {varies && <span aria-hidden>*</span>}
                     </span>
+                    {via && <span className="text-ink-3">via {programName(via)}</span>}
                   </li>
                 );
               })}

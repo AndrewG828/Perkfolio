@@ -2,27 +2,28 @@
 
 import Link from "next/link";
 import { useRef, type KeyboardEvent } from "react";
-import { useSearchParams } from "next/navigation";
 import { Info } from "lucide-react";
 import {
   ALLIANCES,
-  awardPrograms,
+  PROGRAM_BRIDGES,
   currencies,
   getCurrency,
   isCurrencyId,
-  transferPartners,
-  type AwardProgram,
+  programList,
+  programName,
   type BankCurrency,
   type BankCurrencyId,
+  type ProgramId,
+  type ProgramRef,
   type TransferPartner,
 } from "@/shared/data/points";
-import { bestPartnerFor, ratioLabel } from "@/shared/lib/points";
+import { bestPartnerFor, bridgeFrom, bridgesInto, directRoute, pointsData, ratioLabel, transferSources, type PointsData } from "@/shared/lib/points";
 import { getCard } from "@/shared/data/cards";
 import { shortCardName } from "@/shared/lib/card-name";
 import { cn, num } from "@/shared/lib/format";
 import { Segmented, Switch } from "./controls";
-import { ALLIANCE_COLOR, CURRENCY_ABBR, CURRENCY_COLOR, Dot, RatioPill, programColor } from "./ui";
-import { useWalletReach, type WalletReach } from "./use-wallet-reach";
+import { ALLIANCE_COLOR, CURRENCY_ABBR, CURRENCY_COLOR, Dot, RatioPill, formatDate, monogram, programColor, rulesLine, scheduledLabel, timeLabel } from "./ui";
+import type { WalletReach } from "./use-wallet-reach";
 
 // ------------------------------------------------------------------------------------------------------- Chart data
 
@@ -32,35 +33,43 @@ interface Cell {
   /** Every entry for this pair (more than one when the ratio depends on the card). */
   entries: TransferPartner[];
   varies: boolean;
+  /** Set when the currency reaches the program only through a bridge program (Capital One to Flying Club via Virgin Red). */
+  via?: ProgramId;
 }
 
 export interface ChartGroup {
   id: string;
   title: string;
   color: string;
-  rows: { program: AwardProgram; cells: Partial<Record<BankCurrencyId, Cell>> }[];
+  rows: { program: ProgramRef; cells: Partial<Record<BankCurrencyId, Cell>> }[];
 }
 
-function cellFor(currency: BankCurrencyId, program: AwardProgram): Cell | undefined {
-  const entries = transferPartners.filter((p) => p.currency === currency && p.program === program.id);
-  const best = bestPartnerFor(currency, program.id);
-  if (!best) return undefined;
-  return { best, entries, varies: entries.length > 1 || entries.some((e) => e.cards) };
+function cellFor(currency: BankCurrencyId, program: ProgramRef, data: PointsData): Cell | undefined {
+  const entries = data.partners.filter((p) => p.currency === currency && p.program === program.id);
+  const best = bestPartnerFor(currency, program.id, data);
+  if (best) return { best, entries, varies: entries.length > 1 || entries.some((e) => e.cards) };
+  // No direct transfer: a bridge program the currency does transfer to (Virgin Red for Flying Club).
+  const bridged = transferSources(program.id, data).find((s) => s.currency === currency && s.via);
+  return bridged ? { best: bridged.partner, entries: [bridged.partner], varies: false, via: bridged.via } : undefined;
 }
 
-/** Programs grouped for the chart: airlines by alliance, unaffiliated airlines, then hotels. Alphabetical within. */
-export function chartGroups(): ChartGroup[] {
+/**
+ * Programs with at least one bank transfer, grouped for the chart: airlines by alliance, unaffiliated airlines, then
+ * hotels. Alphabetical within. Programs without a guide yet (e.g. Copa ConnectMiles) are rows too. `data` is the
+ * dataset as it stands today (useWalletReach().data) once hydrated.
+ */
+export function chartGroups(data: PointsData = pointsData): ChartGroup[] {
   const groups: ChartGroup[] = [
     ...ALLIANCES.map((a) => ({ id: a, title: a, color: ALLIANCE_COLOR[a], rows: [] as ChartGroup["rows"] })),
     { id: "other", title: "Other airlines", color: programColor({ kind: "airline" }), rows: [] },
     { id: "hotel", title: "Hotels", color: programColor({ kind: "hotel" }), rows: [] },
   ];
-  const sorted = [...awardPrograms].sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = programList.filter((p) => data.partners.some((t) => t.program === p.id)).sort((a, b) => a.name.localeCompare(b.name));
   for (const program of sorted) {
     const id = program.kind === "hotel" ? "hotel" : (program.alliance ?? "other");
     const cells: Partial<Record<BankCurrencyId, Cell>> = {};
     for (const c of currencies) {
-      const cell = cellFor(c.id, program);
+      const cell = cellFor(c.id, program, data);
       if (cell) cells[c.id] = cell;
     }
     groups.find((g) => g.id === id)!.rows.push({ program, cells });
@@ -68,16 +77,27 @@ export function chartGroups(): ChartGroup[] {
   return groups.filter((g) => g.rows.length > 0);
 }
 
+/**
+ * Bridge programs on their rows: "Also Capital One, Bilt via Virgin Red" under Flying Club (banks that reach it only
+ * through Virgin Red), and "Books through Virgin Atlantic Flying Club" under Virgin Red.
+ */
+function BridgeNote({ program, className }: { program: ProgramRef; className?: string }) {
+  const through = bridgeFrom(program.id);
+  if (through) return <span className={cn("block text-xs text-ink-2", className)}>Books through {programName(through.to)}</span>;
+  const via = transferSources(program.id).filter((s) => s.via);
+  if (via.length === 0 || bridgesInto(program.id).length === 0) return null;
+  return (
+    <span className={cn("block text-xs text-ink-2", className)}>
+      Also {via.map((s) => CURRENCY_ABBR[s.currency]).join(", ")} via {programName(via[0].via!)}
+    </span>
+  );
+}
+
 /** "with Sapphire Reserve" for card-specific entries. */
 function cardsNote(p: TransferPartner): string | null {
   if (!p.cards) return null;
   const names = p.cards.map((id) => getCard(id)).filter(Boolean).map((c) => shortCardName(c!.name));
   return names.length ? `with ${names.join(", ")}` : null;
-}
-
-function rulesLine(p: TransferPartner): string | null {
-  const parts = [p.minimum ? `Minimum ${num(p.minimum)}` : null, p.increment ? `in steps of ${num(p.increment)}` : null].filter(Boolean);
-  return parts.length ? parts.join(", ") : null;
 }
 
 // ---------------------------------------------------------------------------------------------------------- Filters
@@ -102,21 +122,11 @@ export function readTransferFilters(params: Pick<URLSearchParams, "get">): Trans
   };
 }
 
-function writeTransferFilters(f: TransferFilters) {
-  const sp = new URLSearchParams();
+/** The chart's part of the query string (the transfers page adds its mode and planner fields). */
+export function transferFilterParams(f: TransferFilters, sp: URLSearchParams) {
   if (f.kind !== "all") sp.set("kind", f.kind);
   if (f.mine) sp.set("mine", "1");
   if (f.currency) sp.set("currency", f.currency);
-  const qs = sp.toString();
-  window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
-}
-
-/** The chart with filters in the URL. Needs a <Suspense> boundary (useSearchParams). */
-export function TransferChartExplorer() {
-  const params = useSearchParams();
-  const filters = readTransferFilters(params);
-  const wallet = useWalletReach();
-  return <TransferChart filters={filters} onChange={(patch) => writeTransferFilters({ ...filters, ...patch })} wallet={wallet} />;
 }
 
 // ------------------------------------------------------------------------------------------------------------- View
@@ -137,7 +147,7 @@ export function TransferChart({
   const personal = Boolean(wallet?.hydrated);
   const hasCards = (wallet?.points.cards.length ?? 0) > 0;
   const mine = wallet?.mine ?? new Set<BankCurrencyId>();
-  const groups = chartGroups()
+  const groups = chartGroups(wallet?.data)
     .map((g) => ({
       ...g,
       rows: g.rows.filter(
@@ -149,9 +159,12 @@ export function TransferChart({
   const defaultTab = currencies.find((c) => mine.has(c.id))?.id ?? currencies[0]?.id ?? null;
   const tab = filters.currency ?? defaultTab;
 
-  /** The ratio this wallet gets (card-specific), else the general one. */
-  const shown = (currency: BankCurrencyId, program: AwardProgram, cell: Cell) =>
-    wallet?.reach.get(program.id)?.routes.find((r) => r.currency === currency)?.partner ?? cell.best;
+  /** The ratio this wallet gets (card-specific, or through the same bridge), else the general one. */
+  const shown = (currency: BankCurrencyId, program: ProgramRef, cell: Cell) => {
+    const reach = wallet?.reach.get(program.id);
+    const route = cell.via ? reach?.routes.find((r) => r.currency === currency && r.via === cell.via) : directRoute(reach, currency);
+    return route?.partner ?? cell.best;
+  };
 
   return (
     <div className="space-y-5">
@@ -218,7 +231,7 @@ function Legend({ personal }: { personal: boolean }) {
   return (
     <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-ink-2">
       <li className="flex items-center gap-2">
-        <RatioPill partner={{ from: 1, to: 1 }} /> Bank points : program points
+        <RatioPill partner={{ from: 5, to: 4 }} /> Bank points to program points (5:4 means 1,000 become 800)
       </li>
       {personal && (
         <li className="flex items-center gap-2">
@@ -228,14 +241,21 @@ function Legend({ personal }: { personal: boolean }) {
       <li className="flex items-center gap-2">
         <RatioPill partner={{ from: 1, to: 1 }} varies /> Ratio depends on the card
       </li>
+      {PROGRAM_BRIDGES.map((b) => (
+        <li key={b.from} className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-ink-3 uppercase">via {monogram(programName(b.from))}</span> Through {programName(b.from)},
+          which shares {programName(b.to)}&apos;s balance
+        </li>
+      ))}
       <li className="hidden items-center gap-1.5 md:flex">
-        <Info className="h-3.5 w-3.5" aria-hidden /> Hover or focus a ratio for transfer time and minimums
+        <Info className="h-3.5 w-3.5" aria-hidden /> Hover or focus a ratio for transfer time and minimums (&ldquo;not
+        confirmed&rdquo; when no source gives a time)
       </li>
     </ul>
   );
 }
 
-type Shown = (currency: BankCurrencyId, program: AwardProgram, cell: Cell) => TransferPartner;
+type Shown = (currency: BankCurrencyId, program: ProgramRef, cell: Cell) => TransferPartner;
 
 function MatrixTable({ groups, mine, shown }: { groups: ChartGroup[]; mine: Set<BankCurrencyId>; shown: Shown }) {
   const cols = currencies.length;
@@ -302,7 +322,8 @@ function MatrixTable({ groups, mine, shown }: { groups: ChartGroup[]; mine: Set<
                     <Link href={`/points/programs/${r.program.id}`} className="font-semibold text-ink hover:text-brand">
                       {r.program.name}
                     </Link>
-                    <span className="block truncate text-xs text-ink-3">{r.program.currency}</span>
+                    <span className="block truncate text-xs text-ink-3">{r.program.currency ?? "No program guide yet"}</span>
+                    <BridgeNote program={r.program} />
                   </th>
                   {currencies.map((c, ci) => {
                     const cell = r.cells[c.id];
@@ -354,7 +375,7 @@ function RatioCell({
   align,
 }: {
   currency: BankCurrency;
-  program: AwardProgram;
+  program: ProgramRef;
   cell: Cell;
   partner: TransferPartner;
   mine: boolean;
@@ -366,12 +387,18 @@ function RatioCell({
       <Link
         href={`/points/programs/${program.id}`}
         aria-describedby={tip}
-        className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="inline-flex flex-col items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         <RatioPill partner={partner} mine={mine} varies={cell.varies} />
+        {cell.via && (
+          <span className="mt-0.5 block text-[10px] leading-none font-semibold text-ink-3 uppercase" aria-hidden>
+            via {monogram(programName(cell.via))}
+          </span>
+        )}
         <span className="sr-only">
           {" "}
           {currency.shortName} to {program.name}
+          {cell.via ? ` via ${programName(cell.via)}` : ""}
         </span>
       </Link>
       <span
@@ -383,17 +410,25 @@ function RatioCell({
         )}
       >
         <span className="block font-semibold">
-          {currency.shortName} → {program.name}
+          {currency.shortName} → {cell.via ? `${programName(cell.via)} → ` : ""}
+          {program.name}
         </span>
+        {cell.via && <span className="mt-1 block text-white/75">{bridgeFrom(cell.via)?.note}</span>}
         {cell.entries.map((e, i) => (
           <span key={i} className="mt-1 block">
             <span className="font-semibold tabular-nums">{ratioLabel(e)}</span>
             {" · "}
-            {num(1000)} → {num(Math.floor((1000 * e.to) / e.from))} · {e.time}
+            {num(1000)} → {num(Math.floor((1000 * e.to) / e.from))} · <span className={e.time ? undefined : "italic"}>{timeLabel(e)}</span>
             {cardsNote(e) && <span className="block text-white/75">{cardsNote(e)}</span>}
+            {e.changedOn && <span className="block text-white/75">Changed {formatDate(e.changedOn)}</span>}
           </span>
         ))}
         {rulesLine(cell.best) && <span className="mt-1 block text-white/75">{rulesLine(cell.best)}</span>}
+        {cell.entries.map((e) => scheduledLabel(e) && (
+          <span key={`s-${e.scheduled!.date}`} className="mt-1 block font-semibold text-[#ffd479]">
+            Scheduled: {scheduledLabel(e)}
+          </span>
+        ))}
         {cell.entries.map((e) => e.note).filter(Boolean).map((n) => (
           <span key={n} className="mt-1 block text-white/75">
             {n}
@@ -469,12 +504,15 @@ function PhoneLists({
       <div role="tabpanel" id={`panel-${current.id}`} aria-labelledby={`tab-${current.id}`} className="panel mt-3 overflow-hidden">
         <div className="border-b border-line p-4">
           <p className="font-semibold text-navy">{current.name}</p>
-          {info && <p className="mt-1 text-sm text-ink-2">Earned with {info.earnedWith}.</p>}
+          {info && <p className="mt-1 line-clamp-3 text-sm text-ink-2">Earned with {info.earnedWith}.</p>}
           {info?.restrictions && (
-            <p className="mt-2 flex gap-2 rounded-md bg-canvas p-2.5 text-xs leading-relaxed text-ink-2">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-3" aria-hidden />
-              {info.restrictions}
-            </p>
+            <details className="group mt-2 rounded-md bg-canvas p-2.5 text-xs leading-relaxed text-ink-2">
+              <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold text-ink [&::-webkit-details-marker]:hidden">
+                <Info className="h-3.5 w-3.5 shrink-0 text-ink-3" aria-hidden /> Transfer rules
+                <span className="font-normal text-brand group-open:hidden">Show</span>
+              </summary>
+              <p className="mt-1.5">{info.restrictions}</p>
+            </details>
           )}
         </div>
         {listed.length === 0 ? (
@@ -495,10 +533,13 @@ function PhoneLists({
                         <span className="min-w-0 flex-1">
                           <span className="block font-semibold text-ink">{r.program.name}</span>
                           <span className="block text-xs text-ink-3">
-                            {p.time}
+                            {cell.via ? `via ${programName(cell.via)} · ` : ""}
+                            {timeLabel(p)}
                             {rulesLine(p) ? ` · ${rulesLine(p)}` : ""}
                             {cell.varies && cardsNote(p) ? ` · ${cardsNote(p)}` : ""}
+                            {scheduledLabel(p) ? ` · ${scheduledLabel(p)}` : ""}
                           </span>
+                          {bridgeFrom(r.program.id) && <BridgeNote program={r.program} />}
                         </span>
                         <RatioPill partner={p} mine={mine.has(current.id)} varies={cell.varies} />
                       </Link>

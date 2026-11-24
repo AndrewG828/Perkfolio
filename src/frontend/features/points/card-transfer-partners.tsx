@@ -4,15 +4,19 @@ import type { Card } from "@/shared/data/types";
 import {
   getCurrency,
   getProgram,
+  hasProgramPage,
   programIdFromName,
   programName,
+  programRef,
   transferPartners,
   type BankCurrencyId,
   type ProgramId,
   type TransferPartner,
 } from "@/shared/data/points";
-import { bestPartnerFor, currencyOfCard, transferSources } from "@/shared/lib/points";
-import { Dot, RatioPill, programColor } from "./ui";
+import { bestPartnerFor, bridgeFrom, currencyOfCard, ratioLabel, transferSources } from "@/shared/lib/points";
+import { shortCardName } from "@/shared/lib/card-name";
+import { DatedChangeNote, DatedRatioPill } from "./dated-partner";
+import { Dot, formatDate, programColor } from "./ui";
 
 /** The transfer this card gets into a program: its own card-specific entry, else the general one. */
 function entryForCard(card: Card, currency: BankCurrencyId, program: ProgramId): { partner: TransferPartner; varies: boolean } | null {
@@ -67,7 +71,7 @@ export function CardTransferPartners({ card }: { card: Card }) {
   const rows = programIds
     .map((id) => {
       const entry = entryForCard(card, points.currency, id);
-      return entry ? { id, info: getProgram(id), ...entry } : null;
+      return entry ? { id, info: programRef(id), ...entry } : null;
     })
     .filter((r): r is NonNullable<typeof r> => Boolean(r))
     .sort((a, b) => programName(a.id).localeCompare(programName(b.id)));
@@ -79,10 +83,25 @@ export function CardTransferPartners({ card }: { card: Card }) {
   if (rows.length === 0 && other.length === 0) return null;
 
   const groups = [
-    { title: "Airlines", rows: rows.filter((r) => (r.info?.kind ?? "airline") === "airline") },
-    { title: "Hotels", rows: rows.filter((r) => r.info?.kind === "hotel") },
+    { title: "Airlines", rows: rows.filter((r) => r.info.kind === "airline") },
+    { title: "Hotels", rows: rows.filter((r) => r.info.kind === "hotel") },
   ].filter((g) => g.rows.length > 0);
   const anyVaries = rows.some((r) => r.varies);
+  // Times are shown where a source gives one. When none does, or every partner has the same one (Amex's terms give one
+  // time for all), it's said once instead of on every row.
+  const timed = rows.filter((r) => r.partner.time).length;
+  const times = new Set(rows.map((r) => r.partner.time ?? null));
+  const sharedTime = times.size === 1 ? [...times][0] : null;
+  const perRowTime = times.size > 1;
+  // Notes that single out this card as an exception ("not in the hotel-partner list on Chase's Ink Business Preferred
+  // page", a rate only coverage reports for it): a clause that names the card and says it isn't listed or rests on
+  // coverage. A note that names the card only to say its page does list the partner ("Listed on Chase's Sapphire
+  // Preferred page") is no caveat for that card.
+  const short = shortCardName(card.name);
+  const singlesOut = (note: string | undefined) =>
+    Boolean(note) && note!.split(/[;.]\s+|,\s+(?:but|so|while)\s+/).some((clause) => clause.includes(short) && /\bnot\b|n't\b|\bno longer\b|\bper coverage\b|\bcoverage reports\b/i.test(clause));
+  const caveats = short.includes(" ") ? rows.filter((r) => singlesOut(r.partner.note)) : [];
+  const flagged = new Set(caveats.map((r) => r.id));
 
   return (
     <section id="partners" className="scroll-mt-28">
@@ -93,7 +112,15 @@ export function CardTransferPartners({ card }: { card: Card }) {
         </Link>
       </div>
       <p className="mb-4 text-sm text-ink-2">
-        Earns {currency?.name ?? points.currency}. Ratios are your points : the program&apos;s points.
+        Earns {currency?.name ?? points.currency}. Ratios compare your points with the program&apos;s (5:4 means 1,000 points become 800)
+        {currency ? `; partner list checked ${formatDate(currency.lastVerified)}` : ""}.{" "}
+        {timed === 0
+          ? `None of our sources gives transfer times for ${currency?.shortName ?? "these points"}.`
+          : sharedTime
+            ? `Transfer time for every partner: ${sharedTime.charAt(0).toLowerCase()}${sharedTime.slice(1)}.`
+            : timed < rows.length
+              ? "Transfer times show where a source gives one."
+              : ""}
       </p>
       {points.limited && (
         <p className="mb-5 flex gap-2.5 rounded-md border border-warn/25 bg-[#fdf3e7] p-3.5 text-sm text-ink">
@@ -112,19 +139,30 @@ export function CardTransferPartners({ card }: { card: Card }) {
             </h3>
             <ul className="grid gap-2 sm:grid-cols-2">
               {g.rows.map((r) => {
+                const through = bridgeFrom(r.id);
                 const body = (
                   <>
                     <Dot color={programColor(r.info)} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-ink">{programName(r.id)}</span>
-                      <span className="block text-xs text-ink-3">{r.partner.time}</span>
+                      <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                        <span className="truncate">{programName(r.id)}</span>
+                        {flagged.has(r.id) && (
+                          <>
+                            <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-warn" aria-hidden />
+                            <span className="sr-only">(check the note below)</span>
+                          </>
+                        )}
+                      </span>
+                      {perRowTime && r.partner.time && <span className="block text-xs text-ink-3">{r.partner.time}</span>}
+                      {through && <span className="block text-xs text-ink-3">Books {programName(through.to)} awards</span>}
+                      <DatedChangeNote partner={r.partner} />
                     </span>
-                    <RatioPill partner={r.partner} varies={r.varies} />
+                    <DatedRatioPill partner={r.partner} varies={r.varies} />
                   </>
                 );
                 return (
                   <li key={r.id}>
-                    {r.info ? (
+                    {hasProgramPage(r.id) ? (
                       <Link
                         href={`/points/programs/${r.id}`}
                         className="flex items-center gap-3 rounded-md border border-line bg-white px-3 py-2.5 transition-colors hover:border-brand focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand"
@@ -141,6 +179,21 @@ export function CardTransferPartners({ card }: { card: Card }) {
           </div>
         ))}
         {anyVaries && <p className="text-xs text-ink-3">* The ratio depends on which card you transfer from.</p>}
+        {caveats.length > 0 && (
+          <ul className="space-y-2">
+            {caveats.map((r) => (
+              <li key={r.id} className="flex gap-2.5 rounded-md border border-warn/25 bg-[#fdf3e7] p-3 text-sm text-ink">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warn" aria-hidden />
+                <span>
+                  <span className="font-semibold">
+                    {programName(r.id)} ({ratioLabel(r.partner)}):{" "}
+                  </span>
+                  {r.partner.note}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         {other.length > 0 && (
           <div>
             <h3 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">
@@ -149,7 +202,7 @@ export function CardTransferPartners({ card }: { card: Card }) {
             <div className="flex flex-wrap gap-2">
               {other.map((n) => {
                 const id = programIdFromName(n);
-                return id && getProgram(id) ? (
+                return id && hasProgramPage(id) ? (
                   <Link key={n} href={`/points/programs/${id}`} className="chip text-sm hover:border-brand hover:text-brand">
                     {n}
                   </Link>

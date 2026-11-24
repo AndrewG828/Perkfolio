@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, SearchX } from "lucide-react";
 import { REGIONS, sweetSpots, type Cabin, type Region, type SweetSpot } from "@/shared/data/points";
@@ -21,33 +22,50 @@ export interface SweetSpotFilters {
 export const DEFAULT_SWEET_SPOT_FILTERS: SweetSpotFilters = { type: "all", region: "all", cabin: "all", mine: false, sort: "featured" };
 
 const CABINS: Cabin[] = ["economy", "premium economy", "business", "first"];
+/** Cards shown before "Show more" (a phone fits one per screen, so the full list would run for metres). */
+const PAGE = 12;
 const cabinSlug = (c: Cabin) => c.replace(" ", "-");
 
-/** Filters from the URL (?type=flight&region=Japan&cabin=business&mine=1&sort=points), ignoring bad values. */
+/**
+ * Filters from the URL (?type=flight&region=Japan&cabin=business&mine=1&sort=points), ignoring bad values. Hotels have
+ * no cabin, so a cabin with type=hotel is dropped (it would match nothing, with its chip disabled).
+ */
 export function readSweetSpotFilters(params: Pick<URLSearchParams, "get">): SweetSpotFilters {
-  const type = params.get("type");
+  const raw = params.get("type");
+  const type = raw === "flight" || raw === "hotel" ? raw : "all";
   const region = params.get("region");
   const cabin = CABINS.find((c) => cabinSlug(c) === params.get("cabin"));
   return {
-    type: type === "flight" || type === "hotel" ? type : "all",
+    type,
     region: (REGIONS as readonly string[]).includes(region ?? "") ? (region as Region) : "all",
-    cabin: cabin ?? "all",
+    cabin: type === "hotel" ? "all" : (cabin ?? "all"),
     mine: params.get("mine") === "1",
     sort: params.get("sort") === "points" ? "points" : "featured",
   };
 }
 
-function writeSweetSpotFilters(f: SweetSpotFilters) {
+const FILTER_KEYS = ["type", "region", "cabin", "mine", "sort"];
+
+/** The canonical query string for these filters (defaults left out). */
+function sweetSpotQuery(f: SweetSpotFilters): string {
   const sp = new URLSearchParams();
   if (f.type !== "all") sp.set("type", f.type);
   if (f.region !== "all") sp.set("region", f.region);
   if (f.cabin !== "all") sp.set("cabin", cabinSlug(f.cabin));
   if (f.mine) sp.set("mine", "1");
   if (f.sort !== "featured") sp.set("sort", f.sort);
-  const qs = sp.toString();
-  window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  return sp.toString();
 }
 
+function writeSweetSpotFilters(f: SweetSpotFilters) {
+  const qs = sweetSpotQuery(f);
+  window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+}
+
+/**
+ * Filtered, in featured order or by fewest points. With a wallet that reaches any program, featured order puts the
+ * sweet spots it can book first (each group keeps the featured order).
+ */
 export function filterSweetSpots(list: SweetSpot[], f: SweetSpotFilters, w: Pick<WalletReach, "reach">): SweetSpot[] {
   const out = list.filter(
     (s) =>
@@ -56,7 +74,8 @@ export function filterSweetSpots(list: SweetSpot[], f: SweetSpotFilters, w: Pick
       (f.cabin === "all" || s.cabin === f.cabin) &&
       (!f.mine || w.reach.has(s.program)),
   );
-  return f.sort === "points" ? [...out].sort((a, b) => a.points - b.points) : out;
+  if (f.sort === "points") return [...out].sort((a, b) => a.points - b.points);
+  return w.reach.size > 0 ? [...out.filter((s) => w.reach.has(s.program)), ...out.filter((s) => !w.reach.has(s.program))] : out;
 }
 
 /** The sweet spot grid with filters kept in the URL. Needs a <Suspense> boundary (useSearchParams). */
@@ -64,6 +83,14 @@ export function SweetSpotExplorer() {
   const params = useSearchParams();
   const filters = readSweetSpotFilters(params);
   const wallet = useWalletReach();
+  // A link with values the page can't use (?type=bogus, a cabin with type=hotel) shows what it can; the URL says so too.
+  const query = params.toString();
+  useEffect(() => {
+    const sp = new URLSearchParams(query);
+    const ours = new URLSearchParams([...sp].filter(([k]) => FILTER_KEYS.includes(k))).toString();
+    const clean = readSweetSpotFilters(sp);
+    if (ours !== sweetSpotQuery(clean)) writeSweetSpotFilters(clean);
+  }, [query]);
   return <SweetSpotBrowser filters={filters} onChange={(patch) => writeSweetSpotFilters({ ...filters, ...patch })} wallet={wallet} />;
 }
 
@@ -84,6 +111,25 @@ export function SweetSpotBrowser({
   const bookable = wallet ? sweetSpots.filter((s) => wallet.reach.has(s.program)).length : 0;
   const filtered =
     filters.type !== "all" || filters.region !== "all" || filters.cabin !== "all" || filters.mine || filters.sort !== "featured";
+  // How many cards show, reset to one page whenever the filters change. A link to one card
+  // (/points/sweet-spots#<id>) starts with enough pages to include it. The live list renders only in the browser
+  // (it reads the URL), so the hash can be read while it first renders.
+  const sig = JSON.stringify(filters);
+  const [page, setPage] = useState(() => {
+    const id = onChange && typeof window !== "undefined" ? decodeURIComponent(window.location.hash.slice(1)) : "";
+    const at = id ? results.findIndex((s) => s.id === id) : -1;
+    return { sig, count: at < PAGE ? PAGE : Math.ceil((at + 1) / PAGE) * PAGE };
+  });
+  const count = page.sig === sig ? page.count : PAGE;
+  const visible = results.slice(0, count);
+  useEffect(() => {
+    if (!onChange) return;
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    // The browser scrolled before the card existed; bring it into view now.
+    if (id && results.findIndex((s) => s.id === id) >= PAGE) window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "start" }), 50);
+    // Only on arrival: later filter changes shouldn't jump back to the linked card.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -96,7 +142,8 @@ export function SweetSpotBrowser({
             options={[
               { value: "all", label: "All" },
               { value: "flight", label: "Flights" },
-              { value: "hotel", label: "Hotels" },
+              // Disabled while no hotel sweet spot is verified (more are coming through the importer).
+              { value: "hotel", label: "Hotels", disabled: !sweetSpots.some((s) => s.kind === "hotel") && filters.type !== "hotel" },
             ]}
           />
           <div role="group" aria-label="Cabin" className="flex flex-wrap gap-1.5">
@@ -151,7 +198,19 @@ export function SweetSpotBrowser({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink-2" aria-live="polite">
-          Showing <span className="font-semibold text-ink">{results.length}</span> of {sweetSpots.length} sweet spots
+          {results.length === sweetSpots.length ? (
+            <>
+              <span className="font-semibold text-ink">{results.length}</span> sweet spots
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-ink">{results.length}</span> of {sweetSpots.length} sweet spots match
+            </>
+          )}
+          {results.length > visible.length && <span className="text-ink-3"> · showing {visible.length}</span>}
+          {personal && hasCards && bookable > 0 && !filters.mine && filters.sort === "featured" && (
+            <span className="text-ink-3"> · the ones your cards can book first</span>
+          )}
         </p>
         {filtered && onChange && (
           <button type="button" className="text-sm font-semibold text-brand hover:underline" onClick={() => onChange(DEFAULT_SWEET_SPOT_FILTERS)}>
@@ -187,16 +246,39 @@ export function SweetSpotBrowser({
           )}
         </div>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-          {results.map((s) => (
-            <SweetSpotCard
-              key={s.id}
-              spot={s}
-              reach={personal && hasCards ? (wallet!.reach.get(s.program) ?? null) : undefined}
-              mine={wallet?.mine}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            {visible.map((s) => (
+              <SweetSpotCard
+                key={s.id}
+                spot={s}
+                reach={personal && hasCards ? (wallet!.reach.get(s.program) ?? null) : undefined}
+                mine={wallet?.mine}
+                data={wallet?.data}
+              />
+            ))}
+          </div>
+          {results.length > visible.length && (
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={!onChange}
+                onClick={() => setPage({ sig, count: count + PAGE })}
+              >
+                Show {Math.min(PAGE, results.length - visible.length)} more
+              </button>
+              <button
+                type="button"
+                className="text-sm font-semibold text-brand hover:underline disabled:opacity-50"
+                disabled={!onChange}
+                onClick={() => setPage({ sig, count: results.length })}
+              >
+                Show all {results.length}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

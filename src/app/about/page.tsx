@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { cards } from "@/shared/data/cards";
-import { allPhotos } from "@/shared/data/points";
+import { cards, isCashBack } from "@/shared/data/cards";
+import { pointValueOf, programName, shownPhotos, valuationEditions, type ProgramId } from "@/shared/data/points";
+import { cardPageValue, currencyOfCard, valueRelation } from "@/shared/lib/points";
 import { PageHero } from "@/frontend/components/page-hero";
 
 export const metadata: Metadata = {
@@ -10,10 +11,21 @@ export const metadata: Metadata = {
 };
 
 export default function AboutPage() {
-  const photos = allPhotos();
+  const photos = shownPhotos();
+  // Programs whose card-page value is above the outlets' median (World of Hyatt, Hilton Honors): named, not called conservative.
+  const above = Array.from(
+    new Set(cards.flatMap((c) => {
+      const p = currencyOfCard(c);
+      return p?.kind === "program" ? [p.program] : [];
+    })),
+  ).filter((id: ProgramId) => {
+    const card = cardPageValue(id);
+    const v = pointValueOf(id);
+    return card && v && valueRelation(card, v).relation === "above";
+  });
   const valuations = Array.from(
     cards
-      .filter((c) => !/cash/i.test(c.rewardsCurrency))
+      .filter((c) => !isCashBack(c))
       .reduce((m, c) => m.set(c.rewardsCurrency, c.pointValueCents), new Map<string, number>()),
   ).sort((a, b) => b[1] - a[1]);
 
@@ -49,8 +61,24 @@ export default function AboutPage() {
               </Link>{" "}
               come from the banks&apos; and programs&apos; own published partner lists, award charts and terms, cross-checked against
               points-and-miles coverage. Every sweet spot links its sources and shows when it was last checked, and every program and
-              currency shows its last-verified date. Award prices and partner lists change without notice, so search for space before
-              you transfer: transfers can&apos;t be undone.
+              currency shows its last-verified date. Where no source confirms a detail (a transfer time, a booking rule, a value) we
+              say so instead of guessing. Award prices and partner lists change without notice, so search for space before you
+              transfer: transfers can&apos;t be undone.
+            </p>
+            <p>
+              Values per point in Points &amp; Miles are the outlets&apos; own published figures (
+              {valuationEditions.map((e, i) => (
+                <span key={e.outlet}>
+                  {i > 0 ? ", " : ""}
+                  <a href={e.url} target="_blank" rel="noopener noreferrer" className="link">
+                    {e.outlet}
+                  </a>
+                </span>
+              ))}
+              ), with the median used as the deal calculator&apos;s starting point. The card values in the table here are our own
+              estimates for comparing cards, most of them below the outlets&apos; medians
+              {above.length > 0 ? <> ({above.map((id) => programName(id)).join(" and ")} {above.length === 1 ? "is" : "are"} above)</> : null}; the
+              Points &amp; Miles pages show both numbers.
             </p>
             <p>
               Photos are used under their licenses and always credited: each one shows its author and license, linked to the page it

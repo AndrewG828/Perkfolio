@@ -1,10 +1,21 @@
 import { ArrowRight, BedDouble, CheckCircle2, ChevronDown, Plane, TriangleAlert } from "lucide-react";
-import { getCurrency, regionPhoto, type BankCurrencyId, type SweetSpot } from "@/shared/data/points";
-import { bankPointsFor, perLabel, pointsRange, ratioLabel, ratioVaries, transferSources, type ProgramReach } from "@/shared/lib/points";
+import { getCurrency, programName, regionPhoto, type BankCurrencyId, type SweetSpot } from "@/shared/data/points";
+import {
+  bankPointsFor,
+  bridgeFrom,
+  perLabel,
+  pointsData,
+  pointsRange,
+  ratioLabel,
+  ratioVaries,
+  transferSources,
+  type PointsData,
+  type ProgramReach,
+} from "@/shared/lib/points";
 import { PhotoFrame } from "@/frontend/components/photo-frame";
 import { cn, num } from "@/shared/lib/format";
 import { shortCardName } from "@/shared/lib/card-name";
-import { CABIN_LABEL, CURRENCY_ABBR, CURRENCY_COLOR, Dot, FEES, FeeLevelTag, ProgramBadge, formatDate, hostOf, listJoin } from "./ui";
+import { CABIN_LABEL, CURRENCY_ABBR, CURRENCY_COLOR, Dot, FEES, FeeLevelTag, ProgramBadge, SourceList, currencyProse, formatDate, listJoin, timeLabel } from "./ui";
 
 /**
  * One sweet spot: photo (or styled fallback), program, price, fees, where the points come from, and how to book.
@@ -14,6 +25,7 @@ export function SweetSpotCard({
   spot,
   reach,
   mine,
+  data = pointsData,
   className,
 }: {
   spot: SweetSpot;
@@ -21,14 +33,15 @@ export function SweetSpotCard({
   reach?: ProgramReach | null;
   /** Currencies the wallet transfers (highlighted). */
   mine?: Set<BankCurrencyId>;
+  /** The dataset as it stands today (useWalletReach().data), so scheduled ratio changes show from their date. */
+  data?: PointsData;
   className?: string;
 }) {
-  const sources = transferSources(spot.program);
+  const sources = transferSources(spot.program, data);
   const fee = FEES[spot.kind][spot.fees];
   const photo = regionPhoto(spot.to);
   const flight = spot.kind === "flight";
   const best = reach?.best;
-  const bestCurrency = best ? getCurrency(best.currency) : undefined;
 
   return (
     <article id={spot.id} className={cn("panel flex scroll-mt-28 flex-col overflow-hidden", className)}>
@@ -86,16 +99,18 @@ export function SweetSpotCard({
           <p className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Transfer from</p>
           {sources.length > 0 ? (
             <ul className="mt-2 flex flex-wrap gap-1.5">
-              {sources.map(({ currency, partner: general }) => {
+              {sources.map(({ currency, partner: general, via }) => {
                 const yours = mine?.has(currency) ?? false;
                 const name = getCurrency(currency)?.name ?? currency;
                 // Show the ratio this wallet gets when the pair has card-specific ratios.
-                const partner = reach?.routes.find((r) => r.currency === currency)?.partner ?? general;
-                const varies = ratioVaries(currency, spot.program) && !reach?.routes.some((r) => r.currency === currency);
+                const own = reach?.routes.find((r) => r.currency === currency && r.via === via);
+                const partner = own?.partner ?? general;
+                const varies = ratioVaries(currency, via ?? spot.program, data) && !own;
+                const through = via ? ` via ${programName(via)}` : "";
                 return (
                   <li
                     key={currency}
-                    title={`${name} → ${num((partner.to * 1000) / partner.from)} points per 1,000 · ${partner.time}${varies ? " · ratio depends on the card" : ""}`}
+                    title={`${name}${through} → ${num((partner.to * 1000) / partner.from)} points per 1,000 · ${timeLabel(partner)}${varies ? " · ratio depends on the card" : ""}`}
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
                       yours ? "border-brand bg-sky text-brand" : "border-line bg-white text-ink-2",
@@ -107,6 +122,7 @@ export function SweetSpotCard({
                       {ratioLabel(partner)}
                       {varies && <span aria-hidden>*</span>}
                     </span>
+                    {via && <span className="font-normal opacity-80">via {programName(via)}</span>}
                     {yours && <span className="sr-only">(you earn this)</span>}
                   </li>
                 );
@@ -120,19 +136,21 @@ export function SweetSpotCard({
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
               <span>
                 <span className="font-semibold">With your cards: </span>
-                {best && bestCurrency ? (
+                {best ? (
                   <>
                     {spot.pointsMax ? "from " : ""}
-                    <span className="font-semibold tabular-nums">{num(bankPointsFor(best.partner, spot.points))}</span> {bestCurrency.shortName}
+                    <span className="font-semibold tabular-nums">{num(bankPointsFor(best.partner, spot.points))}</span> {currencyProse(best.currency)}
                     <span className="text-ink-2">
                       {" "}
                       · {ratioLabel(best.partner)}
-                      {best.cards[0] ? ` via ${shortCardName(best.cards[0].name)}` : ""}
+                      {best.via ? ` via ${programName(best.via)}` : ""}
+                      {best.cards[0] ? `${best.via ? "," : ""} with your ${shortCardName(best.cards[0].name)}` : ""}
                     </span>
                   </>
                 ) : (
                   <>earned directly with {listJoin(reach.direct.map((c) => shortCardName(c.name)))}</>
                 )}
+                {best?.via && <span className="mt-0.5 block text-xs text-ink-2">{bridgeFrom(best.via)?.note}</span>}
               </span>
             </p>
           )}
@@ -154,15 +172,8 @@ export function SweetSpotCard({
           </div>
         </details>
 
-        <footer className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-1 pt-1 text-xs text-ink-3">
-          <span className="flex min-w-0 flex-wrap gap-x-2">
-            <span>Sources:</span>
-            {spot.sources.map((s) => (
-              <a key={s} href={s} target="_blank" rel="noopener noreferrer" className="truncate text-brand hover:underline">
-                {hostOf(s)}
-              </a>
-            ))}
-          </span>
+        <footer className="mt-auto flex flex-wrap items-start justify-between gap-x-4 gap-y-1 pt-1 text-xs text-ink-3">
+          <SourceList urls={spot.sources} className="min-w-0" />
           <span>Checked {formatDate(spot.lastVerified)}</span>
         </footer>
       </div>

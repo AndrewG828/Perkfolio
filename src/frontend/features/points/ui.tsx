@@ -1,8 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ArrowUpRight } from "lucide-react";
 import {
-  getProgram,
+  PROGRAM_BRIDGES,
+  getCurrency,
+  hasProgramPage,
+  partnerChangeOf,
   programName,
+  programRef,
+  whoCanBookCaveats,
   type Alliance,
   type AwardProgram,
   type BankCurrencyId,
@@ -14,7 +20,7 @@ import {
   type SweetSpot,
   type TransferPartner,
 } from "@/shared/data/points";
-import { ratioLabel } from "@/shared/lib/points";
+import { ratioLabel, wholeRatio } from "@/shared/lib/points";
 import { cn } from "@/shared/lib/format";
 
 // Small presentational pieces shared by the Points & Miles pages. No hooks, so server and client components can
@@ -40,6 +46,21 @@ export const CURRENCY_ABBR: Record<BankCurrencyId, string> = {
   "wells-fargo": "Wells Fargo",
 };
 
+/**
+ * The who-can-book research's caveats on how the lists were built, minus two the pages already cover: seat
+ * availability (said under each airline) and bridge programs (folded into the program they book through, e.g. Virgin
+ * Red into Flying Club).
+ */
+export const LIST_CAVEATS = whoCanBookCaveats.filter(
+  (c) => !/doesn't mean seats/i.test(c) && !PROGRAM_BRIDGES.some((b) => c.includes(programName(b.from))),
+);
+
+/** A currency's name in a sentence: its short name, with "miles" for Capital One ("60,000 Capital One miles"). */
+export function currencyProse(id: BankCurrencyId): string {
+  const short = getCurrency(id)?.shortName ?? CURRENCY_ABBR[id];
+  return /miles|points|rewards/i.test(short) ? short : `${short} ${id === "capital-one" ? "miles" : "points"}`;
+}
+
 export const ALLIANCE_COLOR: Record<Alliance, string> = {
   "Star Alliance": "#3d4148",
   oneworld: "#6a4c9c",
@@ -48,7 +69,7 @@ export const ALLIANCE_COLOR: Record<Alliance, string> = {
 const UNAFFILIATED = "#8a8d91";
 const HOTEL = "#b08d3c";
 
-export function programColor(p: Pick<AwardProgram, "kind" | "alliance"> | undefined): string {
+export function programColor(p: { kind: AwardProgram["kind"]; alliance?: Alliance } | undefined): string {
   if (!p) return UNAFFILIATED;
   if (p.kind === "hotel") return HOTEL;
   return p.alliance ? ALLIANCE_COLOR[p.alliance] : UNAFFILIATED;
@@ -99,6 +120,104 @@ export function formatDate(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
+/** "Until Dec 16, 2026" for a listing that ends on 2026-12-17 (BookableAirline.endsOn: the first day it no longer applies). */
+export function untilLabel(endsOn: string): string {
+  const d = new Date(`${endsOn}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return `Until ${formatDate(d.toISOString().slice(0, 10))}`;
+}
+
+/** "Nov 2026" from "2026-11", or "Nov 24, 2026" from an ISO date. */
+export function formatAsOf(asOf: string): string {
+  if (/^\d{4}-\d{2}$/.test(asOf)) {
+    return new Date(`${asOf}-01T00:00:00Z`).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+  }
+  return formatDate(asOf);
+}
+
+/**
+ * Hotel points : airline miles in smallest whole numbers, like the transfer ratios ("3:1", "20:3" for 10:1.5, "50:13"
+ * for 25:6.5). Hotel rates run up to 200:1 (Marriott to Air New Zealand), so the terms may be larger.
+ */
+export function hotelRatio(r: { fromPoints: number; toMiles: number }): string {
+  const fmt = new Intl.NumberFormat("en-US");
+  return wholeRatio({ from: r.fromPoints, to: r.toMiles }, 200) ?? `${fmt.format(r.fromPoints)}:${fmt.format(r.toMiles)}`;
+}
+
+/** A transfer's time, or that no source confirms one (never a guess). */
+export function timeLabel(p: Pick<TransferPartner, "time">): string {
+  return p.time ?? "Time not confirmed";
+}
+
+/**
+ * "4:3 from Jan 1, 2027" for a transfer with a scheduled ratio change, else null. A dated row (partnerOn(), after
+ * hydration) no longer carries `scheduled` once the date comes; changeLabel() then says when it changed.
+ */
+export function scheduledLabel(p: Pick<TransferPartner, "scheduled">): string | null {
+  return p.scheduled ? `${ratioLabel(p.scheduled)} from ${formatDate(p.scheduled.date)}` : null;
+}
+
+/** "Added Nov 18, 2026" / "Ratio changed Mar 1, 2026" for a row the partner-change log added or changed, else null. */
+export function changeLabel(p: Pick<TransferPartner, "currency" | "program" | "changedOn">): string | null {
+  if (!p.changedOn) return null;
+  const change = partnerChangeOf(p);
+  return `${change?.change === "added" ? "Added" : "Ratio changed"} ${formatDate(p.changedOn)}`;
+}
+
+/** "Minimum 1,000, in steps of 1,000" / "Any amount" / null. */
+export function rulesLine(p: Pick<TransferPartner, "minimum" | "increment">): string | null {
+  if (p.minimum !== undefined && p.minimum <= 1 && (p.increment ?? 1) <= 1) return "Any amount";
+  const fmt = new Intl.NumberFormat("en-US");
+  const parts = [p.minimum ? `Minimum ${fmt.format(p.minimum)}` : null, p.increment && p.increment > 1 ? `in steps of ${fmt.format(p.increment)}` : null];
+  const out = parts.filter(Boolean).join(", ");
+  return out ? out.charAt(0).toUpperCase() + out.slice(1) : null;
+}
+
+/** Shown in place of a value no source confirms. */
+export function Unknown({ children = "Unknown", className }: { children?: ReactNode; className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-ink-3 italic", className)}>
+      <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full border border-ink-3" />
+      {children}
+    </span>
+  );
+}
+
+/** "Sources (3)": every link, by host, in a disclosure. */
+export function SourceList({ urls, label = "Sources", className }: { urls: string[]; label?: string; className?: string }) {
+  const list = Array.from(new Set(urls));
+  if (list.length === 0) return null;
+  return (
+    <details className={cn("group text-xs text-ink-3", className)}>
+      <summary className="cursor-pointer list-none font-medium text-brand hover:underline focus-visible:outline-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden">
+        {label} ({list.length})
+      </summary>
+      <ul className="mt-1.5 space-y-1">
+        {list.map((u) => (
+          <li key={u} className="min-w-0">
+            <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 text-brand hover:underline">
+              <span className="truncate">
+                {hostOf(u)}
+                <span className="text-ink-3">{pathOf(u)}</span>
+              </span>
+              <ArrowUpRight className="h-3 w-3 shrink-0" aria-hidden />
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function pathOf(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.pathname.length > 1 ? u.pathname.replace(/\/$/, "") : "";
+  } catch {
+    return "";
+  }
+}
+
 export function hostOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -143,12 +262,11 @@ export function ProgramMark({
   );
 }
 
-/** Program name with its alliance (or hotel) color; links to the program guide when there is one. */
+/** Program name with its alliance (or hotel) color; links to the program page. */
 export function ProgramBadge({ program, className }: { program: ProgramId; className?: string }) {
-  const info = getProgram(program);
   const inner = (
     <>
-      <Dot color={programColor(info)} />
+      <Dot color={programColor(programRef(program))} />
       <span className="truncate">{programName(program)}</span>
     </>
   );
@@ -156,7 +274,7 @@ export function ProgramBadge({ program, className }: { program: ProgramId; class
     "inline-flex max-w-full items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-0.5 text-xs font-semibold text-ink-2",
     className,
   );
-  return info ? (
+  return hasProgramPage(program) ? (
     <Link href={`/points/programs/${program}`} className={cn(cls, "hover:border-brand hover:text-brand")}>
       {inner}
     </Link>
