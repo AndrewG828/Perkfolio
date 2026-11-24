@@ -105,9 +105,13 @@ The repository's upsert only writes if the stored version equals `base`; the new
 - **Airport map:** `frontend/features/lounges/airport-map.tsx` draws terminals, runways and gates (SVG, pan/zoom) with the
   route on top. Geometry comes from OpenStreetMap: `npm run maps:build` (scripts/build-airport-maps.ts, using
   `shared/lib/osm-airport.ts`) writes `public/airport-maps/<CODE>.json`. If an airport has no file, the browser builds
-  it from overpass-api.de and caches it in localStorage. `shared/lib/airport-map.ts` places gates/lounges (zone hub
-  = gate nearest the middle of the zone's gates) and turns a route into segments that follow the gates. Credit
-  "© OpenStreetMap contributors (ODbL)" wherever the map shows.
+  it from overpass-api.de and caches it in localStorage. Routes stay inside the buildings: `shared/lib/walkable.ts`
+  rasterizes the terminal outlines into a ~3 m grid (wall clearance, A* that keeps to the middle of corridors, string
+  pulling), and `shared/lib/airport-map.ts` splits it into zones (nearest zone gates/building by walking), puts every
+  zone middle, pin and the You marker inside a building, and walks each leg through the doors between consecutive
+  zones; buildings OSM doesn't join get a short dotted connector, and train/bus legs are dashed hops between zone
+  middles. Without outlines it falls back to following the gates; `tests/airport-routes.test.ts` routes every
+  pre-built map. Credit "© OpenStreetMap contributors (ODbL)" wherever the map shows.
 - Other storage: compare selection is in sessionStorage `perkfolio:compare:v1`; banner dismissal is
   `perkfolio:banner-dismissed`.
 - Anything reading `new Date()` or localStorage must render after hydration (`useHydrated()`), or prerendering

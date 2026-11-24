@@ -114,7 +114,7 @@ export function AirportView({ code }: { code: string }) {
   return (
     <div className="bg-canvas">
       <div className="container-page grid gap-8 py-10 lg:grid-cols-[320px_1fr]">
-        <aside className="order-2 space-y-5 lg:order-1 lg:sticky lg:top-28 lg:self-start">
+        <aside className="order-2 min-w-0 space-y-5 lg:order-1 lg:sticky lg:top-28 lg:self-start">
           <AccessPicker access={access} />
           {checking && hydrated && (
             <div className="panel p-5">

@@ -1,8 +1,11 @@
 /**
  * Label layout for the airport map, in screen pixels: each label tries a few spots around its marker (below, above,
- * right, left) and takes the first that doesn't cover another label, a marker or the map's edge. Labels that can't
- * fit are dropped, except forced ones (the destination and "You"), which take their first choice anyway.
+ * right, left) and takes the first that doesn't cover another label, a marker, the route or the map's edge.
+ * Labels that can't fit are dropped, except forced ones (the destination and "You"), which take their best spot
+ * anyway.
  */
+
+export type Spot = "center" | "below" | "above" | "right" | "left";
 
 export interface LabelItem {
   id: string;
@@ -16,8 +19,10 @@ export interface LabelItem {
   weight: number;
   /** Uppercase with letter spacing (zone names). */
   caps?: boolean;
-  /** Try centred on the point first (zone names, which have no marker). */
-  center?: boolean;
+  /** Where to try, in order (default below, above, right, left). */
+  spots?: Spot[];
+  /** Other points the label may go at, after its own (a zone's name elsewhere in the zone). */
+  alts?: { x: number; y: number }[];
   /** Always shown (destination, "You"). */
   force?: boolean;
 }
@@ -53,24 +58,52 @@ export function textWidth(text: string, size: number, weight: number, caps = fal
 const overlaps = (a: Box, b: Box, pad = 2) =>
   a.left < b.left + b.w + pad && b.left < a.left + a.w + pad && a.top < b.top + b.h + pad && b.top < a.top + a.h + pad;
 
-/** Places labels in priority order (first = most important). `obstacles` are markers labels mustn't cover. */
+/** Small boxes along a screen-space polyline, so labels keep off the route. */
+export function lineBoxes(pts: [number, number][], step = 9, half = 4): Box[] {
+  const out: Box[] = [];
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]];
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 0; k <= n; k++) {
+      const x = a[0] + ((b[0] - a[0]) * k) / n;
+      const y = a[1] + ((b[1] - a[1]) * k) / n;
+      out.push({ left: x - half, top: y - half, w: 2 * half, h: 2 * half });
+    }
+  }
+  return out;
+}
+
+/**
+ * Places labels in priority order (first = most important). `obstacles` are markers and the route; an obstacle
+ * with the label's own id (its marker) doesn't count.
+ */
 export function placeLabels(items: LabelItem[], obstacles: (Box & { id?: string })[], width: number, height: number): PlacedLabel[] {
   const placed: PlacedLabel[] = [];
+  const inside = (b: Box) => b.left >= 2 && b.top >= 2 && b.left + b.w <= width - 2 && b.top + b.h <= height - 2;
   for (const it of items) {
     if (it.x < -40 || it.y < -40 || it.x > width + 40 || it.y > height + 40) continue;
     const w = textWidth(it.text, it.size, it.weight, it.caps) + 6;
     const h = Math.round(it.size * 1.3);
     const gap = it.r + 3;
-    const spots: Box[] = [
-      ...(it.center ? [{ left: it.x - w / 2, top: it.y - h / 2, w, h }] : []),
-      { left: it.x - w / 2, top: it.y + gap, w, h },
-      { left: it.x - w / 2, top: it.y - gap - h, w, h },
-      { left: it.x + gap + 1, top: it.y - h / 2, w, h },
-      { left: it.x - gap - 1 - w, top: it.y - h / 2, w, h },
-    ];
-    const inside = (b: Box) => b.left >= 2 && b.top >= 2 && b.left + b.w <= width - 2 && b.top + b.h <= height - 2;
+    const at = (x: number, y: number, s: Spot): Box =>
+      s === "center"
+        ? { left: x - w / 2, top: y - h / 2, w, h }
+        : s === "below"
+          ? { left: x - w / 2, top: y + gap, w, h }
+          : s === "above"
+            ? { left: x - w / 2, top: y - gap - h, w, h }
+            : s === "right"
+              ? { left: x + gap + 1, top: y - h / 2, w, h }
+              : { left: x - gap - 1 - w, top: y - h / 2, w, h };
+    const order = it.spots ?? ["below", "above", "right", "left"];
+    const spots = [{ x: it.x, y: it.y }, ...(it.alts ?? [])].flatMap((p) => order.map((s) => at(p.x, p.y, s)));
     const free = (b: Box) => inside(b) && !placed.some((p) => overlaps(p, b)) && !obstacles.some((o) => o.id !== it.id && overlaps(o, b, 0));
-    const spot = spots.find(free) ?? (it.force ? (spots.find(inside) ?? spots[0]) : undefined);
+    let spot = spots.find(free);
+    if (!spot && it.force) {
+      // Best effort: the spot that covers the fewest other things.
+      const cost = (b: Box) => (inside(b) ? 0 : 1000) + placed.filter((p) => overlaps(p, b)).length * 10 + obstacles.filter((o) => o.id !== it.id && overlaps(o, b, 0)).length;
+      spot = spots.reduce((a, b) => (cost(b) < cost(a) ? b : a));
+    }
     if (spot) placed.push({ ...it, ...spot });
   }
   return placed;

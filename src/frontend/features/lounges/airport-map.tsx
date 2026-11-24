@@ -11,7 +11,7 @@ import { build, overpassQuery } from "@/shared/lib/osm-airport";
 import { bounds, loungePoint, routeGeometry, zoneMarkers, type AirportMapData, type Pt, type SegmentMode } from "@/shared/lib/airport-map";
 import { terminalRings } from "@/shared/lib/walkable";
 import { cn } from "@/shared/lib/format";
-import { CAPS_TRACKING, placeLabels, shortLoungeName, shortZoneName, type Box, type LabelItem } from "./map-labels";
+import { CAPS_TRACKING, lineBoxes, placeLabels, shortLoungeName, shortZoneName, type Box, type LabelItem } from "./map-labels";
 
 type View = { x: number; y: number; w: number; h: number };
 
@@ -236,6 +236,7 @@ export function AirportMap({
   const pinRadius = (l: Lounge) => (target?.id === l.id ? 11 : 8.5);
 
   // --- Labels, laid out in screen space so they never pile up ----------------------------------------------------
+  const inView = (sx: number, sy: number) => sx >= -20 && sy >= -20 && sx <= size.w + 20 && sy <= size.h + 20;
   const obstacles: (Box & { id?: string })[] = pins.map(({ lounge, p }) => {
     const [sx, sy] = toScreen(p);
     const r = pinRadius(lounge) + 1;
@@ -245,6 +246,9 @@ export function AirportMap({
     const [sx, sy] = toScreen(geo.start);
     obstacles.push({ id: "you", left: sx - 10, top: sy - 10, w: 20, h: 20 });
   }
+  for (const s of geo?.segments ?? []) obstacles.push(...lineBoxes(s.pts.map(toScreen)));
+  // The zoom buttons in the top-right corner.
+  obstacles.push({ left: size.w - 50, top: 0, w: 50, h: 122 });
   const labelItems: LabelItem[] = [];
   const targetPin = target ? pins.find((p) => p.lounge.id === target.id) : undefined;
   if (targetPin) {
@@ -262,15 +266,23 @@ export function AirportMap({
       labelItems.push({ id: `pin:${lounge.id}`, text: shortLoungeName(lounge.name), x, y, r: 8.5, size: 11, weight: 600 });
     }
   }
+  // Zone names when zoomed out (gate numbers take over when zoomed in), at the zone's middle or another roomy spot.
   if (scale < 1.1) {
     for (const m of markers) {
       const [x, y] = toScreen(m.p);
-      labelItems.push({ id: `zone:${m.zone.id}`, text: shortZoneName(m.zone.name).toUpperCase(), x, y, r: 0, size: 10.5, weight: 700, caps: true, center: true });
+      const alts = m.alt.map((a) => toScreen(a)).map(([ax, ay]) => ({ x: ax, y: ay }));
+      labelItems.push({ id: `zone:${m.zone.id}`, text: shortZoneName(m.zone.name).toUpperCase(), x, y, r: 0, size: 10.5, weight: 700, caps: true, spots: ["center"], alts });
     }
+  }
+  if (showGateLabels) {
+    data.gates.forEach((g, i) => {
+      const [x, y] = toScreen([g.x, g.y]);
+      if (inView(x, y)) labelItems.push({ id: `gate:${i}`, text: g.ref, x, y, r: 2.5, size: 9, weight: 500, spots: ["above", "below"] });
+    });
   }
   const labels = placeLabels(labelItems, obstacles, size.w, size.h);
   const labelFor = new Map(labels.map((l) => [l.id, l]));
-  const renderLabel = (id: string, fill: string) => {
+  const renderLabel = (id: string, fill: string, halo = 3) => {
     const l = labelFor.get(id);
     if (!l) return null;
     return (
@@ -282,7 +294,7 @@ export function AirportMap({
         letterSpacing={l.caps ? px(l.size * CAPS_TRACKING) : undefined}
         fill={fill}
         stroke="#fff"
-        strokeWidth={3}
+        strokeWidth={halo}
         strokeLinejoin="round"
         paintOrder="stroke"
         vectorEffect="non-scaling-stroke"
@@ -292,7 +304,9 @@ export function AirportMap({
     );
   };
 
-  const arrows = geo ? geo.segments.filter((s) => s.mode === "walk").flatMap((s) => along(s.pts, px(64))) : [];
+  const arrows = geo ? geo.segments.filter((s) => s.mode === "walk").flatMap((s) => along(s.pts, px(52))) : [];
+  // The destination's pin goes on top of the others.
+  const pinOrder = targetPin ? [...pins.filter((p) => p !== targetPin), targetPin] : pins;
   const hasMode = (m: SegmentMode) => Boolean(geo?.segments.some((s) => s.mode === m));
 
   return (
@@ -319,11 +333,7 @@ export function AirportMap({
           {data.gates.map((g, i) => (
             <g key={`g${i}`}>
               <circle cx={g.x} cy={g.y} r={px(2.2)} fill="#a3adb9" />
-              {showGateLabels && (
-                <text x={g.x} y={g.y - px(5)} fontSize={px(9)} textAnchor="middle" fill="#717c88">
-                  {g.ref}
-                </text>
-              )}
+              {showGateLabels && renderLabel(`gate:${i}`, "#717c88", 2)}
             </g>
           ))}
           {markers.map((m) => (
@@ -336,12 +346,12 @@ export function AirportMap({
             const points = s.pts.map((p) => p.join(",")).join(" ");
             return (
               <g key={`s${i}`}>
-                <polyline points={points} fill="none" stroke="#fff" strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                <polyline points={points} fill="none" stroke="#fff" strokeWidth={11} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                 <polyline
                   points={points}
                   fill="none"
                   stroke={SEGMENT_STYLE[s.mode].color}
-                  strokeWidth={s.mode === "connector" ? 6 : 5}
+                  strokeWidth={6}
                   strokeDasharray={SEGMENT_STYLE[s.mode].dash}
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -353,18 +363,18 @@ export function AirportMap({
           {arrows.map(({ p, deg }, i) => (
             <path
               key={`a${i}`}
-              d="M-2.2,-3.2 L1.6,0 L-2.2,3.2"
+              d="M-1.6,-2.3 L1.3,0 L-1.6,2.3"
               transform={`translate(${p[0]} ${p[1]}) rotate(${deg}) scale(${px(1)})`}
               fill="none"
               stroke="#fff"
-              strokeWidth={1.8}
+              strokeWidth={1.7}
               strokeLinecap="round"
               strokeLinejoin="round"
               vectorEffect="non-scaling-stroke"
             />
           ))}
 
-          {pins.map(({ lounge: l, p }) => {
+          {pinOrder.map(({ lounge: l, p }) => {
             const ok = isOpen(l);
             const color = loungeNetworks[l.network].color;
             const isTarget = target?.id === l.id;

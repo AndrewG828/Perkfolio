@@ -140,6 +140,7 @@ interface ZoneIndex {
   doors: Map<number, Pt>;
   gapCache: Map<string, Gap[]>;
   placements?: Map<string, Pt>;
+  markers?: ZoneMarker[];
 }
 
 const MAX_ZONES = 16;
@@ -233,8 +234,9 @@ function buildIndex(data: AirportMapData, nav: AirportNav): ZoneIndex | null {
       .filter((l) => l.mode === "walk" && (l.a === z.id || l.b === z.id))
       .map((l) => byId.get(l.a === z.id ? l.b : l.a))
       .filter((j): j is number => j !== undefined && gateCells[j].length > 0);
-    let score: (i: number, x: number) => number;
+    let score: ((i: number, x: number) => number) | null = null;
     if (linked.length >= 2) {
+      // Walking distance to each of those zones' gates: least in total (and evenly split) on the way between them.
       const fields = linked.map((j) => nearestSeeds(g, gateCells[j].map((cell) => ({ cell, label: 0 }))).dist);
       const cost = new Float64Array(cells.length);
       let least = Infinity;
@@ -244,8 +246,9 @@ function buildIndex(data: AirportMapData, nav: AirportNav): ZoneIndex | null {
         cost[x] = sum + 0.5 * (hi - lo);
         least = Math.min(least, cost[x]);
       });
-      score = (i, x) => Math.min(g.clear[i], 40) - 0.15 * (cost[x] - least);
-    } else {
+      if (Number.isFinite(least)) score = (i, x) => Math.min(g.clear[i], 40) - 0.15 * (cost[x] - least);
+    }
+    if (!score) {
       const mid = centroid(cells.map((i) => cellCenter(g, i)))!;
       const gateDist = distToGates();
       score = (i) => {
@@ -256,7 +259,7 @@ function buildIndex(data: AirportMapData, nav: AirportNav): ZoneIndex | null {
     let best = cells[0];
     let bestScore = -Infinity;
     cells.forEach((i, x) => {
-      const v = score(i, x);
+      const v = score!(i, x);
       if (v > bestScore) [best, bestScore] = [i, v];
     });
     return cellCenter(g, best);
@@ -265,12 +268,13 @@ function buildIndex(data: AirportMapData, nav: AirportNav): ZoneIndex | null {
   anchors.forEach((a, k) => a && seeds.push({ cell: cellAt(g, a), label: k }));
   const { label, dist: seedDist } = nearestSeeds(g, seeds);
 
-  // Gated zones' middles: the roomiest spot near the hub gate in the zone's main building (a concourse's core, where
-  // the train stops at ATL and DEN), not a satellite with a couple of its gates.
-  // How many of each zone's cells are in each component.
+  // How many of each zone's cells are in each component (building).
   const compCount = new Int32Array(zones.length * g.comps);
   for (let i = 0; i < n; i++) if (label[i] >= 0) compCount[label[i] * g.comps + g.comp[i]]++;
   const comps = zones.map((_, k) => new Set(Array.from({ length: g.comps }, (_, c) => c).filter((c) => compCount[k * g.comps + c] > 0)));
+
+  // Gated zones' middles: the roomiest spot near the hub gate in the zone's main building (a concourse's core, where
+  // the train stops at ATL and DEN), not a satellite with a couple of its gates.
   zones.forEach((z, k) => {
     if (anchors[k] || !zoneGates[k].length) return;
     // The biggest of the zone's buildings that has its gates (JFK's Terminal 1, not the gate-less New Terminal One
@@ -328,10 +332,12 @@ function gateSpot(ix: ZoneIndex, data: AirportMapData, k: number, label: string)
 }
 
 /** Pins sharing a spot spread out this far apart (meters), along the roomy middle of the building. */
-const PIN_SPACING = 30;
+const PIN_SPACING = 50;
+/** Pins keep this far from zone middles, which the You marker (security, or a concourse with no gate given) uses. */
+const MIDDLE_CLEARANCE = 40;
 
-/** A free spot for a pin near `p`, inside zone k, at least PIN_SPACING from the pins already placed. */
-function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[]): Pt {
+/** A free spot for a pin near `p`, inside zone k, away from the pins already placed and from zone middles. */
+function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[], middles: Pt[]): Pt {
   const { g } = ix;
   const from = cellAt(g, p);
   if (from < 0) return p;
@@ -340,7 +346,11 @@ function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[]): Pt {
       g,
       from,
       140,
-      (i) => g.comp[i] === g.comp[from] && (k < 0 || ix.label[i] === k) && g.clear[i] >= Math.min(6, g.clear[from]) && placed.every((q) => dist(q, cellCenter(g, i)) >= spacing),
+      (i) => {
+        if (g.comp[i] !== g.comp[from] || ix.label[i] !== k || g.clear[i] < Math.min(6, g.clear[from])) return false;
+        const q = cellCenter(g, i);
+        return placed.every((o) => dist(o, q) >= spacing) && middles.every((m) => dist(m, q) >= Math.min(spacing, MIDDLE_CLEARANCE));
+      },
       (i, d) => Math.min(g.clear[i], 18) - 0.12 * d,
     );
     if (c >= 0) return cellCenter(g, c);
@@ -348,7 +358,10 @@ function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[]): Pt {
   return p;
 }
 
-/** Every lounge at the airport placed on the map: by its gate, else at its zone's middle, never two on one spot. */
+/**
+ * Every lounge at the airport placed on the map: by its gate, else next to its zone's middle (leaving the middle
+ * itself for the You marker), never two on one spot.
+ */
 function placements(ix: ZoneIndex, data: AirportMapData, nav: AirportNav): Map<string, Pt> {
   if (ix.placements) return ix.placements;
   const out = new Map<string, Pt>();
@@ -364,8 +377,10 @@ function placements(ix: ZoneIndex, data: AirportMapData, nav: AirportNav): Map<s
     // Lounges by a gate keep their spot; the rest make room around them.
     .sort((a, b) => Number(b.gated) - Number(a.gated) || a.l.id.localeCompare(b.l.id));
   const placed: Pt[] = [];
-  for (const { l, k, at } of items) {
-    const p = placed.some((q) => dist(q, at) < 15) ? freeSpot(ix, at, k, placed) : at;
+  const middles = ix.zones.flatMap((z) => (z.anchor ? [z.anchor] : []));
+  for (const { l, k, at, gated } of items) {
+    const crowded = placed.some((q) => dist(q, at) < 15) || (!gated && middles.some((m) => dist(m, at) < 15));
+    const p = crowded ? freeSpot(ix, at, k, placed, middles) : at;
     placed.push(p);
     out.set(l.id, p);
   }
@@ -380,9 +395,49 @@ export function zoneAnchor(data: AirportMapData, nav: AirportNav, zone: NavZone)
   return ix && k !== undefined ? ix.zones[k].anchor : roughAnchor(data, zone);
 }
 
+export interface ZoneMarker {
+  zone: NavZone;
+  /** The zone's middle (see ZoneInfo.anchor). */
+  p: Pt;
+  /** A few other roomy spots in the zone, 80 m+ apart, for its name when the middle is busy with pins. */
+  alt: Pt[];
+}
+
 /** Zone names and where to write them on the map. */
-export function zoneMarkers(data: AirportMapData, nav: AirportNav): { zone: NavZone; p: Pt }[] {
-  return nav.zones.map((zone) => ({ zone, p: zoneAnchor(data, nav, zone) })).filter((m): m is { zone: NavZone; p: Pt } => m.p !== null);
+export function zoneMarkers(data: AirportMapData, nav: AirportNav): ZoneMarker[] {
+  const ix = zoneIndex(data, nav);
+  if (!ix) return nav.zones.flatMap((zone) => (roughAnchor(data, zone) ? [{ zone, p: roughAnchor(data, zone)!, alt: [] }] : []));
+  if (ix.markers) return ix.markers;
+  const { g } = ix;
+  // Roomy cells of each zone, every other row and column (plenty for picking a few spots).
+  const cells: number[][] = ix.zones.map(() => []);
+  for (let r = 0; r < g.rows; r += 2) {
+    for (let c = 0; c < g.cols; c += 2) {
+      const i = r * g.cols + c;
+      if (ix.label[i] >= 0 && g.clear[i] >= 6) cells[ix.label[i]].push(i);
+    }
+  }
+  ix.markers = ix.zones.flatMap(({ zone, anchor }, k) => {
+    if (!anchor) return [];
+    const comp = g.comp[cellAt(g, anchor)];
+    const chosen: Pt[] = [anchor];
+    for (let t = 0; t < 3; t++) {
+      let best: Pt | null = null;
+      let bestScore = -Infinity;
+      for (const i of cells[k]) {
+        if (g.comp[i] !== comp) continue;
+        const p = cellCenter(g, i);
+        const d = dist(p, anchor);
+        if (d > 350 || chosen.some((q) => dist(q, p) < 80)) continue;
+        const score = Math.min(g.clear[i], 15) - 0.01 * d;
+        if (score > bestScore) [best, bestScore] = [p, score];
+      }
+      if (!best) break;
+      chosen.push(best);
+    }
+    return [{ zone, p: anchor, alt: chosen.slice(1) }];
+  });
+  return ix.markers;
 }
 
 export function loungePoint(data: AirportMapData, nav: AirportNav, l: Lounge): Pt | null {
@@ -437,7 +492,7 @@ const zonePenalty = (ix: ZoneIndex, allowed: number | null) =>
       };
 
 /**
- * One walk through a run of zones joined by walkways (zone ids in order), from a point to a point: through the
+ * One walk through a run of zones joined by walkways (zone indexes in order), from a point to a point: through the
  * doors where consecutive zones meet, each stretch kept to its two zones, then smoothed into a polyline down the
  * middle of the building. Buildings that aren't connected on the map are joined by a straight connector.
  */
@@ -723,6 +778,3 @@ export function bounds(pts: Pt[]): { minX: number; minY: number; maxX: number; m
     maxY: Math.max(...pts.map((p) => p[1])),
   };
 }
-
-// DEBUG-REMOVE
-export { zoneIndex as __debugIndex };

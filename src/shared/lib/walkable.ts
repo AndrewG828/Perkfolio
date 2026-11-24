@@ -301,12 +301,6 @@ export function isWalkable(g: WalkGrid, p: Pt): boolean {
   return i >= 0 && g.walk[i] === 1;
 }
 
-/** Meters from the point to the nearest wall (0 outside the walkable area). */
-export function clearanceAt(g: WalkGrid, p: Pt): number {
-  const i = cellAt(g, p);
-  return i >= 0 ? g.clear[i] : 0;
-}
-
 /** Nearest walkable cell to a point within `radius` meters (optionally only cells `accept` allows), or -1. */
 export function nearestCell(g: WalkGrid, p: Pt, radius = 150, accept?: (cell: number) => boolean): number {
   const fx = (p[0] - g.x0) / g.cell - 0.5;
