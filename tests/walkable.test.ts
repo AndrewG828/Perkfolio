@@ -1,0 +1,80 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { AirportMapData } from "../src/shared/lib/airport-map";
+import { cellAt, cellPath, gapsBetween, isWalkable, smoothCells, snapPoint, stitchRings, visible, walkGrid, type Pt } from "../src/shared/lib/walkable";
+
+// A made-up L-shaped terminal: a 200 m arm along the top and one down the left, both 40 m wide.
+const L: Pt[] = [[0, 0], [200, 0], [200, 40], [40, 40], [40, 200], [0, 200], [0, 0]];
+const map = (rings: Pt[][][]): AirportMapData => ({
+  code: "TST",
+  origin: [0, 0],
+  terminals: rings.map((r, i) => ({ name: `T${i}`, rings: r })),
+  runways: [],
+  gates: [],
+  attribution: "test",
+});
+
+/** Points every meter along a polyline. */
+const samples = (pts: Pt[]) =>
+  pts.slice(1).flatMap((b, i) => {
+    const a = pts[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1])));
+    return Array.from({ length: n + 1 }, (_, k) => [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n] as Pt);
+  });
+
+test("walkable grid: inside the L is walkable, the empty quadrant isn't", () => {
+  const g = walkGrid(map([[L]]))!;
+  assert.ok(isWalkable(g, [20, 20]) && isWalkable(g, [180, 20]) && isWalkable(g, [20, 180]));
+  assert.ok(!isWalkable(g, [120, 120]));
+  assert.equal(g.comp[cellAt(g, [180, 20])], g.comp[cellAt(g, [20, 180])]);
+  // No line of sight across the empty quadrant.
+  assert.ok(!visible(g, [180, 20], [20, 180], 0));
+  assert.ok(visible(g, [180, 20], [20, 20], 0));
+});
+
+test("path from one arm to the other goes around the corner, down the middle", () => {
+  const g = walkGrid(map([[L]]))!;
+  const a: Pt = [185, 20];
+  const b: Pt = [20, 185];
+  const pts = smoothCells(g, cellPath(g, cellAt(g, a), cellAt(g, b))!, a, b);
+  assert.deepEqual(pts[0], a);
+  assert.deepEqual(pts[pts.length - 1], b);
+  for (const p of samples(pts)) {
+    assert.ok(isWalkable(g, p), `${p} is outside`);
+    assert.ok(!(p[0] > 44 && p[1] > 44), `${p} cuts across the empty quadrant`);
+  }
+  // It turns in the corner square, and keeps off the walls on the way.
+  assert.ok(pts.some(([x, y]) => x < 44 && y < 44));
+  assert.ok(pts.length <= 5, `${pts.length} points: should be a clean polyline`);
+});
+
+test("snapping moves a gate on the apron into the building", () => {
+  const g = walkGrid(map([[L]]))!;
+  const p = snapPoint(g, [120, 70])!; // 30 m south of the top arm
+  assert.ok(isWalkable(g, p) && p[1] < 40, `${p}`);
+  assert.equal(snapPoint(g, [400, 400]), null); // too far from anything
+});
+
+test("separate buildings are separate components, and the gap between them is measured", () => {
+  const a: Pt[] = [[0, 0], [100, 0], [100, 30], [0, 30], [0, 0]];
+  const b: Pt[] = [[0, 90], [100, 90], [100, 120], [0, 120], [0, 90]];
+  const g = walkGrid(map([[a], [b]]))!;
+  const ca = g.comp[cellAt(g, [50, 15])];
+  const cb = g.comp[cellAt(g, [50, 105])];
+  assert.notEqual(ca, cb);
+  const gaps = gapsBetween(g, (c) => g.comp[c] === ca, (c) => g.comp[c] === cb);
+  assert.ok(gaps.length > 0);
+  // 60 m between the walls, less a cell of dilation on each side.
+  assert.ok(gaps[0].d > 45 && gaps[0].d < 60, `${gaps[0].d}`);
+});
+
+test("rings split into several OSM ways are stitched back into one closed ring", () => {
+  const rings = stitchRings([
+    [[0, 0], [10, 0], [10, 10]],
+    [[0, 10], [0, 0]],
+    [[10, 10], [0, 10]],
+  ]);
+  assert.equal(rings.length, 1);
+  assert.deepEqual(rings[0][0], rings[0][rings[0].length - 1]);
+  assert.equal(rings[0].length, 5);
+});

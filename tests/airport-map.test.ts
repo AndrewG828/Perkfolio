@@ -19,16 +19,23 @@ const data: AirportMapData = {
 const nav = airportNav.ATL;
 const zone = (id: string) => nav.zones.find((z) => z.id === id)!;
 
-test("zone anchors sit in the middle of their gates", () => {
-  const a = zoneAnchor(data, zone("E"))!;
-  assert.equal(a[0], 1500);
-  assert.ok(Math.abs(a[1]) < 30);
+/** True if a point is inside concourse `c`'s 40 m wide building in the made-up ATL. */
+const inConcourse = (c: string, [x, y]: [number, number]) => {
+  const cx = concourses.indexOf(c) * 300;
+  return x >= cx - 20 && x <= cx + 20 && y >= -400 && y <= 400;
+};
+
+test("zone anchors sit in the middle of their gates, inside the building", () => {
+  const a = zoneAnchor(data, nav, zone("E"))!;
+  assert.ok(inConcourse("E", a), `${a}`);
+  assert.ok(Math.abs(a[0] - 1500) <= 3 && Math.abs(a[1]) < 40, `${a}`);
 });
 
 test("gate and lounge positions come from the gate refs", () => {
   assert.deepEqual(gatePoint(data, zone("B"), "B18"), [600, -380 + 17 * 40]);
   const centurion = loungesAt("ATL").find((l) => l.id === "centurion-atl-e")!;
-  assert.deepEqual(loungePoint(data, nav, centurion), [1500, -380 + 10 * 40]); // near gate E11
+  const p = loungePoint(data, nav, centurion)!; // near gate E11
+  assert.ok(inConcourse("E", p) && Math.hypot(p[0] - 1500, p[1] - (-380 + 10 * 40)) < 5, `${p}`);
 });
 
 test("route geometry: walk to the train, ride A→E as one dashed segment, walk to the lounge", () => {
@@ -36,12 +43,13 @@ test("route geometry: walk to the train, ride A→E as one dashed segment, walk 
   const origin = { kind: "gate" as const, zone: "A", gate: parseGate("A2")! };
   const route = routeTo(nav, origin, lounge)!;
   const geo = routeGeometry(data, nav, origin, route, lounge);
-  assert.deepEqual(geo.start, [300, -380 + 1 * 40]);
+  assert.ok(geo.start && Math.hypot(geo.start[0] - 300, geo.start[1] - (-380 + 1 * 40)) < 5, `${geo.start}`);
   assert.deepEqual(geo.segments.map((s) => s.mode), ["walk", "train", "walk"]);
   assert.equal(geo.segments[1].pts.length, 5); // A, B, C, D, E
-  // The first walk follows the gates down the concourse (A3, A4, ...) rather than cutting straight across.
-  assert.ok(geo.segments[0].pts.length > 3);
-  assert.ok(geo.segments[0].pts.every(([x]) => x === 300));
+  // The walks stay inside their concourses, down the middle rather than along the gates' facade.
+  assert.ok(geo.segments[0].pts.every((p) => inConcourse("A", p)));
+  assert.ok(geo.segments[2].pts.every((p) => inConcourse("E", p)));
+  assert.ok(geo.segments[0].pts.every(([x]) => Math.abs(x - 300) <= 5));
 });
 
 test("build() projects OSM data and tags gates with their terminal", () => {
