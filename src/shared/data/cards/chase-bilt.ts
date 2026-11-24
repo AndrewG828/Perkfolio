@@ -480,8 +480,8 @@ export const chaseBiltCards: Card[] = [
     annualFee: 0,
     rewardsCurrency: "Cash back (Ultimate Rewards points)",
     pointValueCents: 1.0,
-    welcomeOffer: "$250 bonus after $500 in purchases in the first 3 months (limited-time; standard offer is $200)",
-    welcomeOfferValue: 250,
+    welcomeOffer: "$200 bonus after $500 in purchases in the first 3 months",
+    welcomeOfferValue: 200,
     earnRates: [
       {
         category: "Rotating quarterly categories (Q4 2026: dining, grocery stores excl. Walmart/Target, American Red Cross)",
@@ -508,7 +508,7 @@ export const chaseBiltCards: Card[] = [
     authorizedUserFee: "$0",
     art: { from: "#3fa9d6", to: "#0e3f86", text: "light", finish: "plastic" },
     url: "https://creditcards.chase.com/cash-back-credit-cards/freedom/flex",
-    lastVerified: LAST_VERIFIED,
+    lastVerified: "2026-11-24",
   },
 
   // ───────────────────────────── Chase Ink Business Preferred ─────────────────────────────

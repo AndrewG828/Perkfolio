@@ -660,8 +660,8 @@ export const otherCards: Card[] = [
     annualFee: 0,
     rewardsCurrency: "Cash rewards",
     pointValueCents: 1.0,
-    welcomeOffer: "$200 cash rewards bonus after $500 in purchases in the first 3 months",
-    welcomeOfferValue: 200,
+    welcomeOffer: "$100 cash rewards bonus after $500 in purchases in the first 3 months",
+    welcomeOfferValue: 100,
     earnRates: [],
     baseRate: 2,
     credits: [],
@@ -678,7 +678,7 @@ export const otherCards: Card[] = [
     authorizedUserFee: "$0",
     art: { from: "#5cc0ac", to: "#24786c", text: "light", finish: "plastic" },
     url: "https://creditcards.wellsfargo.com/cards/active-cash-credit-card",
-    lastVerified: VERIFIED,
+    lastVerified: "2026-11-24",
   },
 
   // ---------------------------------------------------------------- Bank of America (Atmos Rewards)
