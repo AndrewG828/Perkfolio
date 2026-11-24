@@ -536,11 +536,13 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
 }
 
 /**
- * A free spot for a pin near `p`, inside zone k, away from the pins already placed, from zone middles and from the
- * train lines into the zone (`rides`), so a train never runs through a pin before it stops.
+ * A free spot for a pin near `p`, inside zone k, away from the pins already placed, from zone middles (at least
+ * `clearance`) and from the train lines into the zone (`rides`), so a train never runs through a pin before it stops;
+ * toward `side` (a unit direction) when the lounge's location says which ("East side").
  */
-function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[], middles: Pt[], rides: [Pt, Pt][], clearance = MIDDLE_CLEARANCE): Pt {
+function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[], middles: Pt[], opts: { rides?: [Pt, Pt][]; clearance?: number; side?: Pt | null } = {}): Pt {
   const { g } = ix;
+  const { rides = [], clearance = MIDDLE_CLEARANCE, side = null } = opts;
   const from = cellAt(g, p);
   if (from < 0) return p;
   for (const spacing of [PIN_SPACING, 20, 12]) {
@@ -556,12 +558,20 @@ function freeSpot(ix: ZoneIndex, p: Pt, k: number, placed: Pt[], middles: Pt[], 
       (i, d) => {
         const q = cellCenter(g, i);
         const nearRide = rides.reduce((s, [a, b]) => s + Math.max(0, 30 - segDist(q, a, b)), 0);
-        return Math.min(g.clear[i], 18) - 0.12 * d - 0.5 * nearRide;
+        const toward = side ? 0.2 * ((q[0] - p[0]) * side[0] + (q[1] - p[1]) * side[1]) : 0;
+        return Math.min(g.clear[i], 18) - 0.12 * d - 0.5 * nearRide + toward;
       },
     );
     if (c >= 0) return cellCenter(g, c);
   }
   return p;
+}
+
+/** The side of its concourse a lounge's location names ("East side", "north end"), as a unit direction, or null. */
+function sideOf(l: Lounge): Pt | null {
+  const m = /\b(east|west|north|south)(?:ern)?\b/i.exec(l.location ?? "");
+  if (!m) return null;
+  return ({ east: [1, 0], west: [-1, 0], north: [0, -1], south: [0, 1] } as Record<string, Pt>)[m[1].toLowerCase()];
 }
 
 /**
@@ -584,18 +594,26 @@ function placements(ix: ZoneIndex, data: AirportMapData, nav: AirportNav): Map<s
     .sort((a, b) => Number(b.gated) - Number(a.gated) || a.l.id.localeCompare(b.l.id));
   const placed: Pt[] = [];
   const middles = ix.zones.flatMap((z) => (z.anchor ? [z.anchor] : []));
-  const rides = (k: number): [Pt, Pt][] =>
-    nav.links
+  // Lines to keep pins without a gate off: the trains into the zone, and the walks across it between its middle and
+  // the doors to the zones next to it (JFK T4's hall, between Concourses A and B), so a route doesn't run over them.
+  const rides = (k: number): [Pt, Pt][] => {
+    const mid = ix.zones[k].anchor;
+    if (!mid) return [];
+    const trains = nav.links
       .filter((l) => l.mode === "train" && (l.a === ix.zones[k].zone.id || l.b === ix.zones[k].zone.id))
       .flatMap((l) => {
         const j = ix.byId.get(l.a === ix.zones[k].zone.id ? l.b : l.a);
-        const [a, b] = [ix.zones[k].anchor, j === undefined ? null : ix.zones[j].anchor];
-        return a && b ? [[b, a] as [Pt, Pt]] : [];
+        const b = j === undefined ? null : ix.zones[j].anchor;
+        return b ? [[b, mid] as [Pt, Pt]] : [];
       });
+    const doors = ix.zones.flatMap((_, j) => (j !== k && ix.doors.has(pairKey(j, k)) ? [ix.doors.get(pairKey(j, k))!] : []));
+    const walks = [...doors.map((d) => [mid, d] as [Pt, Pt]), ...doors.flatMap((d, x) => doors.slice(x + 1).map((e) => [d, e] as [Pt, Pt]))];
+    return [...trains, ...walks];
+  };
   for (const { l, k, at, gated } of items) {
     // A lounge by a gate stays there, just off the zone's middle (where the You marker goes) if it's right on it.
     const crowded = placed.some((q) => dist(q, at) < 15) || middles.some((m) => dist(m, at) < (gated ? 15 : MIDDLE_CLEARANCE));
-    const p = crowded ? freeSpot(ix, at, k, placed, middles, gated ? [] : rides(k), gated ? 20 : MIDDLE_CLEARANCE) : at;
+    const p = crowded ? freeSpot(ix, at, k, placed, middles, gated ? { clearance: 20 } : { rides: rides(k), side: sideOf(l) }) : at;
     placed.push(p);
     out.set(l.id, p);
   }
