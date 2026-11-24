@@ -3,24 +3,36 @@ import { Logo } from "./logo";
 
 const COLUMNS = [
   {
-    title: "Cards",
+    title: "Lounges & travel",
     links: [
-      { href: "/cards?category=premium-travel", label: "Premium travel" },
-      { href: "/cards?category=travel", label: "Travel rewards" },
-      { href: "/cards?category=cash-back", label: "Cash back" },
-      { href: "/cards?category=airline", label: "Airline & hotel" },
-      { href: "/cards?category=business", label: "Business" },
+      { href: "/lounges", label: "Lounge finder" },
+      { href: "/start", label: "Start here" },
+      { href: "/tools/distance", label: "Flight distance" },
+      { href: "/tools/baggage", label: "Baggage fees" },
+      { href: "/tools/entry-requirements", label: "Entry requirements" },
+      { href: "/tools/hotel-points", label: "Hotel points" },
     ],
   },
   {
-    title: "Tools",
+    title: "Points & miles",
     links: [
+      { href: "/points", label: "Overview" },
+      { href: "/points/sweet-spots", label: "Sweet spots" },
+      { href: "/points/transfers", label: "Transfer partners" },
+      { href: "/points/programs", label: "Programs" },
+      { href: "/points/airlines", label: "Who can book" },
+      { href: "/points/booking-rules", label: "Booking rules" },
+    ],
+  },
+  {
+    title: "Cards",
+    links: [
+      { href: "/cards", label: "Explore cards" },
       { href: "/compare", label: "Compare cards" },
-      { href: "/tracker", label: "Benefits tracker" },
-      { href: "/lounges", label: "Lounge finder" },
-      { href: "/points", label: "Points & miles" },
-      { href: "/calculator", label: "Value calculator" },
       { href: "/best-card", label: "Which card should I use?" },
+      { href: "/next-card", label: "Your next card" },
+      { href: "/calculator", label: "Value calculator" },
+      { href: "/tracker", label: "Benefits tracker" },
     ],
   },
   {
@@ -28,6 +40,7 @@ const COLUMNS = [
     links: [
       { href: "/about", label: "About our data" },
       { href: "/about#methodology", label: "Point valuations" },
+      { href: "/about#points-data", label: "Sources & photo credits" },
       { href: "/about#disclaimer", label: "Disclaimer" },
     ],
   },
@@ -36,7 +49,7 @@ const COLUMNS = [
 export function SiteFooter() {
   return (
     <footer className="mt-auto bg-navy text-white">
-      <div className="container-page grid gap-10 py-14 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+      <div className="container-page grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(4,1fr)]">
         <div className="space-y-4">
           <Logo inverted />
           <p className="max-w-xs text-sm leading-relaxed text-white/70">
